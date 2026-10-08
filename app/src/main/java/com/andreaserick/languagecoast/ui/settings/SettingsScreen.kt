@@ -1,4 +1,4 @@
-package com.andreaserick.languagecoast.ui.screens
+package com.andreaserick.languagecoast.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,42 +24,32 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.andreaserick.languagecoast.data.SettingsManager
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.ui.theme.SandBeige
-import kotlinx.coroutines.launch
 
 /**
  * The "Settings" screen. Configures native/target languages, the Gemini model,
  * and the user's Google Gemini API key.
  */
 @Composable
-fun SettingsScreen() {
-    val context = LocalContext.current
-    val settingsManager = remember { SettingsManager(context) }
-    val coroutineScope = rememberCoroutineScope()
+fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    val nativeLang by settingsManager.nativeLanguageFlow.collectAsState(initial = SettingsManager.DEFAULT_NATIVE_LANGUAGE)
-    val targetLang by settingsManager.targetLanguageFlow.collectAsState(initial = SettingsManager.DEFAULT_TARGET_LANGUAGE)
-    val savedGeminiModel by settingsManager.geminiModelFlow.collectAsState(initial = SettingsManager.DEFAULT_GEMINI_MODEL)
-    val savedApiKey by settingsManager.apiKeyFlow.collectAsState(initial = "")
-
-    var currentInput by remember(savedApiKey) { mutableStateOf(savedApiKey) }
+    var currentInput by remember(uiState.savedApiKey) { mutableStateOf(uiState.savedApiKey) }
     var passwordVisible by remember { mutableStateOf(false) }
-    var showSuccessMessage by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -78,27 +68,27 @@ fun SettingsScreen() {
 
         SectionLabel("Native Language")
         SettingsDropdown(
-            options = SettingsManager.SUPPORTED_LANGUAGES,
-            selected = nativeLang,
-            onSelected = { coroutineScope.launch { settingsManager.saveNativeLanguage(it) } }
+            options = SettingsDefaults.SUPPORTED_LANGUAGES,
+            selected = uiState.nativeLanguage,
+            onSelected = viewModel::setNativeLanguage
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         SectionLabel("Target Language")
         SettingsDropdown(
-            options = SettingsManager.SUPPORTED_LANGUAGES,
-            selected = targetLang,
-            onSelected = { coroutineScope.launch { settingsManager.saveTargetLanguage(it) } }
+            options = SettingsDefaults.SUPPORTED_LANGUAGES,
+            selected = uiState.targetLanguage,
+            onSelected = viewModel::setTargetLanguage
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         SectionLabel("Gemini Model")
         SettingsDropdown(
-            options = SettingsManager.GEMINI_MODELS,
-            selected = savedGeminiModel,
-            onSelected = { coroutineScope.launch { settingsManager.saveGeminiModel(it) } }
+            options = SettingsDefaults.GEMINI_MODELS,
+            selected = uiState.geminiModel,
+            onSelected = viewModel::setGeminiModel
         )
 
         Spacer(modifier = Modifier.height(40.dp))
@@ -115,7 +105,7 @@ fun SettingsScreen() {
             value = currentInput,
             onValueChange = {
                 currentInput = it
-                showSuccessMessage = false
+                viewModel.onApiKeyEdited()
             },
             label = { Text("API Key") },
             placeholder = { Text("AIzaSy...") },
@@ -138,12 +128,7 @@ fun SettingsScreen() {
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
-            onClick = {
-                coroutineScope.launch {
-                    settingsManager.saveApiKey(currentInput.trim())
-                    showSuccessMessage = true
-                }
-            },
+            onClick = { viewModel.saveApiKey(currentInput) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp)
@@ -151,7 +136,7 @@ fun SettingsScreen() {
             Text("Save API Key", fontSize = 16.sp)
         }
 
-        if (showSuccessMessage) {
+        if (uiState.apiKeySaved) {
             Text(
                 text = "API Key saved successfully!",
                 color = MaterialTheme.colorScheme.primary,

@@ -1,4 +1,4 @@
-package com.andreaserick.languagecoast.ui.screens
+package com.andreaserick.languagecoast.ui.mycoast
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,28 +26,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.andreaserick.languagecoast.data.AppDatabase
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.LanguageIsland
-import com.andreaserick.languagecoast.data.SettingsManager
 import com.andreaserick.languagecoast.ui.theme.CoralAccent
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
-import kotlinx.coroutines.launch
 
 /**
  * The "My Coast" screen. Shows the study streak and a grid of "Language Islands"
@@ -56,19 +51,11 @@ import kotlinx.coroutines.launch
  * @param onIslandClick Called with the island ID and name when an island is tapped.
  */
 @Composable
-fun MyCoastScreen(onIslandClick: (Int, String) -> Unit) {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    val dao = remember { AppDatabase.getDatabase(context).languageCoastDao() }
-    val islands by dao.getAllIslands().collectAsState(initial = emptyList())
-
-    val settingsManager = remember { SettingsManager(context) }
-    val streakCount by settingsManager.streakCountFlow.collectAsState(initial = 0)
-
-    LaunchedEffect(Unit) {
-        settingsManager.checkStreakReset()
-    }
+fun MyCoastScreen(
+    onIslandClick: (Int, String) -> Unit,
+    viewModel: MyCoastViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     var islandToDelete by remember { mutableStateOf<LanguageIsland?>(null) }
 
@@ -76,7 +63,7 @@ fun MyCoastScreen(onIslandClick: (Int, String) -> Unit) {
         DeleteIslandDialog(
             island = island,
             onConfirm = {
-                coroutineScope.launch { dao.deleteIsland(island) }
+                viewModel.deleteIsland(island)
                 islandToDelete = null
             },
             onDismiss = { islandToDelete = null }
@@ -96,25 +83,26 @@ fun MyCoastScreen(onIslandClick: (Int, String) -> Unit) {
             modifier = Modifier.padding(top = 32.dp, bottom = 24.dp)
         )
 
-        StreakCard(streakCount = streakCount)
+        StreakCard(streakCount = uiState.streakCount)
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        if (islands.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        when {
+            // Show nothing while loading to avoid flashing the empty state.
+            uiState.isLoading -> Unit
+            uiState.islands.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     "Your coast is completely empty. Go create some flashcards!",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        } else {
-            LazyVerticalGrid(
+            else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(islands, key = { it.islandId }) { island ->
+                items(uiState.islands, key = { it.islandId }) { island ->
                     IslandCard(
                         island = island,
                         onClick = { onIslandClick(island.islandId, island.name) },

@@ -1,4 +1,4 @@
-package com.andreaserick.languagecoast.ui.screens
+package com.andreaserick.languagecoast.ui.study
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -22,90 +22,40 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
-import com.andreaserick.languagecoast.data.AppDatabase
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Flashcard
-import com.andreaserick.languagecoast.data.SettingsManager
 import com.andreaserick.languagecoast.ui.theme.CoralAccent
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
 import com.andreaserick.languagecoast.util.dictCcSearchUrl
-import kotlinx.coroutines.launch
 
 /**
  * The main screen for studying flashcards within a specific "Language Island" (category).
  * Provides two modes of study: "Flip Cards" (standard flashcard) and "Active Type" (writing practice).
+ * The island is taken from the navigation arguments by [StudyViewModel].
  *
- * @param islandId The unique ID of the island being studied.
- * @param islandName The display name of the island.
  * @param onNavigateBack Callback to navigate back to the previous screen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StudyScreen(islandId: Int, islandName: String, onNavigateBack: () -> Unit) {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    val dao = remember { AppDatabase.getDatabase(context).languageCoastDao() }
-    val settingsManager = remember { SettingsManager(context) }
-
-    val nativeLang by settingsManager.nativeLanguageFlow.collectAsState(initial = SettingsManager.DEFAULT_NATIVE_LANGUAGE)
-    val targetLang by settingsManager.targetLanguageFlow.collectAsState(initial = SettingsManager.DEFAULT_TARGET_LANGUAGE)
-
-    val cards by dao.getCardsForIsland(islandId).collectAsState(initial = emptyList())
-
-    // UI State for session cards
-    val sessionCards = remember { mutableStateListOf<Flashcard>() }
-    var hasInitialized by remember { mutableStateOf(false) }
-
-    // Initialize/Sync sessionCards when cards load or change.
-    // sessionCards is a mutable list that represents the current study session's deck.
-    LaunchedEffect(cards) {
-        if (!hasInitialized && cards.isNotEmpty()) {
-            // Initial load of the deck for the session
-            sessionCards.clear()
-            sessionCards.addAll(cards)
-            hasInitialized = true
-        } else if (cards.isEmpty()) {
-            // No cards left in the database for this island
-            sessionCards.clear()
-        } else {
-            // Keep sessionCards in sync with database (handle deletions from other screens/actions)
-            // We only remove cards that are no longer in the master database list.
-            val currentIds = cards.map { it.cardId }.toSet()
-            sessionCards.removeAll { it.cardId !in currentIds }
-        }
-    }
-
-    // UI State for navigation and study mode
-    var currentIndex by remember { mutableIntStateOf(0) }
-    var isTypingMode by remember { mutableStateOf(false) }
-
-    // Ensure currentIndex stays within bounds if cards are removed from the session
-    LaunchedEffect(sessionCards.size) {
-        if (currentIndex >= sessionCards.size && sessionCards.isNotEmpty()) {
-            currentIndex = sessionCards.size - 1
-        }
-    }
+fun StudyScreen(onNavigateBack: () -> Unit, viewModel: StudyViewModel = hiltViewModel()) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentCard = uiState.currentCard
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(islandName, fontWeight = FontWeight.Bold) },
+                title = { Text(uiState.islandName, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    val cardToDelete = sessionCards.getOrNull(currentIndex)
-                    if (cardToDelete != null) {
-                        IconButton(
-                            onClick = {
-                                // LaunchedEffect(cards) removes the card from sessionCards once the DB updates.
-                                coroutineScope.launch { dao.deleteFlashcard(cardToDelete) }
-                            }
-                        ) {
+                    if (currentCard != null) {
+                        IconButton(onClick = viewModel::deleteCurrentCard) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = "Delete Card",
@@ -125,113 +75,90 @@ fun StudyScreen(islandId: Int, islandName: String, onNavigateBack: () -> Unit) {
         Column(
             modifier = Modifier.fillMaxSize().padding(padding)
         ) {
-            if (cards.isEmpty()) {
-                // Empty state message when no cards exist or all were deleted from DB
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            when {
+                uiState.isLoading -> Unit
+                !uiState.hasCards -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No flashcards here yet!", color = SandBeige)
                 }
-            } else if (sessionCards.isEmpty() && hasInitialized) {
-                // Trigger streak update when session is completed
-                LaunchedEffect(Unit) {
-                    settingsManager.updateStreak()
-                }
-
-                // Session complete view
-                SessionCompleteView(
-                    onRestart = {
-                        sessionCards.clear()
-                        sessionCards.addAll(cards)
-                        currentIndex = 0
-                    },
+                uiState.isSessionComplete -> SessionCompleteView(
+                    onRestart = viewModel::restart,
                     onBack = onNavigateBack
                 )
-            } else {
-                PrimaryTabRow(
-                    selectedTabIndex = if (isTypingMode) 1 else 0,
-                    containerColor = DeepOceanBlue,
-                    contentColor = SandBeige,
-                    divider = {}
-                ) {
-                    Tab(
-                        selected = !isTypingMode,
-                        onClick = { isTypingMode = false },
-                        text = { Text("Flip Cards", fontWeight = FontWeight.SemiBold) },
-                        selectedContentColor = SandBeige,
-                        unselectedContentColor = SandBeige.copy(alpha = 0.6f)
-                    )
-                    Tab(
-                        selected = isTypingMode,
-                        onClick = { isTypingMode = true },
-                        text = { Text("Active Type", fontWeight = FontWeight.SemiBold) },
-                        selectedContentColor = SandBeige,
-                        unselectedContentColor = SandBeige.copy(alpha = 0.6f)
-                    )
-                }
+                currentCard != null -> {
+                    StudyModeTabs(isTypingMode = uiState.isTypingMode, onModeChange = viewModel::setTypingMode)
 
-                val currentCard = sessionCards.getOrNull(currentIndex)
-
-                if (currentCard != null) {
                     Column(
                         modifier = Modifier.weight(1f).fillMaxWidth().padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        // Progress indicator (e.g., "Card 1 of 10")
                         Text(
-                            text = "Card ${currentIndex + 1} of ${sessionCards.size}",
+                            text = "Card ${uiState.currentIndex + 1} of ${uiState.sessionCards.size}",
                             color = SandBeige.copy(alpha = 0.8f),
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
 
-                        // Switch between views based on the selected Tab.
-                        // key(currentCard.cardId) ensures state (like 'isFlipped' or 'userInput')
-                        // is reset when we move to a different card.
-                        if (isTypingMode) {
-                            key(currentCard.cardId) {
+                        // key(cardId) resets per-card state (flip state, typed answer)
+                        // when we move to a different card.
+                        key(currentCard.cardId) {
+                            if (uiState.isTypingMode) {
                                 TypeStudyView(currentCard = currentCard)
-                            }
-                        } else {
-                            key(currentCard.cardId) {
+                            } else {
                                 FlipStudyView(
                                     currentCard = currentCard,
-                                    nativeLang = nativeLang,
-                                    targetLang = targetLang,
-                                    onAgain = { card ->
-                                        // The "SRS Lite" logic: move the current card to the end of the session list.
-                                        sessionCards.removeAt(currentIndex)
-                                        sessionCards.add(card)
-                                        // Note: currentIndex stays the same, so the "next" card in the list
-                                        // automatically slides into view.
-                                    },
-                                    onEasy = {
-                                        // Remove the card from the current session list entirely.
-                                        sessionCards.removeAt(currentIndex)
-                                    }
+                                    nativeLang = uiState.nativeLanguage,
+                                    targetLang = uiState.targetLanguage,
+                                    onAgain = viewModel::onAgain,
+                                    onEasy = viewModel::onEasy
                                 )
                             }
                         }
                     }
 
-                    // Navigation buttons for manually moving through the session deck.
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         Button(
-                            onClick = { if (currentIndex > 0) currentIndex-- },
-                            enabled = currentIndex > 0,
+                            onClick = viewModel::previous,
+                            enabled = uiState.canGoBack,
                             colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
                         ) { Text("Previous") }
 
                         Button(
-                            onClick = { if (currentIndex < sessionCards.size - 1) currentIndex++ },
-                            enabled = currentIndex < sessionCards.size - 1,
+                            onClick = viewModel::next,
+                            enabled = uiState.canGoForward,
                             colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
                         ) { Text("Next") }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StudyModeTabs(isTypingMode: Boolean, onModeChange: (Boolean) -> Unit) {
+    PrimaryTabRow(
+        selectedTabIndex = if (isTypingMode) 1 else 0,
+        containerColor = DeepOceanBlue,
+        contentColor = SandBeige,
+        divider = {}
+    ) {
+        Tab(
+            selected = !isTypingMode,
+            onClick = { onModeChange(false) },
+            text = { Text("Flip Cards", fontWeight = FontWeight.SemiBold) },
+            selectedContentColor = SandBeige,
+            unselectedContentColor = SandBeige.copy(alpha = 0.6f)
+        )
+        Tab(
+            selected = isTypingMode,
+            onClick = { onModeChange(true) },
+            text = { Text("Active Type", fontWeight = FontWeight.SemiBold) },
+            selectedContentColor = SandBeige,
+            unselectedContentColor = SandBeige.copy(alpha = 0.6f)
+        )
     }
 }
 
@@ -250,7 +177,7 @@ fun FlipStudyView(
     currentCard: Flashcard,
     nativeLang: String,
     targetLang: String,
-    onAgain: (Flashcard) -> Unit,
+    onAgain: () -> Unit,
     onEasy: () -> Unit
 ) {
     var isFlipped by remember(currentCard) { mutableStateOf(false) }
@@ -316,7 +243,7 @@ fun FlipStudyView(
                 Button(
                     onClick = {
                         isFlipped = false // Explicitly unflip before triggering logic
-                        onAgain(currentCard)
+                        onAgain()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = CoralAccent)
                 ) {

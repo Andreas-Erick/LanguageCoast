@@ -1,4 +1,4 @@
-package com.andreaserick.languagecoast.ui.screens
+package com.andreaserick.languagecoast.ui.create
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -33,29 +33,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.andreaserick.languagecoast.R
-import com.andreaserick.languagecoast.data.AiTranslator
-import com.andreaserick.languagecoast.data.AppDatabase
-import com.andreaserick.languagecoast.data.Flashcard
-import com.andreaserick.languagecoast.data.LanguageIsland
-import com.andreaserick.languagecoast.data.SettingsManager
-import kotlinx.coroutines.launch
-
-/** Category used for manual cards when the user leaves the category blank. */
-private const val DEFAULT_MANUAL_CATEGORY = "My Words"
 
 /**
  * The "Create" screen. Lets users create new flashcards from a native sentence, either
@@ -63,29 +48,27 @@ private const val DEFAULT_MANUAL_CATEGORY = "My Words"
  * translates the sentence and picks a category.
  */
 @Composable
-fun CreateScreen() {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
+fun CreateScreen(viewModel: CreateViewModel = hiltViewModel()) {
+    CreateContent(
+        uiState = viewModel.uiState,
+        onNativeSentenceChange = viewModel::onNativeSentenceChange,
+        onTargetSentenceChange = viewModel::onTargetSentenceChange,
+        onCategoryChange = viewModel::onCategoryChange,
+        onManualModeChange = viewModel::onManualModeChange,
+        onSave = viewModel::save
+    )
+}
 
-    val dao = remember { AppDatabase.getDatabase(context).languageCoastDao() }
-    val settingsManager = remember { SettingsManager(context) }
-
-    val userApiKey by settingsManager.apiKeyFlow.collectAsState(initial = "")
-    val aiTranslator = remember(userApiKey) {
-        if (userApiKey.isNotBlank()) AiTranslator(userApiKey) else null
-    }
-
-    val targetLang by settingsManager.targetLanguageFlow.collectAsState(initial = SettingsManager.DEFAULT_TARGET_LANGUAGE)
-    val nativeLang by settingsManager.nativeLanguageFlow.collectAsState(initial = SettingsManager.DEFAULT_NATIVE_LANGUAGE)
-    val geminiModel by settingsManager.geminiModelFlow.collectAsState(initial = SettingsManager.DEFAULT_GEMINI_MODEL)
-    val islands by dao.getAllIslands().collectAsState(initial = emptyList())
-
-    var nativeSentence by remember { mutableStateOf("") }
-    var targetSentence by remember { mutableStateOf("") } // Only used in manual mode
-    var category by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    var lastResult by remember { mutableStateOf("") }
-    var isManualMode by remember { mutableStateOf(false) }
+@Composable
+private fun CreateContent(
+    uiState: CreateUiState,
+    onNativeSentenceChange: (String) -> Unit,
+    onTargetSentenceChange: (String) -> Unit,
+    onCategoryChange: (String) -> Unit,
+    onManualModeChange: (Boolean) -> Unit,
+    onSave: () -> Unit
+) {
+    val isManualMode = uiState.isManualMode
 
     Column(
         modifier = Modifier
@@ -111,15 +94,15 @@ fun CreateScreen() {
             Spacer(modifier = Modifier.width(8.dp))
             Switch(
                 checked = !isManualMode,
-                onCheckedChange = { isManualMode = !it }
+                onCheckedChange = { onManualModeChange(!it) }
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text("AI", color = MaterialTheme.colorScheme.primary)
         }
 
         OutlinedTextField(
-            value = nativeSentence,
-            onValueChange = { nativeSentence = it },
+            value = uiState.nativeSentence,
+            onValueChange = onNativeSentenceChange,
             label = { Text("What do you want to say?") },
             placeholder = { Text("e.g., Where is the train station?") },
             modifier = Modifier.fillMaxWidth(),
@@ -130,8 +113,8 @@ fun CreateScreen() {
 
         if (isManualMode) {
             OutlinedTextField(
-                value = targetSentence,
-                onValueChange = { targetSentence = it },
+                value = uiState.targetSentence,
+                onValueChange = onTargetSentenceChange,
                 label = { Text("Target Translation") },
                 placeholder = { Text("e.g., ¿Dónde está la estación de tren?") },
                 modifier = Modifier.fillMaxWidth(),
@@ -141,8 +124,8 @@ fun CreateScreen() {
         }
 
         OutlinedTextField(
-            value = category,
-            onValueChange = { category = it },
+            value = uiState.category,
+            onValueChange = onCategoryChange,
             // Manual cards fall back to DEFAULT_MANUAL_CATEGORY; the AI picks one otherwise.
             label = { Text("Category (Optional)") },
             placeholder = { Text("e.g., Travel") },
@@ -153,68 +136,13 @@ fun CreateScreen() {
         Spacer(modifier = Modifier.height(32.dp))
 
         Button(
-            onClick = {
-                if (nativeSentence.isBlank()) return@Button
-                isLoading = true
-                lastResult = ""
-
-                // Room and AiTranslator are main-safe, so this runs on the main dispatcher
-                // and Compose state can be updated directly.
-                coroutineScope.launch {
-                    try {
-                        val finalCategory: String
-                        val finalTargetText: String
-
-                        if (isManualMode) {
-                            require(targetSentence.isNotBlank()) { "Translation cannot be empty in manual mode." }
-                            finalCategory = category.trim().ifBlank { DEFAULT_MANUAL_CATEGORY }
-                            finalTargetText = targetSentence.trim()
-                        } else {
-                            requireNotNull(aiTranslator) { "Please enter an API Key in Settings first!" }
-
-                            val result = aiTranslator.translateAndCategorize(
-                                nativeSentence = nativeSentence,
-                                targetLanguage = targetLang,
-                                nativeLanguage = nativeLang,
-                                userCategory = category,
-                                existingCategories = islands.map { it.name },
-                                modelName = geminiModel
-                            )
-                            check(result.isSuccess) { "AI Translation Failed." }
-
-                            finalCategory = result.finalCategory
-                            finalTargetText = result.translatedText
-                        }
-
-                        // Reuse the island with this name, or create it.
-                        val islandId = dao.getIslandByName(finalCategory)?.islandId
-                            ?: dao.insertIsland(LanguageIsland(name = finalCategory)).toInt()
-
-                        dao.insertFlashcard(
-                            Flashcard(
-                                islandId = islandId,
-                                nativeText = nativeSentence.trim(),
-                                targetText = finalTargetText
-                            )
-                        )
-
-                        lastResult = if (isManualMode) "Manually saved to $finalCategory!" else "AI saved to $finalCategory!"
-                        nativeSentence = ""
-                        targetSentence = ""
-                        category = ""
-                    } catch (e: Exception) {
-                        lastResult = "Error: ${e.message}"
-                    } finally {
-                        isLoading = false
-                    }
-                }
-            },
+            onClick = onSave,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            enabled = !isLoading
+            enabled = !uiState.isSaving && uiState.nativeSentence.isNotBlank()
         ) {
-            if (isLoading) {
+            if (uiState.isSaving) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
             } else {
                 val icon = if (isManualMode) Icons.Default.Save else Icons.Default.AutoAwesome
@@ -227,11 +155,11 @@ fun CreateScreen() {
         Spacer(modifier = Modifier.height(24.dp))
 
         AnimatedVisibility(
-            visible = lastResult.isNotEmpty(),
+            visible = uiState.result != null,
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut()
         ) {
-            ResultCard(message = lastResult, isError = lastResult.startsWith("Error"))
+            uiState.result?.let { ResultCard(it) }
         }
         Spacer(modifier = Modifier.height(16.dp))
     }
@@ -239,7 +167,13 @@ fun CreateScreen() {
 
 /** Feedback card shown after a save attempt. */
 @Composable
-private fun ResultCard(message: String, isError: Boolean) {
+private fun ResultCard(result: SaveResult) {
+    val isError = result is SaveResult.Error
+    val message = when (result) {
+        is SaveResult.Saved -> if (result.manual) "Manually saved to ${result.category}!" else "AI saved to ${result.category}!"
+        is SaveResult.Error -> "Error: ${result.message}"
+    }
+
     Card(
         colors = CardDefaults.cardColors(
             containerColor = if (isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
