@@ -33,20 +33,21 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
 import com.andreaserick.languagecoast.navigation.CreateScreenRoute
 import com.andreaserick.languagecoast.navigation.MyCoastScreenRoute
 import com.andreaserick.languagecoast.navigation.SettingsScreenRoute
 import com.andreaserick.languagecoast.navigation.StudyScreenRoute
 import com.andreaserick.languagecoast.notifications.StudyReminderWorker
-import com.andreaserick.languagecoast.ui.screens.CreateScreen
-import com.andreaserick.languagecoast.ui.screens.MyCoastScreen
-import com.andreaserick.languagecoast.ui.screens.SettingsScreen
-import com.andreaserick.languagecoast.ui.screens.StudyScreen
+import com.andreaserick.languagecoast.ui.create.CreateScreen
+import com.andreaserick.languagecoast.ui.mycoast.MyCoastScreen
+import com.andreaserick.languagecoast.ui.settings.SettingsScreen
+import com.andreaserick.languagecoast.ui.study.StudyScreen
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.LanguageCoastTheme
 import com.andreaserick.languagecoast.ui.theme.SandBeige
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -139,13 +140,9 @@ fun LanguageCoastApp() {
                 )
             }
             composable<SettingsScreenRoute> { SettingsScreen() }
-            composable<StudyScreenRoute> { backStackEntry ->
-                val route = backStackEntry.toRoute<StudyScreenRoute>()
-                StudyScreen(
-                    islandId = route.islandId,
-                    islandName = route.islandName,
-                    onNavigateBack = { navController.popBackStack() }
-                )
+            composable<StudyScreenRoute> {
+                // StudyViewModel reads the route arguments from its SavedStateHandle.
+                StudyScreen(onNavigateBack = { navController.popBackStack() })
             }
         }
     }
