@@ -20,3 +20,6 @@ captures/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Release signing secrets - never commit
+keystore.properties
