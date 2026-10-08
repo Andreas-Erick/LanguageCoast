@@ -36,4 +36,31 @@ class TranslationResponseParserTest {
         assertFalse(parseTranslationResponse("TRANSLATION:\nCATEGORY: Greetings").isSuccess)
         assertFalse(parseTranslationResponse("TRANSLATION: Hola\nCATEGORY:   ").isSuccess)
     }
+
+    @Test
+    fun promptListsExistingCategoriesAndLanguages() {
+        val prompt = buildTranslationPrompt(request(existingCategories = listOf("Travel", "Food")))
+
+        assertTrue(prompt.contains("from English into Icelandic"))
+        assertTrue(prompt.contains("existing categories: Travel, Food"))
+        // No stray quote after the input (a past bug).
+        assertTrue(prompt.lines().contains("Input text: horse"))
+    }
+
+    @Test
+    fun promptAsksForNewCategoryWhenNoneExist() {
+        val prompt = buildTranslationPrompt(request(existingCategories = emptyList()))
+
+        assertTrue(prompt.contains("You have no existing categories yet"))
+    }
+
+    private fun request(existingCategories: List<String>) = TranslationRequest(
+        apiKey = "key",
+        modelName = "model",
+        nativeSentence = "horse",
+        nativeLanguage = "English",
+        targetLanguage = "Icelandic",
+        userCategory = "",
+        existingCategories = existingCategories
+    )
 }
