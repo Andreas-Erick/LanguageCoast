@@ -54,6 +54,47 @@ class TranslationResponseParserTest {
         assertTrue(prompt.contains("You have no existing categories yet"))
     }
 
+    @Test
+    fun parsesAlternativesAndNote() {
+        val result = parseTranslationResponse(
+            "TRANSLATION: Wollen wir morgen ins Kino gehen?\nCATEGORY: Plans\nEMOJI: 🎬\n" +
+                "ALTERNATIVES: Sollen wir morgen ins Kino gehen? || Hast du Lust, morgen ins Kino zu gehen?\n" +
+                "NOTE: The second one is a more casual invitation."
+        )
+
+        assertEquals(
+            listOf("Sollen wir morgen ins Kino gehen?", "Hast du Lust, morgen ins Kino zu gehen?"),
+            result.alternatives
+        )
+        assertEquals("The second one is a more casual invitation.", result.note)
+        assertEquals("🎬", result.emoji)
+    }
+
+    @Test
+    fun noneMeansNoAlternativesAndNoNote() {
+        val result = parseTranslationResponse("TRANSLATION: Hallo\nCATEGORY: Greetings\nALTERNATIVES: NONE\nNOTE: NONE")
+
+        assertTrue(result.alternatives.isEmpty())
+        assertEquals(null, result.note)
+    }
+
+    @Test
+    fun alternativesRepeatingTheTranslationAreDropped() {
+        val result = parseTranslationResponse("TRANSLATION: Hallo\nCATEGORY: Greetings\nALTERNATIVES: Hallo || Hallo || Servus\nNOTE: Servus is southern.")
+
+        assertEquals(listOf("Servus"), result.alternatives)
+    }
+
+    @Test
+    fun onlyLongerSentencesAskForAlternatives() {
+        assertFalse(buildTranslationPrompt(request(emptyList())).contains("ALTERNATIVES:"))
+
+        val long = buildTranslationPrompt(request(emptyList()).copy(nativeSentence = "Do you want to go to the cinema tomorrow?"))
+        assertTrue(long.contains("ALTERNATIVES: [alternative 1] || [alternative 2]"))
+        assertTrue(long.contains("explaining how they differ"))
+        assertTrue(long.lines().contains("Input text: Do you want to go to the cinema tomorrow?"))
+    }
+
     private fun request(existingCategories: List<String>) = TranslationRequest(
         engine = TranslationEngine.OnDevice,
         nativeSentence = "horse",
