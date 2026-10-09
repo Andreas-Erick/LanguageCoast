@@ -49,17 +49,23 @@ class MigrationTest {
         assertEquals(listOf("Greetings", "Travel"), dao.getIslandsForCoast(coast.coastId).first().map { it.name }.sorted())
         assertEquals("Guten Morgen", dao.getCardsForIsland(1).first().single().targetText)
         assertEquals(coast, dao.getCoastForIsland(2).first())
-        val summary = dao.getCoastSummaries(studiedSince = 0).first().single()
+        val summary = dao.getCoastSummaries(studiedSince = 0, now = 0).first().single()
         assertEquals(2, summary.islandCount)
         assertEquals(2, summary.cardCount)
         assertEquals(null, summary.lastStudied)
         assertEquals(0, summary.islandsStudiedRecently)
 
         // v4 columns start empty, so islands fall back to a guessed emoji and "not studied yet".
-        val islands = dao.getIslandSummaries(coast.coastId).first()
+        val islands = dao.getIslandSummaries(coast.coastId, now = 0).first()
         assertEquals(listOf(1, 1), islands.map { it.cardCount })
         assertTrue(islands.all { it.island.emoji == null && it.island.lastStudied == null })
         assertEquals("👋", islandEmoji(islands.single { it.island.name == "Greetings" }.island))
+
+        // v5: existing cards start as new cards, due right away.
+        val card = dao.getCardsForIsland(1).first().single()
+        assertTrue(card.stability == null && card.difficulty == null && card.lastReviewed == null && card.due == null)
+        assertEquals(listOf(1, 1), dao.getIslandSummaries(coast.coastId, now = 0).first().map { it.dueCount })
+        assertEquals(2, dao.getCoastSummaries(studiedSince = 0, now = 0).first().single().dueCount)
     }
 
     @Test
@@ -112,7 +118,12 @@ class MigrationTest {
     /** Opens the test database with the current schema; Room runs the migrations and validates the result. */
     private fun openMigratedDatabase(legacyTargetLanguage: String): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.migration2To3 { legacyTargetLanguage }, AppDatabase.MIGRATION_3_4)
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.migration2To3 { legacyTargetLanguage },
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5
+            )
             .build()
             .also { database = it }
 

@@ -50,6 +50,7 @@ import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
+import com.andreaserick.languagecoast.ui.components.cardCountLabel
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CardWash
@@ -293,7 +294,7 @@ fun CoastCard(
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "${plural(summary.islandCount, "island")} · ${plural(summary.cardCount, "card")} · " +
+                text = "${plural(summary.islandCount, "island")} · ${cardCountLabel(summary.cardCount, summary.dueCount)} · " +
                     lastStudiedLabel(summary.lastStudied, today),
                 fontSize = 14.sp,
                 color = onCardSecondary,
