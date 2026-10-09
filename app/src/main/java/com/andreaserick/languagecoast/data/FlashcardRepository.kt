@@ -41,14 +41,16 @@ interface FlashcardRepository {
 
     /**
      * Saves a card into the island named [category] on coast [coastId], creating the island
-     * (with [emoji], or one guessed from the name) if needed.
+     * (with [emoji], or one guessed from the name) if needed. [alternatives] and [note] are stored with the card.
      */
     suspend fun addFlashcard(
         coastId: Int,
         nativeText: String,
         targetText: String,
         category: String,
-        emoji: String? = null
+        emoji: String? = null,
+        alternatives: List<String> = emptyList(),
+        note: String? = null
     ): AddedCard
 
     /** Removes a card added by [addFlashcard], and its island if that was created for it and is now empty. */
@@ -61,8 +63,8 @@ interface FlashcardRepository {
     /** Saves [card]'s new scheduling fields after it was graded. */
     suspend fun saveReview(card: Flashcard)
 
-    /** Replaces the translation of card [cardId] with [targetText]. */
-    suspend fun updateTranslation(cardId: Int, targetText: String)
+    /** Replaces the translation of card [cardId] with [targetText], and its alternatives with [alternatives]. */
+    suspend fun updateTranslation(cardId: Int, targetText: String, alternatives: List<String>)
 
     /** Number of cards on all coasts that are due at [now]. */
     suspend fun countDueCards(now: Long): Int
@@ -116,12 +118,20 @@ class OfflineFlashcardRepository @Inject constructor(
         nativeText: String,
         targetText: String,
         category: String,
-        emoji: String?
+        emoji: String?,
+        alternatives: List<String>,
+        note: String?
     ): AddedCard {
         val existing = dao.getIslandByName(coastId, category)
         val island = existing ?: LanguageIsland(coastId = coastId, name = category, emoji = emoji ?: emojiForCategory(category))
             .let { it.copy(islandId = dao.insertIsland(it).toInt()) }
-        val card = Flashcard(islandId = island.islandId, nativeText = nativeText, targetText = targetText)
+        val card = Flashcard(
+            islandId = island.islandId,
+            nativeText = nativeText,
+            targetText = targetText,
+            alternatives = alternatives,
+            note = note
+        )
         return AddedCard(
             card = card.copy(cardId = dao.insertFlashcard(card).toInt()),
             createdIsland = island.takeIf { existing == null }
@@ -147,7 +157,8 @@ class OfflineFlashcardRepository @Inject constructor(
 
     override suspend fun saveReview(card: Flashcard) = dao.updateFlashcard(card)
 
-    override suspend fun updateTranslation(cardId: Int, targetText: String) = dao.setTargetText(cardId, targetText)
+    override suspend fun updateTranslation(cardId: Int, targetText: String, alternatives: List<String>) =
+        dao.setTranslation(cardId, targetText, alternatives)
 
     override suspend fun countDueCards(now: Long): Int = dao.countDueCards(now)
 
