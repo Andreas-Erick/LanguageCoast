@@ -9,6 +9,7 @@ import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.LanguageIsland
+import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
@@ -156,6 +157,15 @@ class FakeFlashcardRepository : FlashcardRepository {
         val ids = coastIslands.mapTo(HashSet()) { it.islandId }
         CoastContent(coast, coastIslands, cards.value.filter { it.islandId in ids })
     }
+
+    override fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>> =
+        combine(islands, cards) { islands, cards ->
+            val coastIslands = islands.filter { it.coastId == coastId }.associateBy { it.islandId }
+            cards.filter { it.islandId in coastIslands }.sortedByDescending { it.cardId }.take(limit).map { card ->
+                val island = coastIslands.getValue(card.islandId)
+                RecentCard(card, island.name, island.emoji)
+            }
+        }
 
     /** Adds a coast with an explicit ID. */
     fun seedCoast(coastId: Int, language: String): Coast =

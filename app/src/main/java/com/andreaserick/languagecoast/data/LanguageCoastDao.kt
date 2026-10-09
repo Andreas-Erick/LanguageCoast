@@ -91,6 +91,16 @@ interface LanguageCoastDao {
     @Query("SELECT * FROM flashcards WHERE islandId = :islandId")
     fun getCardsForIsland(islandId: Int): Flow<List<Flashcard>>
 
+    @Query(
+        """
+        SELECT flashcards.*, language_islands.name AS islandName, language_islands.emoji AS islandEmoji
+        FROM flashcards INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
+        WHERE language_islands.coastId = :coastId
+        ORDER BY flashcards.cardId DESC LIMIT :limit
+        """
+    )
+    fun getRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>>
+
     @Query("SELECT COUNT(*) FROM flashcards WHERE islandId = :islandId")
     suspend fun countCardsInIsland(islandId: Int): Int
 

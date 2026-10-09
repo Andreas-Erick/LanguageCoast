@@ -10,6 +10,7 @@ import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
+import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationEngine
@@ -20,11 +21,17 @@ import com.andreaserick.languagecoast.data.availableCoastLanguages
 import com.andreaserick.languagecoast.data.islandEmoji
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import java.time.Clock
 import javax.inject.Inject
 
 /** Category used for manual cards when the user leaves the category blank. */
@@ -32,6 +39,9 @@ const val DEFAULT_MANUAL_CATEGORY = DEFAULT_CATEGORY
 
 /** How long the save feedback card stays on screen; long enough to read the translation and undo it. */
 const val RESULT_VISIBLE_MILLIS = 8_000L
+
+/** How many recently added cards the screen lists. */
+const val RECENT_CARDS = 3
 
 data class CreateUiState(
     val nativeSentence: String = "",
@@ -46,7 +56,16 @@ data class CreateUiState(
     val selectedCoast: Coast? = null,
     /** Languages a new coast can be started for. */
     val availableLanguages: List<Language> = emptyList(),
-    val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE
+    val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
+    val streakCount: Int = 0,
+    /** Whether any coast has cards at all, i.e. whether there is anything to review. */
+    val hasCards: Boolean = false,
+    /** Cards due across all coasts (see [isDue]). */
+    val dueCount: Int = 0,
+    /** How many coasts have due cards. */
+    val dueCoastCount: Int = 0,
+    /** The cards most recently added to the selected coast, newest first. */
+    val recentCards: List<RecentCard> = emptyList()
 ) {
     /** True when the selected coast is in the user's native language, so there's nothing to translate. */
     val isSameLanguage: Boolean get() = selectedCoast?.language == nativeLanguage
@@ -62,11 +81,13 @@ sealed interface SaveResult {
     data class Error(val message: String) : SaveResult
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CreateViewModel @Inject constructor(
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
-    private val translator: Translator
+    private val translator: Translator,
+    private val clock: Clock
 ) : ViewModel() {
 
     // Compose state rather than StateFlow so text fields update synchronously while typing.
@@ -93,6 +114,52 @@ class CreateViewModel @Inject constructor(
                     nativeLanguage = nativeLanguage
                 )
             }
+        }
+        viewModelScope.launch {
+            // Counted at the time the screen opens; reviewing changes the cards and with them the counts.
+            combine(
+                flashcards.observeCoastSummaries(studiedSince = 0, now = clock.millis()),
+                settings.streakCount
+            ) { coasts, streak -> coasts to streak }
+                .collect { (coasts, streak) ->
+                    uiState = uiState.copy(
+                        streakCount = streak,
+                        hasCards = coasts.any { it.cardCount > 0 },
+                        dueCount = coasts.sumOf { it.dueCount },
+                        dueCoastCount = coasts.count { it.dueCount > 0 }
+                    )
+                }
+        }
+        viewModelScope.launch {
+            selectedCoastId()
+                .flatMapLatest { coastId -> if (coastId == null) flowOf(emptyList()) else flashcards.observeRecentCards(coastId, RECENT_CARDS) }
+                .collect { uiState = uiState.copy(recentCards = it) }
+        }
+        viewModelScope.launch { settings.refreshStreak() }
+    }
+
+    /** The coast new cards go to, as shown in the coast picker. */
+    private fun selectedCoastId(): Flow<Int?> =
+        combine(flashcards.observeCoasts(), settings.activeCoastId) { coasts, activeCoastId ->
+            (coasts.firstOrNull { it.coastId == activeCoastId } ?: coasts.firstOrNull())?.coastId
+        }.distinctUntilChanged()
+
+    /**
+     * Picks where to start reviewing: the island with the most due cards, on the selected coast if it
+     * has any due, otherwise on the coast with the most. [onOpen] gets the island's ID and name.
+     */
+    fun startReview(onOpen: (islandId: Int, islandName: String) -> Unit) {
+        viewModelScope.launch {
+            val now = clock.millis()
+            val coasts = flashcards.observeCoastSummaries(studiedSince = 0, now = now).first().filter { it.dueCount > 0 }
+            val coast = coasts.firstOrNull { it.coast.coastId == uiState.selectedCoast?.coastId }
+                ?: coasts.maxByOrNull { it.dueCount }
+                ?: return@launch
+            val island = flashcards.observeIslandSummaries(coast.coast.coastId, now).first()
+                .filter { it.dueCount > 0 }
+                .maxByOrNull { it.dueCount }
+                ?: return@launch
+            onOpen(island.island.islandId, island.island.name)
         }
     }
 

@@ -73,6 +73,16 @@ data class LanguageIsland(
     val lastStudied: Long? = null
 )
 
+/** A [Flashcard] with the name and emoji of the island it is on, for lists across islands. */
+data class RecentCard(
+    @Embedded val card: Flashcard,
+    val islandName: String,
+    val islandEmoji: String?
+) {
+    /** The island's emoji, or the one guessed from its name (as [islandEmoji] does for islands). */
+    val emoji: String get() = islandEmoji ?: emojiForCategory(islandName)
+}
+
 /** A [LanguageIsland] with its number of cards, and how many of them are due (see [isDue]). */
 data class IslandSummary(
     @Embedded val island: LanguageIsland,
