@@ -79,7 +79,7 @@ class SettingsAndMyCoastViewModelTest {
         val viewModel = MyCoastViewModel(flashcards, settings)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
-        val available = viewModel.uiState.value.availableLanguages
+        val available = viewModel.uiState.value.availableLanguages.map { it.name }
         assertFalse(SettingsDefaults.NATIVE_LANGUAGE in available)
         assertFalse("German" in available)
         assertTrue("Icelandic" in available)

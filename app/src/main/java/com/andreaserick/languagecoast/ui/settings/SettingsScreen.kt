@@ -32,7 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.SettingsDefaults
+import com.andreaserick.languagecoast.ui.components.LanguageField
 import com.andreaserick.languagecoast.ui.components.SelectionDropdown
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 
@@ -63,10 +65,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         )
 
         SectionLabel("Native Language")
-        SelectionDropdown(
-            options = SettingsDefaults.SUPPORTED_LANGUAGES,
-            selected = uiState.nativeLanguage,
-            onSelected = viewModel::setNativeLanguage
+        LanguageField(
+            language = uiState.nativeLanguage,
+            languages = Languages.ALL,
+            onPick = { viewModel.setNativeLanguage(it.name) },
+            pickerTitle = "Native Language"
         )
 
         Spacer(modifier = Modifier.height(24.dp))

@@ -119,7 +119,7 @@ class CreateViewModelTest {
         viewModel.addCoast("Korean")
 
         assertEquals("Korean", viewModel.uiState.selectedCoast?.language)
-        assertFalse("Korean" in viewModel.uiState.availableLanguages)
+        assertFalse("Korean" in viewModel.uiState.availableLanguages.map { it.name })
     }
 
     @Test
