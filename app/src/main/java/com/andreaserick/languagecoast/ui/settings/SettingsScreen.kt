@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -79,7 +80,7 @@ import java.time.format.FormatStyle
 
 /**
  * The "Settings" screen, grouped into cards: languages, AI (Gemini model and API key),
- * study reminders and app info.
+ * study reminders, exporting / importing cards and app info.
  */
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
@@ -127,6 +128,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 )
             }
 
+            SettingsCard(title = "Your cards", icon = Icons.Default.SwapVert) {
+                CardTransferSection()
+            }
+
             SettingsCard(title = "About", icon = Icons.Default.Info) {
                 val context = LocalContext.current
                 Text("Language Coast ${remember { appVersion(context) }}", color = Color.White)
@@ -156,14 +161,31 @@ private fun SettingsCard(title: String, icon: ImageVector, content: @Composable 
 }
 
 @Composable
-private fun FieldLabel(text: String) {
+internal fun FieldLabel(text: String) {
     Text(text, color = MistWhite, fontSize = 14.sp, modifier = Modifier.padding(bottom = 6.dp))
 }
 
 @Composable
-private fun Hint(text: String) {
+internal fun Hint(text: String) {
     Text(text, color = MistWhite, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
 }
+
+@Composable
+internal fun coastSwitchColors() = SwitchDefaults.colors(
+    checkedThumbColor = DeepOceanBlue,
+    checkedTrackColor = SandBeige,
+    uncheckedThumbColor = SandMuted,
+    uncheckedTrackColor = Color.Transparent,
+    uncheckedBorderColor = SandMuted
+)
+
+@Composable
+internal fun coastChipColors() = FilterChipDefaults.filterChipColors(
+    containerColor = Color.Transparent,
+    labelColor = SandBeige,
+    selectedContainerColor = SandBeige,
+    selectedLabelColor = DeepOceanBlue
+)
 
 @Composable
 private fun ApiKeySection(uiState: SettingsUiState, onSave: (String) -> Unit, onEdited: () -> Unit) {
@@ -257,27 +279,12 @@ private fun ReminderSection(
                 fontSize = 13.sp
             )
         }
-        Switch(
-            checked = reminder.enabled,
-            onCheckedChange = onEnabledChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = DeepOceanBlue,
-                checkedTrackColor = SandBeige,
-                uncheckedThumbColor = SandMuted,
-                uncheckedTrackColor = Color.Transparent,
-                uncheckedBorderColor = SandMuted
-            )
-        )
+        Switch(checked = reminder.enabled, onCheckedChange = onEnabledChange, colors = coastSwitchColors())
     }
 
     if (reminder.enabled) {
         Spacer(modifier = Modifier.height(12.dp))
-        val chipColors = FilterChipDefaults.filterChipColors(
-            containerColor = Color.Transparent,
-            labelColor = SandBeige,
-            selectedContainerColor = SandBeige,
-            selectedLabelColor = DeepOceanBlue
-        )
+        val chipColors = coastChipColors()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = reminder.time == null,
