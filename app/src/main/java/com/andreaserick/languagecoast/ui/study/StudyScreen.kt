@@ -194,7 +194,10 @@ fun FlipStudyView(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(250.dp)
+                // Shrink the card on short screens so the Again/Easy buttons below
+                // keep their full height instead of being squeezed and clipped.
+                .heightIn(max = 250.dp)
+                .weight(1f, fill = false)
                 .graphicsLayer {
                     rotationY = rotation
                     cameraDistance = 12f * density
