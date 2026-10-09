@@ -28,7 +28,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -259,8 +258,6 @@ private fun ApiKeySection(
     Button(
         onClick = { onSave(currentInput) },
         enabled = !isSaved && currentInput.isNotBlank(),
-        // Dark text: white on sand is below 4.5:1 contrast.
-        colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue),
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp)
