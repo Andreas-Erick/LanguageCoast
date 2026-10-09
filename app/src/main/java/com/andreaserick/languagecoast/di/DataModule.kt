@@ -8,6 +8,8 @@ import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import com.andreaserick.languagecoast.notifications.WorkManagerReminderScheduler
+import com.andreaserick.languagecoast.speech.AndroidSpeaker
+import com.andreaserick.languagecoast.speech.Speaker
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -32,4 +34,7 @@ abstract class DataModule {
 
     @Binds
     abstract fun bindReminderScheduler(impl: WorkManagerReminderScheduler): ReminderScheduler
+
+    @Binds
+    abstract fun bindSpeaker(impl: AndroidSpeaker): Speaker
 }
