@@ -110,8 +110,6 @@ fun CardTransferSection(viewModel: CardTransferViewModel = hiltViewModel()) {
     Button(
         onClick = { showExportDialog = true },
         enabled = uiState.coasts.isNotEmpty(),
-        // Dark text: white on sand is below 4.5:1 contrast.
-        colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue),
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp)

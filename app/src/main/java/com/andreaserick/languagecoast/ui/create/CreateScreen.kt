@@ -206,7 +206,8 @@ private fun CreateContent(
             enabled = !uiState.isSaving && uiState.nativeSentence.isNotBlank() && !uiState.isSameLanguage
         ) {
             if (uiState.isSaving) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
+                // The button is disabled (dark) while saving, so the spinner needs a light color.
+                CircularProgressIndicator(color = SandBeige)
             } else {
                 val icon = if (isManualMode) Icons.Default.Save else Icons.Default.AutoAwesome
                 val text = if (isManualMode) "Save Flashcard" else "Translate & Save"
