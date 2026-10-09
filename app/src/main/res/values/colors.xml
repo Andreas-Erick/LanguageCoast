@@ -2,4 +2,6 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Matches DeepOceanBlue in ui/theme/Color.kt -->
+    <color name="deep_ocean_blue">#FF133C55</color>
 </resources>

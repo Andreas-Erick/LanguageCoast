@@ -1,11 +1,14 @@
 package com.andreaserick.languagecoast.ui.components
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,7 +19,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
 
 /**
@@ -65,13 +67,17 @@ fun <T> SelectionDropdown(
             options.forEach { option ->
                 val isSelected = option == selected
                 DropdownMenuItem(
+                    // White text on Wave Teal (5.3:1); sand would only reach 2.5:1, so selection is shown with a check.
                     text = {
                         Text(
                             optionLabel(option),
-                            color = if (isSelected) SandBeige else Color.White,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                            color = Color.White,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                         )
                     },
+                    trailingIcon = if (isSelected) {
+                        { Icon(Icons.Default.Check, contentDescription = "Selected", tint = Color.White) }
+                    } else null,
                     onClick = {
                         onSelected(option)
                         expanded = false

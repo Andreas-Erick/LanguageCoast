@@ -1,8 +1,10 @@
 package com.andreaserick.languagecoast.ui.study
 
 import androidx.lifecycle.SavedStateHandle
+import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
+import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -28,7 +30,8 @@ class StudyViewModelTest {
         val viewModel = StudyViewModel(
             SavedStateHandle(mapOf("islandId" to islandId, "islandName" to "Island $islandId")),
             flashcards,
-            settings
+            settings,
+            TEST_CLOCK
         )
         // uiState is only computed while collected (WhileSubscribed).
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
@@ -84,6 +87,36 @@ class StudyViewModelTest {
     }
 
     @Test
+    fun completingSessionMarksIslandStudiedAndReportsStats() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        val viewModel = createViewModel()
+
+        viewModel.onAgain()
+        assertEquals(0f, viewModel.state.progress)
+        viewModel.onEasy()
+        assertEquals(0.5f, viewModel.state.progress)
+        viewModel.onEasy()
+
+        assertTrue(viewModel.state.isSessionComplete)
+        assertEquals(2, viewModel.state.totalCards)
+        assertEquals(1, viewModel.state.againCount)
+        assertEquals(TEST_CLOCK.millis(), flashcards.islands.value.single().lastStudied)
+    }
+
+    @Test
+    fun deletedCardCanBeRestored() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        val viewModel = createViewModel()
+        var deleted: DeletedContent? = null
+
+        viewModel.deleteCurrentCard { deleted = it }
+        assertEquals(listOf("n2"), viewModel.state.sessionCards.map { it.nativeText })
+
+        viewModel.restore(deleted!!)
+        assertEquals(listOf("n1", "n2"), flashcards.cards.value.map { it.nativeText })
+    }
+
+    @Test
     fun restartBringsBackAllCards() = runTest {
         flashcards.seed(islandId = 1, cardCount = 2)
         val viewModel = createViewModel()
@@ -130,7 +163,7 @@ class StudyViewModelTest {
         flashcards.seed(islandId = 1, cardCount = 2)
         val viewModel = createViewModel()
 
-        viewModel.deleteCurrentCard()
+        viewModel.deleteCurrentCard {}
 
         assertEquals(listOf("n2"), flashcards.cards.value.map { it.nativeText })
         assertEquals(listOf("n2"), viewModel.state.sessionCards.map { it.nativeText })
@@ -141,7 +174,7 @@ class StudyViewModelTest {
         flashcards.seed(islandId = 1, cardCount = 1)
         val viewModel = createViewModel()
 
-        viewModel.deleteCurrentCard()
+        viewModel.deleteCurrentCard {}
 
         assertFalse(viewModel.state.hasCards)
         assertFalse(viewModel.state.isSessionComplete)

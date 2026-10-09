@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.LanguageCoast" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.LanguageCoast" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Avoid a white flash before Compose draws the first frame. -->
+        <item name="android:windowBackground">@color/deep_ocean_blue</item>
+    </style>
+
+    <!-- Shown while the app starts; MainActivity switches to Theme.LanguageCoast via installSplashScreen(). -->
+    <style name="Theme.LanguageCoast.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/deep_ocean_blue</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.LanguageCoast</item>
+    </style>
 </resources>

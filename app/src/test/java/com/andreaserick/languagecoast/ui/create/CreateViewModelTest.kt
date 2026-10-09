@@ -43,7 +43,12 @@ class CreateViewModelTest {
         assertEquals("Hello", card.nativeText)
         assertEquals("Hola", card.targetText)
         assertEquals(DEFAULT_MANUAL_CATEGORY, flashcards.islands.value.single().name)
-        assertEquals(SaveResult.Saved(DEFAULT_MANUAL_CATEGORY, manual = true), viewModel.uiState.result)
+        val result = viewModel.uiState.result as SaveResult.Saved
+        assertEquals(DEFAULT_MANUAL_CATEGORY, result.category)
+        assertEquals("📝", result.emoji)
+        assertEquals("Hello", result.nativeText)
+        assertEquals("Hola", result.targetText)
+        assertTrue(result.manual)
         assertEquals("", viewModel.uiState.nativeSentence)
         assertFalse(viewModel.uiState.isSaving)
     }
@@ -85,7 +90,9 @@ class CreateViewModelTest {
         assertEquals("key", request.apiKey)
         assertEquals("Icelandic", request.targetLanguage)
         assertEquals(listOf("Island 2"), request.existingCategories)
-        assertEquals(SaveResult.Saved("Greetings", manual = false), viewModel.uiState.result)
+        val result = viewModel.uiState.result as SaveResult.Saved
+        assertEquals("Greetings", result.category)
+        assertFalse(result.manual)
         val newIsland = flashcards.islands.value.single { it.name == "Greetings" }
         assertEquals(2, newIsland.coastId)
     }
@@ -130,6 +137,43 @@ class CreateViewModelTest {
         viewModel.onTargetSentenceChange("Hola")
         viewModel.save()
         assertTrue(flashcards.cards.value.isEmpty())
+    }
+
+    @Test
+    fun aiEmojiIsUsedForNewIslands() = runTest {
+        settings.apiKey.value = "key"
+        translator.result = TranslationResult("hestur", "Animals", isSuccess = true, emoji = "🐴")
+        viewModel.onNativeSentenceChange("horse")
+
+        viewModel.save()
+
+        assertEquals("🐴", flashcards.islands.value.single().emoji)
+        assertEquals("🐴", (viewModel.uiState.result as SaveResult.Saved).emoji)
+    }
+
+    @Test
+    fun undoRemovesTheCardAndTheIslandCreatedForIt() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
+        viewModel.onManualModeChange(true)
+
+        // New island: undo removes the card and the island.
+        viewModel.onNativeSentenceChange("Hello")
+        viewModel.onTargetSentenceChange("Hola")
+        viewModel.onCategoryChange("Greetings")
+        viewModel.save()
+        viewModel.undoLastSave()
+        assertEquals(listOf("Island 1"), flashcards.islands.value.map { it.name })
+        assertEquals(1, flashcards.cards.value.size)
+        assertNull(viewModel.uiState.result)
+
+        // Existing island: undo removes only the card.
+        viewModel.onNativeSentenceChange("Bye")
+        viewModel.onTargetSentenceChange("Adiós")
+        viewModel.onCategoryChange("Island 1")
+        viewModel.save()
+        viewModel.undoLastSave()
+        assertEquals(listOf("Island 1"), flashcards.islands.value.map { it.name })
+        assertEquals(listOf("n1"), flashcards.cards.value.map { it.nativeText })
     }
 
     @Test

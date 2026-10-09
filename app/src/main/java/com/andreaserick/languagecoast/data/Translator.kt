@@ -101,15 +101,19 @@ internal fun buildTranslationPrompt(request: TranslationRequest): String = with(
         [translated noun], [translated noun with definite article], [translated noun in plural]
         (Example: hestur, hesturinn, hestar)
 
+        Also pick a single emoji that pictures the category (for example 🍽️ for Restaurant or ✈️ for Travel).
+
         Format your EXACT response like this (do not add any other text):
         TRANSLATION: [your translation]
         CATEGORY: [the category]
+        EMOJI: [one emoji]
     """.trimIndent()
 }
 
 /**
- * Parses a model response of the form `TRANSLATION: ... CATEGORY: ...`.
- * Returns [TranslationResult.FAILURE] if either field is missing or empty.
+ * Parses a model response of the form `TRANSLATION: ... CATEGORY: ... EMOJI: ...`.
+ * Returns [TranslationResult.FAILURE] if the translation or category is missing or empty;
+ * the emoji is optional and dropped if it doesn't look like one.
  */
 internal fun parseTranslationResponse(responseText: String): TranslationResult {
     // Models occasionally wrap the labels in Markdown bold; strip that before parsing.
@@ -121,12 +125,18 @@ internal fun parseTranslationResponse(responseText: String): TranslationResult {
     val translation = text.substringAfter("TRANSLATION:").substringBefore("CATEGORY:").trim()
     val category = text.substringAfter("CATEGORY:").trim().lineSequence().first().trim()
 
+    val emoji = if (text.contains("EMOJI:")) text.substringAfter("EMOJI:").trim().lineSequence().first().trim() else ""
+
     return if (translation.isNotEmpty() && category.isNotEmpty()) {
-        TranslationResult(translation, category, isSuccess = true)
+        TranslationResult(translation, category, isSuccess = true, emoji = emoji.takeIf(::looksLikeEmoji))
     } else {
         TranslationResult.FAILURE
     }
 }
+
+/** A short string with no letters or digits, i.e. an emoji (possibly with modifiers) rather than a word. */
+private fun looksLikeEmoji(text: String): Boolean =
+    text.isNotEmpty() && text.length <= 8 && text.none { it.isLetterOrDigit() }
 
 /**
  * Result of an AI translation and categorization request.
@@ -134,11 +144,13 @@ internal fun parseTranslationResponse(responseText: String): TranslationResult {
  * @property translatedText The text translated into the target language.
  * @property finalCategory The category assigned to the translation (from the user, an existing one, or newly generated).
  * @property isSuccess Whether the AI request and parsing succeeded.
+ * @property emoji An emoji picturing the category, if the model gave a usable one.
  */
 data class TranslationResult(
     val translatedText: String,
     val finalCategory: String,
-    val isSuccess: Boolean
+    val isSuccess: Boolean,
+    val emoji: String? = null
 ) {
     companion object {
         val FAILURE = TranslationResult("Error: Could not translate", "Error", isSuccess = false)
