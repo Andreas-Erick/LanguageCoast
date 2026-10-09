@@ -22,7 +22,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 ## 📱 Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/create.png" alt="Create screen with the coast picker" width="200" />
+  <img src="docs/screenshots/create.png" alt="Home screen with today's due cards, the new card form and recently added cards" width="200" />
   <img src="docs/screenshots/my-coast.png" alt="My Coasts screen with a German and an Icelandic coast" width="200" />
   <img src="docs/screenshots/coast.png" alt="German Coast with its Language Islands" width="200" />
   <img src="docs/screenshots/study.png" alt="Flipped flashcard with Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
@@ -31,6 +31,10 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 </p>
 
 ## ✨ Features
+
+### 🏠 Home screen
+- **Today at a glance**: how many cards are due across your coasts, and a *Start reviewing* button that opens the island with the most due cards.
+- **Your streak** in the header, the **new card form** with a compact coast picker, and the **cards you added most recently** to that coast.
 
 ### 🤖 AI-powered card creation
 - **Three ways to translate**, picked in Settings:

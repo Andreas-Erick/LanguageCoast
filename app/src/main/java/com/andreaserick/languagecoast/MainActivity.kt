@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,7 +46,6 @@ import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.andreaserick.languagecoast.navigation.CoastScreenRoute
 import com.andreaserick.languagecoast.navigation.CreateScreenRoute
@@ -104,9 +104,9 @@ private data class TopLevelDestination(
 
 private val topLevelDestinations = listOf(
     TopLevelDestination(CreateScreenRoute, "Create", Icons.Default.EditNote) { it.hasRoute<CreateScreenRoute>() },
-    // A coast and its study sessions are opened from My Coasts, so they keep that tab selected.
+    // A coast is only opened from My Coasts, so it keeps that tab selected.
     TopLevelDestination(MyCoastScreenRoute, "My Coasts", Icons.Default.Sailing) {
-        it.hasRoute<MyCoastScreenRoute>() || it.hasRoute<CoastScreenRoute>() || it.hasRoute<StudyScreenRoute>()
+        it.hasRoute<MyCoastScreenRoute>() || it.hasRoute<CoastScreenRoute>()
     },
     TopLevelDestination(SettingsScreenRoute, "Settings", Icons.Default.Tune) { it.hasRoute<SettingsScreenRoute>() }
 )
@@ -148,14 +148,18 @@ fun LanguageCoastApp(scheduleReminders: () -> Unit) {
                 bottomBar = {
                     // Matches the bottom of the background gradient.
                     NavigationBar(containerColor = AbyssBlue) {
-                        val navBackStackEntry by navController.currentBackStackEntryAsState()
-                        val currentDestination = navBackStackEntry?.destination
+                        // A study session belongs to the tab it was opened from (My Coasts or Create's
+                        // "Start reviewing"), so select the tab of the newest screen that has one.
+                        val backStack by navController.currentBackStack.collectAsState()
+                        val tabDestination = backStack.lastOrNull { entry ->
+                            topLevelDestinations.any { tab -> entry.destination.hierarchy.any(tab.isSelected) }
+                        }?.destination
 
                         topLevelDestinations.forEach { destination ->
                             NavigationBarItem(
                                 icon = { Icon(destination.icon, contentDescription = null) },
                                 label = { Text(destination.label) },
-                                selected = currentDestination?.hierarchy?.any(destination.isSelected) == true,
+                                selected = tabDestination?.hierarchy?.any(destination.isSelected) == true,
                                 onClick = {
                                     navController.navigate(destination.route) {
                                         popUpTo(navController.graph.startDestinationId) { saveState = true }
@@ -183,7 +187,13 @@ fun LanguageCoastApp(scheduleReminders: () -> Unit) {
                     enterTransition = { fadeIn(tween(TRANSITION_MILLIS)) },
                     exitTransition = { fadeOut(tween(TRANSITION_MILLIS)) }
                 ) {
-                    composable<CreateScreenRoute> { CreateScreen() }
+                    composable<CreateScreenRoute> {
+                        CreateScreen(
+                            onStartReview = { id, name ->
+                                navController.navigate(StudyScreenRoute(islandId = id, islandName = name))
+                            }
+                        )
+                    }
                     composable<MyCoastScreenRoute> {
                         MyCoastScreen(
                             onCoastClick = { id, name ->
