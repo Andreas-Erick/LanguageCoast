@@ -149,12 +149,16 @@ class StudyViewModelTest {
     }
 
     @Test
-    fun exposesLanguagesForDictionaryLookup() = runTest {
-        settings.targetLanguage.value = "Icelandic"
-        flashcards.seed(islandId = 1, cardCount = 1)
+    fun targetLanguageComesFromTheIslandsCoast() = runTest {
+        settings.nativeLanguage.value = "German"
+        flashcards.seedCoast(coastId = 1, language = "Spanish")
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
+        flashcards.seedCoast(coastId = 2, language = "Icelandic")
+        flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
 
-        val viewModel = createViewModel()
+        val viewModel = createViewModel(islandId = 2)
 
+        assertEquals("German", viewModel.state.nativeLanguage)
         assertEquals("Icelandic", viewModel.state.targetLanguage)
     }
 }

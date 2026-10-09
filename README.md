@@ -17,7 +17,7 @@
 
 ---
 
-Language Coast is a flashcard app that changes how you build vocabulary. It combines **Google Gemini** with a coastal-themed UI. Type what you want to say, and Gemini translates it and files it into one of your "Language Islands", ready to study.
+Language Coast is a flashcard app that changes how you build vocabulary. It combines **Google Gemini** with a coastal-themed UI. Each language you learn gets its own **Coast** (e.g. a *German Coast* and an *Icelandic Coast*). Type what you want to say, and Gemini translates it and files it into one of that coast's "Language Islands", ready to study.
 
 ## 📱 Screenshots
 
@@ -37,8 +37,9 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Icelandic noun rule**: single Icelandic nouns are returned with their definite and plural forms (e.g. *hestur, hesturinn, hestar*).
 - **Manual mode**: you can skip the AI and enter your own translation and category.
 
-### 🏝️ My Coast
-- **Language Islands**: your vocabulary is grouped into islands by category.
+### 🏝️ My Coasts
+- **One coast per language**: study several languages side by side, each with its own islands. Pick which coast new cards go to right on the Create screen.
+- **Language Islands**: on each coast, your vocabulary is grouped into islands by category.
 - **Daily streaks**: a streak counter tracks how many days in a row you finish a study session.
 - **Offline-first storage**: cards are stored locally with **Room**, and preferences with **Jetpack DataStore**.
 
@@ -92,7 +93,9 @@ app/src/main/java/com/andreaserick/languagecoast/
 ├── navigation/              # Type-safe route definitions
 ├── notifications/           # Daily study reminder (WorkManager + notification)
 ├── ui/
-│   ├── create/              # Each feature has a Screen + ViewModel
+│   ├── coast/               # Each feature has a Screen + ViewModel
+│   ├── components/          # Shared composables (dropdown, new-coast dialog)
+│   ├── create/
 │   ├── mycoast/
 │   ├── settings/
 │   ├── study/
@@ -114,8 +117,8 @@ app/src/main/java/com/andreaserick/languagecoast/
    ```
 2. Open the project in Android Studio and let Gradle sync.
 3. Run the app on an emulator or a physical device (Android 8.0 / API 26 or higher).
-4. Open **Settings**, choose your native and target languages, and paste your **Gemini API key**.
-5. Create your first island!
+4. Open **Settings**, choose your native language, and paste your **Gemini API key**.
+5. Start a coast for the language you want to learn, then create your first island!
 
 > **Your API key stays on your device.** The app keeps it in local app storage (DataStore). It is never compiled into the app, so you don't need to add it to `local.properties`.
 

@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -27,7 +28,8 @@ data class StudyUiState(
     val isTypingMode: Boolean = false,
     val isSessionComplete: Boolean = false,
     val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
-    val targetLanguage: String = SettingsDefaults.TARGET_LANGUAGE
+    /** The language of the coast this island is on. */
+    val targetLanguage: String = ""
 ) {
     val currentCard: Flashcard? get() = sessionCards.getOrNull(currentIndex)
     val canGoBack: Boolean get() = currentIndex > 0
@@ -63,7 +65,7 @@ class StudyViewModel @Inject constructor(
     val uiState: StateFlow<StudyUiState> = combine(
         session,
         settings.nativeLanguage,
-        settings.targetLanguage
+        flashcards.observeCoastForIsland(islandId).map { it?.language.orEmpty() }
     ) { s, nativeLanguage, targetLanguage ->
         StudyUiState(
             islandName = islandName,

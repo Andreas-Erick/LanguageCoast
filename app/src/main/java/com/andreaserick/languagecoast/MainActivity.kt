@@ -33,11 +33,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.andreaserick.languagecoast.navigation.CoastScreenRoute
 import com.andreaserick.languagecoast.navigation.CreateScreenRoute
 import com.andreaserick.languagecoast.navigation.MyCoastScreenRoute
 import com.andreaserick.languagecoast.navigation.SettingsScreenRoute
 import com.andreaserick.languagecoast.navigation.StudyScreenRoute
 import com.andreaserick.languagecoast.notifications.StudyReminderWorker
+import com.andreaserick.languagecoast.ui.coast.CoastScreen
 import com.andreaserick.languagecoast.ui.create.CreateScreen
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastScreen
 import com.andreaserick.languagecoast.ui.settings.SettingsScreen
@@ -69,7 +71,10 @@ private data class TopLevelDestination(
 
 private val topLevelDestinations = listOf(
     TopLevelDestination(CreateScreenRoute, "Create", Icons.Default.AddCircle) { it.hasRoute<CreateScreenRoute>() },
-    TopLevelDestination(MyCoastScreenRoute, "My Coast", Icons.AutoMirrored.Filled.List) { it.hasRoute<MyCoastScreenRoute>() },
+    // A coast and its study sessions are opened from My Coasts, so they keep that tab selected.
+    TopLevelDestination(MyCoastScreenRoute, "My Coasts", Icons.AutoMirrored.Filled.List) {
+        it.hasRoute<MyCoastScreenRoute>() || it.hasRoute<CoastScreenRoute>() || it.hasRoute<StudyScreenRoute>()
+    },
     TopLevelDestination(SettingsScreenRoute, "Settings", Icons.Default.Settings) { it.hasRoute<SettingsScreenRoute>() }
 )
 
@@ -134,9 +139,18 @@ fun LanguageCoastApp() {
             composable<CreateScreenRoute> { CreateScreen() }
             composable<MyCoastScreenRoute> {
                 MyCoastScreen(
+                    onCoastClick = { id, name ->
+                        navController.navigate(CoastScreenRoute(coastId = id, coastName = name))
+                    }
+                )
+            }
+            composable<CoastScreenRoute> {
+                // CoastViewModel reads the route arguments from its SavedStateHandle.
+                CoastScreen(
                     onIslandClick = { id, name ->
                         navController.navigate(StudyScreenRoute(islandId = id, islandName = name))
-                    }
+                    },
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
             composable<SettingsScreenRoute> { SettingsScreen() }

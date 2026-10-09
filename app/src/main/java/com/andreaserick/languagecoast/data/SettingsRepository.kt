@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.LocalDate
@@ -15,7 +16,6 @@ import javax.inject.Inject
 /** Default values and the options offered in Settings. */
 object SettingsDefaults {
     const val NATIVE_LANGUAGE = "English"
-    const val TARGET_LANGUAGE = "Spanish"
     const val GEMINI_MODEL = "gemini-2.5-flash"
 
     val SUPPORTED_LANGUAGES = listOf(
@@ -38,16 +38,23 @@ object SettingsDefaults {
     )
 }
 
-/** User preferences: languages, Gemini configuration and the study streak. */
+/** Supported languages a new coast can be started for: not the native language and without a coast yet. */
+fun availableCoastLanguages(coasts: List<Coast>, nativeLanguage: String): List<String> =
+    SettingsDefaults.SUPPORTED_LANGUAGES.filter { language ->
+        language != nativeLanguage && coasts.none { it.language == language }
+    }
+
+/** User preferences: native language, active coast, Gemini configuration and the study streak. */
 interface SettingsRepository {
     val nativeLanguage: Flow<String>
-    val targetLanguage: Flow<String>
+    /** The coast new cards are added to, or null if none was picked yet. */
+    val activeCoastId: Flow<Int?>
     val apiKey: Flow<String>
     val geminiModel: Flow<String>
     val streakCount: Flow<Int>
 
     suspend fun setNativeLanguage(language: String)
-    suspend fun setTargetLanguage(language: String)
+    suspend fun setActiveCoastId(coastId: Int)
     suspend fun setApiKey(key: String)
     suspend fun setGeminiModel(model: String)
 
@@ -66,8 +73,8 @@ class DataStoreSettingsRepository @Inject constructor(
     override val nativeLanguage: Flow<String> =
         dataStore.data.map { it[NATIVE_LANG] ?: SettingsDefaults.NATIVE_LANGUAGE }
 
-    override val targetLanguage: Flow<String> =
-        dataStore.data.map { it[TARGET_LANG] ?: SettingsDefaults.TARGET_LANGUAGE }
+    override val activeCoastId: Flow<Int?> =
+        dataStore.data.map { it[ACTIVE_COAST_ID] }
 
     override val apiKey: Flow<String> =
         dataStore.data.map { it[API_KEY] ?: "" }
@@ -79,7 +86,7 @@ class DataStoreSettingsRepository @Inject constructor(
         dataStore.data.map { it[STREAK_COUNT] ?: 0 }
 
     override suspend fun setNativeLanguage(language: String) = set(NATIVE_LANG, language)
-    override suspend fun setTargetLanguage(language: String) = set(TARGET_LANG, language)
+    override suspend fun setActiveCoastId(coastId: Int) = set(ACTIVE_COAST_ID, coastId)
     override suspend fun setApiKey(key: String) = set(API_KEY, key)
     override suspend fun setGeminiModel(model: String) = set(GEMINI_MODEL, model)
 
@@ -107,7 +114,7 @@ class DataStoreSettingsRepository @Inject constructor(
 
     private companion object {
         val NATIVE_LANG = stringPreferencesKey("native_language")
-        val TARGET_LANG = stringPreferencesKey("target_language")
+        val ACTIVE_COAST_ID = intPreferencesKey("active_coast_id")
         val API_KEY = stringPreferencesKey("gemini_api_key")
         val GEMINI_MODEL = stringPreferencesKey("gemini_model")
         val STREAK_COUNT = intPreferencesKey("streak_count")
@@ -115,6 +122,13 @@ class DataStoreSettingsRepository @Inject constructor(
         val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
     }
 }
+
+/**
+ * The single target language from before coasts existed. Only read by [AppDatabase.migration2To3]
+ * to name the coast that existing islands are moved onto.
+ */
+internal suspend fun DataStore<Preferences>.readLegacyTargetLanguage(): String =
+    data.first()[stringPreferencesKey("target_language")] ?: "Spanish"
 
 /**
  * Streak after completing a session [today]: unchanged if already studied today,
