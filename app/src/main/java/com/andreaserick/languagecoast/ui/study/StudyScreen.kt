@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -77,6 +78,7 @@ import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Flashcard
+import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.plural
@@ -91,7 +93,9 @@ import com.andreaserick.languagecoast.ui.theme.SandMuted
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
 import com.andreaserick.languagecoast.util.dictCcSearchUrl
 import kotlinx.coroutines.launch
+import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
@@ -133,11 +137,16 @@ fun StudyScreen(onNavigateBack: () -> Unit, viewModel: StudyViewModel = hiltView
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("No flashcards here yet!", color = SandBeige)
             }
+            uiState.isCaughtUp -> CaughtUpView(
+                nextDueInDays = uiState.nextDueInDays,
+                onPracticeAll = viewModel::practiceAll,
+                onBack = onNavigateBack
+            )
             uiState.isSessionComplete -> SessionCompleteView(
                 reviewedCount = uiState.totalCards,
                 againCount = uiState.againCount,
                 streakCount = uiState.streakCount,
-                onRestart = viewModel::restart,
+                onPracticeAll = viewModel::practiceAll,
                 onBack = onNavigateBack
             )
             currentCard != null -> {
@@ -156,14 +165,14 @@ fun StudyScreen(onNavigateBack: () -> Unit, viewModel: StudyViewModel = hiltView
                     // when we move to a different card.
                     key(currentCard.cardId) {
                         if (uiState.isTypingMode) {
-                            TypeStudyView(currentCard = currentCard, onAgain = viewModel::onAgain, onEasy = viewModel::onEasy)
+                            TypeStudyView(currentCard = currentCard, intervals = uiState.gradeIntervals, onGrade = viewModel::onGrade)
                         } else {
                             FlipStudyView(
                                 currentCard = currentCard,
                                 nativeLang = uiState.nativeLanguage,
                                 targetLang = uiState.targetLanguage,
-                                onAgain = viewModel::onAgain,
-                                onEasy = viewModel::onEasy
+                                intervals = uiState.gradeIntervals,
+                                onGrade = viewModel::onGrade
                             )
                         }
                     }
@@ -264,27 +273,27 @@ private fun SessionProgress(uiState: StudyUiState) {
     }
 }
 
-/** How far (in dp) a card must be dragged to count as an Again/Easy swipe. */
+/** How far (in dp) a card must be dragged to count as an Again/Good swipe. */
 private const val SWIPE_THRESHOLD_DP = 110
 
 /**
  * A flashcard that flips when tapped, revealing the translation. Once flipped, it can be graded with
- * the Again/Easy buttons or by swiping it left (Again) or right (Easy).
+ * the grade buttons or by swiping it left (Again) or right (Good).
  * Words on the back are underlined and open dict.cc when dict.cc has a dictionary for the language.
  *
  * @param currentCard The [Flashcard] data to display.
  * @param nativeLang The user's native language name.
  * @param targetLang The language being studied.
- * @param onAgain Callback when the user clicks "Again".
- * @param onEasy Callback when the user clicks "Easy".
+ * @param intervals Days until the card is due again after each grade, shown on the buttons.
+ * @param onGrade Callback when the card is graded.
  */
 @Composable
 fun FlipStudyView(
     currentCard: Flashcard,
     nativeLang: String,
     targetLang: String,
-    onAgain: () -> Unit,
-    onEasy: () -> Unit
+    intervals: Map<Grade, Int>,
+    onGrade: (Grade) -> Unit
 ) {
     var isFlipped by remember(currentCard) { mutableStateOf(false) }
     val context = LocalContext.current
@@ -295,12 +304,12 @@ fun FlipStudyView(
     val hasDictionary = dictCcSearchUrl("", nativeLang, targetLang) != null
 
     // Again re-queues the card, so with one card left the same card comes back: reset it explicitly.
-    fun grade(easy: Boolean) {
-        haptics.performHapticFeedback(if (easy) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
+    fun grade(grade: Grade) {
+        haptics.performHapticFeedback(if (grade == Grade.Again) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
         scope.launch {
             offsetX.snapTo(0f)
             isFlipped = false
-            if (easy) onEasy() else onAgain()
+            onGrade(grade)
         }
     }
 
@@ -329,8 +338,8 @@ fun FlipStudyView(
                         detectHorizontalDragGestures(
                             onDragEnd = {
                                 when {
-                                    offsetX.value > thresholdPx -> grade(easy = true)
-                                    offsetX.value < -thresholdPx -> grade(easy = false)
+                                    offsetX.value > thresholdPx -> grade(Grade.Good)
+                                    offsetX.value < -thresholdPx -> grade(Grade.Again)
                                     else -> scope.launch { offsetX.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy)) }
                                 }
                             },
@@ -403,8 +412,8 @@ fun FlipStudyView(
         Text(
             text = when {
                 !isFlipped -> " "
-                hasDictionary -> "Tap a word to look it up · Swipe ← Again, Easy →"
-                else -> "Swipe ← Again, Easy →"
+                hasDictionary -> "Tap a word to look it up · Swipe ← Again, Good →"
+                else -> "Swipe ← Again, Good →"
             },
             fontSize = 13.sp,
             color = SandMuted,
@@ -413,7 +422,7 @@ fun FlipStudyView(
         Spacer(modifier = Modifier.height(16.dp))
 
         if (isFlipped) {
-            GradeButtons(onAgain = { grade(easy = false) }, onEasy = { grade(easy = true) })
+            GradeButtons(intervals = intervals, onGrade = ::grade)
         } else {
             Button(
                 onClick = { isFlipped = true },
@@ -428,60 +437,71 @@ fun FlipStudyView(
     }
 }
 
-/** "Again" / "Easy" while a card is dragged, fading in as the drag nears the threshold. */
+/** "Again" / "Good" while a card is dragged, fading in as the drag nears the threshold. */
 @Composable
 private fun SwipeLabel(offset: Float, thresholdPx: Float) {
-    val easy = offset > 0
+    val good = offset > 0
     Text(
-        text = if (easy) "Easy" else "Again",
-        color = if (easy) SandBeige else CoralText,
+        text = if (good) "Good" else "Again",
+        color = if (good) SandBeige else CoralText,
         style = MaterialTheme.typography.headlineMedium,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp)
             .graphicsLayer { alpha = (abs(offset) / thresholdPx).coerceIn(0f, 1f) },
-        textAlign = if (easy) TextAlign.Start else TextAlign.End
+        textAlign = if (good) TextAlign.Start else TextAlign.End
     )
 }
 
-/** The two large grading buttons shared by both study modes. */
+/**
+ * The four grading buttons shared by both study modes, each showing when the card would come back.
+ * "Good" is the usual choice, so it gets the strongest color.
+ */
 @Composable
-private fun GradeButtons(onAgain: () -> Unit, onEasy: () -> Unit, easyFirstChoice: Boolean = true) {
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-        Button(
-            onClick = onAgain,
-            modifier = Modifier
-                .weight(1f)
-                .height(56.dp),
-            // Dark text: white on coral is only 3:1 contrast.
-            colors = ButtonDefaults.buttonColors(containerColor = CoralAccent, contentColor = DeepOceanBlue)
-        ) {
-            Text("Again", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-        Button(
-            onClick = onEasy,
-            modifier = Modifier
-                .weight(1f)
-                .height(56.dp),
-            colors = if (easyFirstChoice) {
-                ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
-            } else {
-                ButtonDefaults.buttonColors(containerColor = WaveTeal, contentColor = Color.White)
+private fun GradeButtons(intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Grade.entries.forEach { grade ->
+            val (container, content) = when (grade) {
+                // Dark text: white on coral is only 3:1 contrast.
+                Grade.Again -> CoralAccent to DeepOceanBlue
+                Grade.Hard -> CardWash to SandBeige
+                Grade.Good -> SandBeige to DeepOceanBlue
+                Grade.Easy -> WaveTeal to Color.White
             }
-        ) {
-            Text("Easy", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Button(
+                onClick = { onGrade(grade) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(64.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(grade.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    intervals[grade]?.let { Text(intervalLabel(it), fontSize = 12.sp, maxLines = 1) }
+                }
+            }
         }
     }
 }
 
+/** A short label for an interval: "1d", "12d", "3mo", "1.5y". */
+internal fun intervalLabel(days: Int): String = when {
+    days < 30 -> "${days}d"
+    days < 365 -> "${(days / 30.4).roundToInt()}mo"
+    else -> "%.1fy".format(Locale.ROOT, days / 365.0).replace(".0y", "y")
+}
+
 /**
  * A study view that requires the user to type the translation of the native text.
- * After checking, the card is graded with Again/Easy like in Flip mode.
+ * After checking, the card is graded with the grade buttons like in Flip mode.
  *
  * @param currentCard The [Flashcard] data to test against.
+ * @param intervals Days until the card is due again after each grade, shown on the buttons.
+ * @param onGrade Callback when the card is graded.
  */
 @Composable
-fun TypeStudyView(currentCard: Flashcard, onAgain: () -> Unit, onEasy: () -> Unit) {
+fun TypeStudyView(currentCard: Flashcard, intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) {
     var userInput by remember(currentCard) { mutableStateOf("") }
     var hasChecked by remember(currentCard) { mutableStateOf(false) }
     var isCorrect by remember(currentCard) { mutableStateOf(false) }
@@ -560,19 +580,58 @@ fun TypeStudyView(currentCard: Flashcard, onAgain: () -> Unit, onEasy: () -> Uni
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            // A wrong answer suggests "Again"; the user still decides.
-            GradeButtons(onAgain = onAgain, onEasy = onEasy, easyFirstChoice = isCorrect)
+            // The user grades themselves: a near miss (a typo, a missing accent) can still count as remembered.
+            GradeButtons(intervals = intervals, onGrade = onGrade)
         }
     }
 }
 
 /**
- * Shown when every card of the session was marked "Easy": a short celebration, the session's
+ * Shown when the island has cards but none are due: when the next ones are, and a way to practice anyway.
+ *
+ * @param nextDueInDays Days until the next card is due, or null if unknown.
+ * @param onPracticeAll Callback to study every card of the island anyway.
+ * @param onBack Callback to navigate back to the previous screen.
+ */
+@Composable
+fun CaughtUpView(nextDueInDays: Int?, onPracticeAll: () -> Unit, onBack: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text("🌴", fontSize = 64.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "All caught up!",
+            style = MaterialTheme.typography.headlineLarge,
+            color = SandBeige,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = when (nextDueInDays) {
+                null -> "No cards are due on this island right now."
+                1 -> "The next cards are due tomorrow."
+                else -> "The next cards are due in $nextDueInDays days."
+            },
+            fontSize = 16.sp,
+            color = SandMuted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 8.dp, bottom = 32.dp)
+        )
+        SessionEndButtons(onPracticeAll = onPracticeAll, onBack = onBack)
+    }
+}
+
+/**
+ * Shown when every card of the session was passed: a short celebration, the session's
  * stats and the streak.
  *
  * @param reviewedCount Cards in the session.
  * @param againCount How often "Again" was pressed.
- * @param onRestart Callback to restart the study session.
+ * @param onPracticeAll Callback to study every card of the island again.
  * @param onBack Callback to navigate back to the previous screen.
  */
 @Composable
@@ -580,7 +639,7 @@ fun SessionCompleteView(
     reviewedCount: Int,
     againCount: Int,
     streakCount: Int,
-    onRestart: () -> Unit,
+    onPracticeAll: () -> Unit,
     onBack: () -> Unit
 ) {
     val emojiScale = remember { Animatable(0f) }
@@ -622,29 +681,35 @@ fun SessionCompleteView(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Button(
-                onClick = onRestart,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
-            ) {
-                Text("Study again", fontSize = 18.sp)
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                border = BorderStroke(1.dp, SandBeige),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige)
-            ) {
-                Text("Back to islands", fontSize = 18.sp)
-            }
+            SessionEndButtons(onPracticeAll = onPracticeAll, onBack = onBack)
         }
+    }
+}
+
+/** "Practice all cards" and "Back to islands", shared by the session end screens. */
+@Composable
+private fun SessionEndButtons(onPracticeAll: () -> Unit, onBack: () -> Unit) {
+    Button(
+        onClick = onPracticeAll,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
+    ) {
+        Text("Practice all cards", fontSize = 18.sp)
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    OutlinedButton(
+        onClick = onBack,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        border = BorderStroke(1.dp, SandBeige),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige)
+    ) {
+        Text("Back to islands", fontSize = 18.sp)
     }
 }
 

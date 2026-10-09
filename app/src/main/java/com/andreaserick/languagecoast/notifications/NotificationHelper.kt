@@ -29,7 +29,8 @@ object NotificationHelper {
         }
     }
 
-    fun showStudyNotification(context: Context) {
+    /** Shows the study reminder; [dueCount] cards due across all coasts are mentioned when there are any. */
+    fun showStudyNotification(context: Context, dueCount: Int) {
         createNotificationChannel(context)
 
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -46,7 +47,13 @@ object NotificationHelper {
             .setSmallIcon(R.drawable.ic_launcher_foreground) // Using standard foreground icon
             .setLargeIcon(largeIcon)
             .setContentTitle("Time to study!")
-            .setContentText("Keep your Language Coast growing. Practice today!")
+            .setContentText(
+                when (dueCount) {
+                    0 -> "Keep your Language Coast growing. Practice today!"
+                    1 -> "1 card is due for review today."
+                    else -> "$dueCount cards are due for review today."
+                }
+            )
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)

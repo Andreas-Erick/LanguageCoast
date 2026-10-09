@@ -25,7 +25,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
   <img src="docs/screenshots/create.png" alt="Create screen with the coast picker" width="200" />
   <img src="docs/screenshots/my-coast.png" alt="My Coasts screen with a German and an Icelandic coast" width="200" />
   <img src="docs/screenshots/coast.png" alt="German Coast with its Language Islands" width="200" />
-  <img src="docs/screenshots/study.png" alt="Flipped flashcard with Again and Easy buttons" width="200" />
+  <img src="docs/screenshots/study.png" alt="Flipped flashcard with Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
   <img src="docs/screenshots/settings.png" alt="Settings screen" width="200" />
   <img src="docs/screenshots/notification.png" alt="Daily study reminder notification" width="200" />
 </p>
@@ -52,7 +52,8 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Offline-first storage**: cards are stored locally with **Room**, and preferences with **Jetpack DataStore**.
 
 ### 🧠 Study modes
-- **Flip Cards**: classic flashcards with an animated flip and large *Again* / *Easy* buttons, or swipe the card left/right. *Again* moves the card to the end of the session.
+- **Spaced repetition**: cards are scheduled with [FSRS](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm), the algorithm Anki uses, so each island only asks for the cards that are due. Islands and coasts show how many cards are due, and the daily reminder says how many are waiting. When nothing is due you can still practice all cards.
+- **Flip Cards**: classic flashcards with an animated flip. Grade each card *Again*, *Hard*, *Good* or *Easy* (each button shows when the card comes back), or swipe left for *Again* and right for *Good*. *Again* also moves the card to the end of the session.
 - **Active Type**: test your recall by typing the translation, then grade the card the same way.
 - **Session summary**: finishing an island shows a short celebration with your stats and streak.
 - **Built-in dictionary**: tap any word on the back of a card to look it up on **dict.cc**. It uses your language pair when dict.cc has it (dict.cc pairs every language with English or German) and falls back to the English dictionary otherwise.
@@ -97,7 +98,7 @@ flowchart LR
 ```
 
 - **Screens** are stateless: they render a UI state and forward user events to their ViewModel.
-- **ViewModels** hold the screen logic, e.g. `StudyViewModel` runs the study session (*Again* re-queues a card, *Easy* removes it, completing a session updates the streak).
+- **ViewModels** hold the screen logic, e.g. `StudyViewModel` runs the study session (every grade reschedules the card, *Again* re-queues it, completing a session updates the streak).
 - **Repositories** are interfaces with one production implementation each, provided by Hilt. Tests swap them for in-memory fakes, so all ViewModel logic is tested without a device.
 
 ## 📁 Project structure

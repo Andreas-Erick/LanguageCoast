@@ -29,6 +29,7 @@ data class Coast(
 /**
  * A [Coast] with what the coast overview shows about it.
  *
+ * @property dueCount Cards on this coast that are due (see [isDue]) at the time the query was given.
  * @property lastStudied When an island on this coast last finished a study session, or null if never.
  * @property islandsStudiedRecently Islands that finished a study session since the time the query was given.
  */
@@ -36,6 +37,7 @@ data class CoastSummary(
     @Embedded val coast: Coast,
     val islandCount: Int,
     val cardCount: Int,
+    val dueCount: Int = 0,
     val lastStudied: Long? = null,
     val islandsStudiedRecently: Int = 0
 )
@@ -71,10 +73,11 @@ data class LanguageIsland(
     val lastStudied: Long? = null
 )
 
-/** A [LanguageIsland] with its number of cards. */
+/** A [LanguageIsland] with its number of cards, and how many of them are due (see [isDue]). */
 data class IslandSummary(
     @Embedded val island: LanguageIsland,
-    val cardCount: Int
+    val cardCount: Int,
+    val dueCount: Int = 0
 )
 
 /**
@@ -85,6 +88,10 @@ data class IslandSummary(
  * @property nativeText The phrase in the user's native language.
  * @property targetText The translated phrase in the language being studied.
  * @property notes Optional extra information or context for the card.
+ * @property stability Spaced repetition memory stability in days, or null if the card was never reviewed.
+ * @property difficulty Spaced repetition difficulty from 1 to 10, or null if the card was never reviewed.
+ * @property lastReviewed When the card was last graded (epoch millis), or null if never.
+ * @property due When the card should next be studied (epoch millis), or null for a new card, which is due right away.
  */
 @Entity(
     tableName = "flashcards",
@@ -103,32 +110,9 @@ data class Flashcard(
     val islandId: Int,
     val nativeText: String,
     val targetText: String,
-    val notes: String? = null
-)
-
-/**
- * Tracks the study progress and Spaced Repetition System (SRS) data for a specific card.
- *
- * @property progressId Unique identifier for this progress entry.
- * @property cardId The ID of the [Flashcard] this progress refers to.
- * @property lastReviewed Timestamp of the last time the user studied this card.
- * @property nextReview Timestamp of when the card is scheduled to be reviewed next.
- */
-@Entity(
-    tableName = "study_progress",
-    foreignKeys = [
-        ForeignKey(
-            entity = Flashcard::class,
-            parentColumns = ["cardId"],
-            childColumns = ["cardId"],
-            onDelete = ForeignKey.CASCADE // If a card is deleted, its progress tracking is also removed.
-        )
-    ],
-    indices = [Index("cardId")]
-)
-data class StudyProgress(
-    @PrimaryKey(autoGenerate = true) val progressId: Int = 0,
-    val cardId: Int,
-    val lastReviewed: Long = 0L,
-    val nextReview: Long = 0L
+    val notes: String? = null,
+    val stability: Double? = null,
+    val difficulty: Double? = null,
+    val lastReviewed: Long? = null,
+    val due: Long? = null
 )
