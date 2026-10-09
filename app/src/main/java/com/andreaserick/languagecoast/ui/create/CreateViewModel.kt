@@ -7,10 +7,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.Coast
+import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.TranslationEngine
+import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.availableCoastLanguages
@@ -25,7 +28,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /** Category used for manual cards when the user leaves the category blank. */
-const val DEFAULT_MANUAL_CATEGORY = "My Words"
+const val DEFAULT_MANUAL_CATEGORY = DEFAULT_CATEGORY
 
 /** How long the save feedback card stays on screen; long enough to read the translation and undo it. */
 const val RESULT_VISIBLE_MILLIS = 8_000L
@@ -174,13 +177,24 @@ class CreateViewModel @Inject constructor(
             return saved(added, coast.coastId, category, manual = true)
         }
 
-        val apiKey = settings.apiKey.first()
-        if (apiKey.isBlank()) return SaveResult.Error("Please enter an API Key in Settings first!")
+        val engine = when (settings.translationProvider.first()) {
+            TranslationProvider.OnDevice -> TranslationEngine.OnDevice
+            TranslationProvider.Gemini -> {
+                val apiKey = settings.apiKey.first()
+                if (apiKey.isBlank()) return SaveResult.Error("Please enter a Gemini API key in Settings first!")
+                TranslationEngine.Gemini(apiKey, settings.geminiModel.first())
+            }
+            TranslationProvider.OpenRouter -> {
+                val apiKey = settings.openRouterKey.first()
+                if (apiKey.isBlank()) return SaveResult.Error("Please enter an OpenRouter API key in Settings first!")
+                val model = settings.openRouterModel.first().trim().ifBlank { SettingsDefaults.OPENROUTER_MODEL }
+                TranslationEngine.OpenRouter(apiKey, model)
+            }
+        }
 
         val translation = translator.translateAndCategorize(
             TranslationRequest(
-                apiKey = apiKey,
-                modelName = settings.geminiModel.first(),
+                engine = engine,
                 nativeSentence = nativeText,
                 nativeLanguage = settings.nativeLanguage.first(),
                 targetLanguage = coast.language,
@@ -188,7 +202,7 @@ class CreateViewModel @Inject constructor(
                 existingCategories = flashcards.observeIslands(coast.coastId).first().map { it.name }
             )
         )
-        if (!translation.isSuccess) return SaveResult.Error("AI Translation Failed.")
+        if (!translation.isSuccess) return SaveResult.Error(translation.errorMessage ?: "AI Translation Failed.")
 
         val added = flashcards.addFlashcard(
             coast.coastId, nativeText, translation.translatedText, translation.finalCategory, translation.emoji

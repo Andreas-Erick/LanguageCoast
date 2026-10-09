@@ -95,6 +95,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.google.genai)
+    implementation(libs.mlkit.translate)
 
     // Room Database
     implementation(libs.androidx.room.runtime)

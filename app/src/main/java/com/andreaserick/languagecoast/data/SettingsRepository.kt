@@ -21,6 +21,9 @@ object SettingsDefaults {
     const val NATIVE_LANGUAGE = "English"
     const val GEMINI_MODEL = "gemini-2.5-flash"
 
+    /** OpenRouter's Auto Router, which picks a suitable model for each request. */
+    const val OPENROUTER_MODEL = "openrouter/auto"
+
     val GEMINI_MODELS = listOf(
         "gemini-2.5-flash",
         "gemini-3.5-flash",
@@ -53,13 +56,18 @@ data class ReminderSettings(
     val time: LocalTime? = null
 )
 
-/** User preferences: native language, active coast, Gemini configuration, reminders and the study streak. */
+/** User preferences: native language, active coast, translation provider, reminders and the study streak. */
 interface SettingsRepository {
     val nativeLanguage: Flow<String>
     /** The coast new cards are added to, or null if none was picked yet. */
     val activeCoastId: Flow<Int?>
+    /** Where translations come from. Until one is picked: Gemini if a Gemini key was saved, otherwise on-device. */
+    val translationProvider: Flow<TranslationProvider>
+    /** The Gemini API key. */
     val apiKey: Flow<String>
     val geminiModel: Flow<String>
+    val openRouterKey: Flow<String>
+    val openRouterModel: Flow<String>
     val streakCount: Flow<Int>
     /** Days with a completed study session; at least the current streak's days, plus recent days recorded since. */
     val studyDays: Flow<Set<LocalDate>>
@@ -67,8 +75,11 @@ interface SettingsRepository {
 
     suspend fun setNativeLanguage(language: String)
     suspend fun setActiveCoastId(coastId: Int)
+    suspend fun setTranslationProvider(provider: TranslationProvider)
     suspend fun setApiKey(key: String)
     suspend fun setGeminiModel(model: String)
+    suspend fun setOpenRouterKey(key: String)
+    suspend fun setOpenRouterModel(model: String)
     suspend fun setReminderSettings(reminder: ReminderSettings)
 
     /** Records a completed study session for today and updates the streak. */
@@ -89,11 +100,23 @@ class DataStoreSettingsRepository @Inject constructor(
     override val activeCoastId: Flow<Int?> =
         dataStore.data.map { it[ACTIVE_COAST_ID] }
 
+    override val translationProvider: Flow<TranslationProvider> = dataStore.data.map { preferences ->
+        preferences[TRANSLATION_PROVIDER]?.let { name -> TranslationProvider.entries.firstOrNull { it.name == name } }
+            // Before providers could be picked, Gemini was the only one; keep it for users who set it up.
+            ?: if (preferences[API_KEY].isNullOrBlank()) TranslationProvider.OnDevice else TranslationProvider.Gemini
+    }
+
     override val apiKey: Flow<String> =
         dataStore.data.map { it[API_KEY] ?: "" }
 
     override val geminiModel: Flow<String> =
         dataStore.data.map { it[GEMINI_MODEL] ?: SettingsDefaults.GEMINI_MODEL }
+
+    override val openRouterKey: Flow<String> =
+        dataStore.data.map { it[OPENROUTER_KEY] ?: "" }
+
+    override val openRouterModel: Flow<String> =
+        dataStore.data.map { it[OPENROUTER_MODEL] ?: SettingsDefaults.OPENROUTER_MODEL }
 
     override val streakCount: Flow<Int> =
         dataStore.data.map { it[STREAK_COUNT] ?: 0 }
@@ -116,8 +139,11 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override suspend fun setNativeLanguage(language: String) = set(NATIVE_LANG, language)
     override suspend fun setActiveCoastId(coastId: Int) = set(ACTIVE_COAST_ID, coastId)
+    override suspend fun setTranslationProvider(provider: TranslationProvider) = set(TRANSLATION_PROVIDER, provider.name)
     override suspend fun setApiKey(key: String) = set(API_KEY, key)
     override suspend fun setGeminiModel(model: String) = set(GEMINI_MODEL, model)
+    override suspend fun setOpenRouterKey(key: String) = set(OPENROUTER_KEY, key)
+    override suspend fun setOpenRouterModel(model: String) = set(OPENROUTER_MODEL, model)
 
     override suspend fun setReminderSettings(reminder: ReminderSettings) {
         dataStore.edit { preferences ->
@@ -159,6 +185,9 @@ class DataStoreSettingsRepository @Inject constructor(
         val ACTIVE_COAST_ID = intPreferencesKey("active_coast_id")
         val API_KEY = stringPreferencesKey("gemini_api_key")
         val GEMINI_MODEL = stringPreferencesKey("gemini_model")
+        val TRANSLATION_PROVIDER = stringPreferencesKey("translation_provider")
+        val OPENROUTER_KEY = stringPreferencesKey("openrouter_api_key")
+        val OPENROUTER_MODEL = stringPreferencesKey("openrouter_model")
         val STREAK_COUNT = intPreferencesKey("streak_count")
         val LAST_STUDY_DATE = stringPreferencesKey("last_study_date")
         val STUDY_DAYS = stringSetPreferencesKey("study_days")

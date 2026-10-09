@@ -14,7 +14,7 @@ import androidx.compose.ui.platform.LocalContext
  */
 private val CoastColorScheme = lightColorScheme(
     primary = SandBeige,        // Used for main buttons and top bars
-    onPrimary = Color.White,        // Used for text INSIDE main buttons
+    onPrimary = DeepOceanBlue,      // Text inside main buttons; white on sand would be below 4.5:1 contrast
 
     primaryContainer = WaveTeal,    // Highlighted cards (e.g., save confirmation)
     onPrimaryContainer = Color.White,
