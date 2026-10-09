@@ -50,6 +50,7 @@ import com.andreaserick.languagecoast.R
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.components.SelectionDropdown
+import com.andreaserick.languagecoast.ui.theme.CoralAccent
 
 /**
  * The "Create" screen. Lets users create new flashcards from a native sentence, either
@@ -131,6 +132,17 @@ private fun CreateContent(
             modifier = Modifier.fillMaxWidth()
         )
 
+        if (uiState.isSameLanguage) {
+            Text(
+                text = sameLanguageMessage(selectedCoast.language),
+                color = CoralAccent,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            )
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(
@@ -186,7 +198,7 @@ private fun CreateContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            enabled = !uiState.isSaving && uiState.nativeSentence.isNotBlank()
+            enabled = !uiState.isSaving && uiState.nativeSentence.isNotBlank() && !uiState.isSameLanguage
         ) {
             if (uiState.isSaving) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)

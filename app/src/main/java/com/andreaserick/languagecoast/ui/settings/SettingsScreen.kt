@@ -67,9 +67,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         SectionLabel("Native Language")
         LanguageField(
             language = uiState.nativeLanguage,
-            languages = Languages.ALL,
+            languages = uiState.nativeLanguageOptions,
             onPick = { viewModel.setNativeLanguage(it.name) },
-            pickerTitle = "Native Language"
+            pickerTitle = "Native Language",
+            pickerSubtitle = "Languages you study on a coast aren't listed."
+                .takeIf { uiState.nativeLanguageOptions.size < Languages.ALL.size }
         )
 
         Spacer(modifier = Modifier.height(24.dp))

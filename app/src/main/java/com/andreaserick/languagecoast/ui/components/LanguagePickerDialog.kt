@@ -160,6 +160,7 @@ fun LanguagePickerDialog(
  * @param languages The languages offered in the picker.
  * @param onPick Called with the newly chosen language.
  * @param pickerTitle Title of the picker dialog.
+ * @param pickerSubtitle Optional explanation shown under the picker's title.
  */
 @Composable
 fun LanguageField(
@@ -167,7 +168,8 @@ fun LanguageField(
     languages: List<Language>,
     onPick: (Language) -> Unit,
     pickerTitle: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    pickerSubtitle: String? = null
 ) {
     var showPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -189,6 +191,7 @@ fun LanguageField(
     if (showPicker) {
         LanguagePickerDialog(
             title = pickerTitle,
+            subtitle = pickerSubtitle,
             languages = languages,
             selected = language,
             onPick = {
