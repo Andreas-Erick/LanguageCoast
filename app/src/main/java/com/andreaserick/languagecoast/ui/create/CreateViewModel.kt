@@ -75,9 +75,6 @@ data class CreateUiState(
 sealed interface SaveResult {
     /** A card was saved; [added] identifies it so the save can be undone. */
     data class Saved(val added: AddedCard, val category: String, val emoji: String, val manual: Boolean) : SaveResult {
-        /** Other translations the user can switch the card to, explained by [note]. */
-        val alternatives: List<String> get() = added.card.alternatives
-        val note: String? get() = added.card.note
         val nativeText: String get() = added.card.nativeText
         val targetText: String get() = added.card.targetText
     }
@@ -214,22 +211,8 @@ class CreateViewModel @Inject constructor(
             } else {
                 uiState.copy(isSaving = false, result = result)
             }
-            // Alternatives take a while to read and compare, so that card stays until the next save.
-            if (result is SaveResult.Saved && result.alternatives.isNotEmpty()) dismissJob?.cancel() else scheduleResultDismissal()
+            scheduleResultDismissal()
         }
-    }
-
-    /**
-     * Makes [alternative] the translation of the card that was just saved. The previous translation
-     * takes its place among the alternatives, so the user can switch back.
-     */
-    fun useAlternative(alternative: String) {
-        val saved = uiState.result as? SaveResult.Saved ?: return
-        if (alternative !in saved.alternatives) return
-        val alternatives = saved.alternatives.map { if (it == alternative) saved.targetText else it }
-        val card = saved.added.card.copy(targetText = alternative, alternatives = alternatives)
-        uiState = uiState.copy(result = saved.copy(added = saved.added.copy(card = card)))
-        viewModelScope.launch { flashcards.updateTranslation(card.cardId, alternative, alternatives) }
     }
 
     /** Removes the card that was just saved (and its island, if that was created for it). */
