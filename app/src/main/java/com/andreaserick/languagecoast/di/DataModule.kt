@@ -2,8 +2,8 @@ package com.andreaserick.languagecoast.di
 
 import com.andreaserick.languagecoast.data.DataStoreSettingsRepository
 import com.andreaserick.languagecoast.data.FlashcardRepository
-import com.andreaserick.languagecoast.data.GeminiTranslator
 import com.andreaserick.languagecoast.data.OfflineFlashcardRepository
+import com.andreaserick.languagecoast.data.RoutingTranslator
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
@@ -28,7 +28,7 @@ abstract class DataModule {
     abstract fun bindSettingsRepository(impl: DataStoreSettingsRepository): SettingsRepository
 
     @Binds
-    abstract fun bindTranslator(impl: GeminiTranslator): Translator
+    abstract fun bindTranslator(impl: RoutingTranslator): Translator
 
     @Binds
     abstract fun bindReminderScheduler(impl: WorkManagerReminderScheduler): ReminderScheduler

@@ -8,6 +8,7 @@ import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.nativeLanguageOptions
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,10 +26,16 @@ data class SettingsUiState(
     val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
     /** Languages offered as native language; excludes languages that have a coast. */
     val nativeLanguageOptions: List<Language> = Languages.ALL,
+    val translationProvider: TranslationProvider = TranslationProvider.OnDevice,
     val geminiModel: String = SettingsDefaults.GEMINI_MODEL,
+    /** The saved Gemini API key. */
     val savedApiKey: String = "",
-    /** True right after the key was saved, until it is edited again. */
+    /** True right after the Gemini key was saved, until it is edited again. */
     val apiKeySaved: Boolean = false,
+    val openRouterModel: String = SettingsDefaults.OPENROUTER_MODEL,
+    val savedOpenRouterKey: String = "",
+    /** True right after the OpenRouter key was saved, until it is edited again. */
+    val openRouterSaved: Boolean = false,
     val reminder: ReminderSettings = ReminderSettings()
 )
 
@@ -43,15 +50,27 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val apiKeySaved = MutableStateFlow(false)
+    private val openRouterSaved = MutableStateFlow(false)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         combine(settings.nativeLanguage, flashcards.observeCoasts(), ::Pair),
-        settings.geminiModel,
-        settings.apiKey,
-        apiKeySaved,
+        combine(settings.geminiModel, settings.apiKey, apiKeySaved, ::Triple),
+        combine(settings.openRouterModel, settings.openRouterKey, openRouterSaved, ::Triple),
+        settings.translationProvider,
         settings.reminderSettings
-    ) { (native, coasts), model, apiKey, saved, reminder ->
-        SettingsUiState(native, nativeLanguageOptions(coasts), model, apiKey, saved, reminder)
+    ) { (native, coasts), (geminiModel, geminiKey, geminiSaved), (openRouterModel, openRouterKey, openRouterSaved), provider, reminder ->
+        SettingsUiState(
+            nativeLanguage = native,
+            nativeLanguageOptions = nativeLanguageOptions(coasts),
+            translationProvider = provider,
+            geminiModel = geminiModel,
+            savedApiKey = geminiKey,
+            apiKeySaved = geminiSaved,
+            openRouterModel = openRouterModel,
+            savedOpenRouterKey = openRouterKey,
+            openRouterSaved = openRouterSaved,
+            reminder = reminder
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     /** Changes the native language, unless the user already studies [language] on a coast. */
@@ -60,6 +79,27 @@ class SettingsViewModel @Inject constructor(
             if (nativeLanguageOptions(flashcards.observeCoasts().first()).none { it.name == language }) return@launch
             settings.setNativeLanguage(language)
         }
+    }
+
+    fun setTranslationProvider(provider: TranslationProvider) {
+        viewModelScope.launch { settings.setTranslationProvider(provider) }
+    }
+
+    /** Saves the OpenRouter model ID as typed; a blank one means [SettingsDefaults.OPENROUTER_MODEL] when translating. */
+    fun setOpenRouterModel(model: String) {
+        viewModelScope.launch { settings.setOpenRouterModel(model) }
+    }
+
+    fun saveOpenRouterKey(key: String) {
+        viewModelScope.launch {
+            settings.setOpenRouterKey(key.trim())
+            openRouterSaved.value = true
+        }
+    }
+
+    /** Hides the "saved" confirmation once the user edits the OpenRouter key again. */
+    fun onOpenRouterKeyEdited() {
+        openRouterSaved.value = false
     }
 
     fun setGeminiModel(model: String) {
