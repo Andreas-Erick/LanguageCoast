@@ -36,21 +36,26 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Smart translations**: uses Google Gemini (`gemini-2.5-flash` by default, selectable in Settings) for natural, context-aware translations.
 - **Auto-categorization**: Gemini sorts each new card into an island such as *Travel*, *Restaurant* or *Greetings*, reusing your existing islands whenever one fits.
 - **Icelandic noun rule**: single Icelandic nouns are returned with their definite and plural forms (e.g. *hestur, hesturinn, hestar*).
+- **Island emojis**: Gemini also picks an emoji for each new island (🍽️ *Restaurant*, ✈️ *Travel*).
 - **Manual mode**: you can skip the AI and enter your own translation and category.
+- **Instant preview with undo**: after saving you see the card that was created and can undo it right away.
 
 ### 🏝️ My Coasts
 - **One coast per language**: study several languages side by side, each with its own islands. Pick which coast new cards go to right on the Create screen.
-- **Language Islands**: on each coast, your vocabulary is grouped into islands by category.
-- **Daily streaks**: a streak counter tracks how many days in a row you finish a study session.
+- **Language Islands**: on each coast, your vocabulary is grouped into islands by category, each with its emoji, card count and when you last studied it.
+- **Progress at a glance**: coasts show how many islands you explored this week.
+- **Daily streaks**: a streak counter and a dot for each day of the week track your study days.
+- **Undo instead of "Are you sure?"**: deleted coasts, islands and cards can be restored from the snackbar.
 - **Offline-first storage**: cards are stored locally with **Room**, and preferences with **Jetpack DataStore**.
 
 ### 🧠 Study modes
-- **Flip Cards**: classic flashcards with an animated flip and *Again* / *Easy* buttons. *Again* moves the card to the end of the session.
-- **Active Type**: test your recall by typing the translation.
+- **Flip Cards**: classic flashcards with an animated flip and large *Again* / *Easy* buttons, or swipe the card left/right. *Again* moves the card to the end of the session.
+- **Active Type**: test your recall by typing the translation, then grade the card the same way.
+- **Session summary**: finishing an island shows a short celebration with your stats and streak.
 - **Built-in dictionary**: tap any word on the back of a card to look it up on **dict.cc**. It uses your language pair when dict.cc has it (dict.cc pairs every language with English or German) and falls back to the English dictionary otherwise.
 
 ### 🔔 Study reminders
-- A daily reminder arrives at a random time between 9:00 and 21:00, scheduled with **WorkManager**.
+- A daily reminder, scheduled with **WorkManager**: at a surprise time between 9:00 and 21:00, or at a fixed time you pick in Settings. It can also be turned off.
 
 **Supported languages:** all 28 dict.cc languages (Albanian, Bosnian, Bulgarian, Croatian, Czech, Danish, Dutch, English, Esperanto, Finnish, French, German, Greek, Hungarian, Icelandic, Italian, Latin, Norwegian, Polish, Portuguese, Romanian, Russian, Serbian, Slovak, Spanish, Swedish, Turkish, Ukrainian), plus Japanese and Korean without dictionary lookup. The language picker can be searched by English or native name (e.g. *Deutsch*, *Suomi*).
 
@@ -95,7 +100,7 @@ app/src/main/java/com/andreaserick/languagecoast/
 ├── notifications/           # Daily study reminder (WorkManager + notification)
 ├── ui/
 │   ├── coast/               # Each feature has a Screen + ViewModel
-│   ├── components/          # Shared composables (dropdown, new-coast dialog)
+│   ├── components/          # Shared composables (screen header, language picker, dropdown, undo snackbar)
 │   ├── create/
 │   ├── mycoast/
 │   ├── settings/
@@ -143,6 +148,8 @@ git tag v1.0
 git push origin v1.0
 ```
 
+The version name comes from the tag (`v1.0` → `1.0`) and the version code from the workflow run number, so there is no need to edit `build.gradle.kts` before a release.
+
 The workflow needs these repository secrets (*Settings → Secrets and variables → Actions*): `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`.
 
 To sign release builds locally, place a `keystore.properties` file in the project root (it is git-ignored):
@@ -161,6 +168,9 @@ Language Coast uses a deep-sea color palette:
 - **Deep Ocean Blue**: the app's main background.
 - **Sand Beige**: warm, readable text and primary accents.
 - **Coral & Wave Teal**: bright highlights for interactive elements and feedback.
+- **Card tints**: sky, seafoam, dune and shell for coasts and islands.
+
+Text colors are checked against the WCAG contrast guidelines (at least 4.5:1 for normal text). Headings use [Nunito](https://github.com/googlefonts/nunito), licensed under the [SIL Open Font License](docs/licenses/Nunito-OFL.txt).
 
 ---
 

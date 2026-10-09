@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Coast::class, LanguageIsland::class, Flashcard::class, StudyProgress::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -60,6 +60,14 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE `language_islands`")
                 db.execSQL("ALTER TABLE `language_islands_new` RENAME TO `language_islands`")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_language_islands_coastId` ON `language_islands` (`coastId`)")
+            }
+        }
+
+        /** v4 adds an emoji and the time of the last completed study session to islands; both start empty. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `language_islands` ADD COLUMN `emoji` TEXT")
+                db.execSQL("ALTER TABLE `language_islands` ADD COLUMN `lastStudied` INTEGER")
             }
         }
     }

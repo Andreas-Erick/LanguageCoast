@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
@@ -13,6 +14,7 @@ import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.availableCoastLanguages
+import com.andreaserick.languagecoast.data.islandEmoji
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -25,8 +27,8 @@ import javax.inject.Inject
 /** Category used for manual cards when the user leaves the category blank. */
 const val DEFAULT_MANUAL_CATEGORY = "My Words"
 
-/** How long the save feedback card stays on screen. */
-const val RESULT_VISIBLE_MILLIS = 5_000L
+/** How long the save feedback card stays on screen; long enough to read the translation and undo it. */
+const val RESULT_VISIBLE_MILLIS = 8_000L
 
 data class CreateUiState(
     val nativeSentence: String = "",
@@ -49,7 +51,11 @@ data class CreateUiState(
 
 /** Outcome of the last save, shown as a feedback card. */
 sealed interface SaveResult {
-    data class Saved(val category: String, val manual: Boolean) : SaveResult
+    /** A card was saved; [added] identifies it so the save can be undone. */
+    data class Saved(val added: AddedCard, val category: String, val emoji: String, val manual: Boolean) : SaveResult {
+        val nativeText: String get() = added.card.nativeText
+        val targetText: String get() = added.card.targetText
+    }
     data class Error(val message: String) : SaveResult
 }
 
@@ -139,6 +145,14 @@ class CreateViewModel @Inject constructor(
         }
     }
 
+    /** Removes the card that was just saved (and its island, if that was created for it). */
+    fun undoLastSave() {
+        val saved = uiState.result as? SaveResult.Saved ?: return
+        dismissJob?.cancel()
+        uiState = uiState.copy(result = null)
+        viewModelScope.launch { flashcards.undoAdd(saved.added) }
+    }
+
     /** Hides the feedback card after [RESULT_VISIBLE_MILLIS], restarting the timer on every save. */
     private fun scheduleResultDismissal() {
         dismissJob?.cancel()
@@ -156,8 +170,8 @@ class CreateViewModel @Inject constructor(
         if (state.isManualMode) {
             if (state.targetSentence.isBlank()) return SaveResult.Error("Translation cannot be empty in manual mode.")
             val category = state.category.trim().ifBlank { DEFAULT_MANUAL_CATEGORY }
-            flashcards.addFlashcard(coast.coastId, nativeText, state.targetSentence.trim(), category)
-            return SaveResult.Saved(category, manual = true)
+            val added = flashcards.addFlashcard(coast.coastId, nativeText, state.targetSentence.trim(), category)
+            return saved(added, coast.coastId, category, manual = true)
         }
 
         val apiKey = settings.apiKey.first()
@@ -176,8 +190,17 @@ class CreateViewModel @Inject constructor(
         )
         if (!translation.isSuccess) return SaveResult.Error("AI Translation Failed.")
 
-        flashcards.addFlashcard(coast.coastId, nativeText, translation.translatedText, translation.finalCategory)
-        return SaveResult.Saved(translation.finalCategory, manual = false)
+        val added = flashcards.addFlashcard(
+            coast.coastId, nativeText, translation.translatedText, translation.finalCategory, translation.emoji
+        )
+        return saved(added, coast.coastId, translation.finalCategory, manual = false)
+    }
+
+    private suspend fun saved(added: AddedCard, coastId: Int, category: String, manual: Boolean): SaveResult.Saved {
+        // An existing island keeps its own emoji; look it up so the feedback card matches the island.
+        val island = added.createdIsland
+            ?: flashcards.observeIslands(coastId).first().first { it.islandId == added.card.islandId }
+        return SaveResult.Saved(added, category, islandEmoji(island), manual)
     }
 }
 
