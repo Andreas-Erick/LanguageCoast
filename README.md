@@ -19,6 +19,15 @@
 
 Language Coast is a flashcard app that changes how you build vocabulary. It combines **Google Gemini** with a coastal-themed UI. Type what you want to say, and Gemini translates it and files it into one of your "Language Islands", ready to study.
 
+## 📱 Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/create.png" alt="Create screen" width="200" />
+  <img src="docs/screenshots/my-coast.png" alt="My Coast screen with Language Islands" width="200" />
+  <img src="docs/screenshots/study.png" alt="Flipped flashcard with Again and Easy buttons" width="200" />
+  <img src="docs/screenshots/settings.png" alt="Settings screen" width="200" />
+</p>
+
 ## ✨ Features
 
 ### 🤖 AI-powered card creation

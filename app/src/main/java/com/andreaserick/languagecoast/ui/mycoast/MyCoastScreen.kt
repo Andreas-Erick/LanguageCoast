@@ -210,7 +210,7 @@ fun IslandCard(island: LanguageIsland, onClick: () -> Unit, onDeleteClick: () ->
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Delete Island",
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
+                    tint = DeepOceanBlue.copy(alpha = 0.7f),
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -219,7 +219,7 @@ fun IslandCard(island: LanguageIsland, onClick: () -> Unit, onDeleteClick: () ->
                 text = island.name,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = SandBeige,
+                color = DeepOceanBlue,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .align(Alignment.Center)
