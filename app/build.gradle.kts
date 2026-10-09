@@ -28,8 +28,10 @@ android {
         applicationId = "com.andreaserick.languagecoast"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        // The release workflow passes these from the git tag and run number;
+        // local builds fall back to the defaults.
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = project.findProperty("versionName") as String? ?: "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
