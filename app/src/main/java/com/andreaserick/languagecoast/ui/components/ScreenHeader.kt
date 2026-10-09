@@ -38,6 +38,7 @@ import kotlin.math.sin
  *
  * @param subtitle Optional smaller line under the title (e.g. a coast's native name).
  * @param onBack Shows a back arrow when not null.
+ * @param leading Optional content before the title (e.g. the app logo); not shown together with [onBack].
  */
 @Composable
 fun ScreenHeader(
@@ -45,6 +46,7 @@ fun ScreenHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    leading: (@Composable RowScope.() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -58,6 +60,8 @@ fun ScreenHeader(
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = SandBeige)
                 }
+            } else if (leading != null) {
+                leading()
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
