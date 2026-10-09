@@ -3,7 +3,6 @@ package com.andreaserick.languagecoast.ui.study
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
@@ -28,13 +27,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,6 +42,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -183,7 +186,9 @@ fun StudyScreen(onNavigateBack: () -> Unit, viewModel: StudyViewModel = hiltView
                                 targetLang = uiState.targetLanguage,
                                 intervals = uiState.gradeIntervals,
                                 onGrade = viewModel::onGrade,
-                                onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak }
+                                onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak },
+                                onSpeakText = viewModel::speak.takeIf { uiState.canSpeak },
+                                onMakeMain = viewModel::makeMainTranslation
                             )
                         }
                     }
@@ -298,6 +303,8 @@ private const val SWIPE_THRESHOLD_DP = 110
  * @param intervals Days until the card is due again after each grade, shown on the buttons.
  * @param onGrade Callback when the card is graded.
  * @param onSpeak Reads the translation aloud; null hides the speaker button (no voice for the language).
+ * @param onSpeakText Reads an alternative aloud; null hides those speaker buttons.
+ * @param onMakeMain Makes an alternative the card's translation.
  */
 @Composable
 fun FlipStudyView(
@@ -306,13 +313,17 @@ fun FlipStudyView(
     targetLang: String,
     intervals: Map<Grade, Int>,
     onGrade: (Grade) -> Unit,
-    onSpeak: (() -> Unit)? = null
+    onSpeak: (() -> Unit)? = null,
+    onSpeakText: ((String) -> Unit)? = null,
+    onMakeMain: (String) -> Unit = {}
 ) {
-    var isFlipped by remember(currentCard) { mutableStateOf(false) }
+    // Keyed on the card's ID, not the card: changing its translation must not flip it back.
+    var isFlipped by remember(currentCard.cardId) { mutableStateOf(false) }
+    var showAlternatives by remember(currentCard.cardId) { mutableStateOf(false) }
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val offsetX = remember(currentCard) { Animatable(0f) }
+    val offsetX = remember(currentCard.cardId) { Animatable(0f) }
     val thresholdPx = with(LocalDensity.current) { SWIPE_THRESHOLD_DP.dp.toPx() }
     val hasDictionary = dictCcSearchUrl("", nativeLang, targetLang) != null
 
@@ -438,7 +449,18 @@ fun FlipStudyView(
             textAlign = TextAlign.Center
         )
         if (isFlipped && currentCard.alternatives.isNotEmpty()) {
-            CardAlternatives(alternatives = currentCard.alternatives, note = currentCard.note)
+            TextButton(onClick = { showAlternatives = true }, colors = ButtonDefaults.textButtonColors(contentColor = SandBeige)) {
+                Text(plural(currentCard.alternatives.size, "alternative"), fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Default.ExpandLess, contentDescription = null)
+            }
+        }
+        if (showAlternatives) {
+            AlternativesSheet(
+                card = currentCard,
+                onSpeak = onSpeakText,
+                onMakeMain = onMakeMain,
+                onDismiss = { showAlternatives = false }
+            )
         }
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -654,32 +676,45 @@ fun TypeStudyView(
 }
 
 /**
- * A card's other correct translations, collapsed behind "2 alternatives" so the back of the card stays
- * simple; expanding shows the note on how they differ and the alternatives themselves.
+ * A bottom sheet with a card's other correct translations: the note on how they differ, then each
+ * alternative with a speaker button and "Make main", which swaps it with the card's translation.
+ * It scrolls when the content is long.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CardAlternatives(alternatives: List<String>, note: String?) {
-    var expanded by remember(alternatives) { mutableStateOf(false) }
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-        TextButton(onClick = { expanded = !expanded }, colors = ButtonDefaults.textButtonColors(contentColor = SandBeige)) {
-            Text(if (expanded) "Hide alternatives" else plural(alternatives.size, "alternative"), fontWeight = FontWeight.SemiBold)
-            Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
-        }
-        AnimatedVisibility(visible = expanded) {
-            // Space between alternatives, since each one may wrap over several lines.
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                note?.let {
-                    Text(
-                        it,
-                        fontSize = 13.sp,
-                        fontStyle = FontStyle.Italic,
-                        color = MistWhite,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                }
-                alternatives.forEach {
-                    Text(it, color = SandBeige, fontSize = 17.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+private fun AlternativesSheet(
+    card: Flashcard,
+    onSpeak: ((String) -> Unit)?,
+    onMakeMain: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = DeepOceanBlue, contentColor = Color.White) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
+        ) {
+            Text("Other ways to say it", style = MaterialTheme.typography.titleLarge, color = SandBeige)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(card.targetText, color = MistWhite, fontSize = 14.sp)
+            card.note?.let {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(it, fontStyle = FontStyle.Italic, color = MistWhite)
+            }
+            card.alternatives.forEach { alternative ->
+                HorizontalDivider(color = SandBeige.copy(alpha = 0.15f), modifier = Modifier.padding(vertical = 12.dp))
+                Text(alternative, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SandBeige)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    if (onSpeak != null) {
+                        IconButton(onClick = { onSpeak(alternative) }) {
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = SandBeige)
+                        }
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(onClick = { onMakeMain(alternative) }, colors = ButtonDefaults.textButtonColors(contentColor = SandBeige)) {
+                        Text("Make main", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

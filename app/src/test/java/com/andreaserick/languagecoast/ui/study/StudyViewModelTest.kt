@@ -300,6 +300,32 @@ class StudyViewModelTest {
         assertEquals(1, speaker.stops)
     }
 
+    @Test
+    fun makingAnAlternativeMainSwapsItWithTheTranslation() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        flashcards.cards.update { all -> all.map { if (it.nativeText == "n1") it.copy(alternatives = listOf("a1", "b1")) else it } }
+        val viewModel = createViewModel()
+
+        viewModel.makeMainTranslation("b1")
+
+        val card = viewModel.state.currentCard!!
+        assertEquals("b1", card.targetText)
+        assertEquals(listOf("a1", "t1"), card.alternatives)
+        assertEquals("b1", flashcards.cards.value.first().targetText)
+        // Still the same card in the same place in the session.
+        assertEquals(listOf("n1", "n2"), viewModel.state.sessionCards.map { it.nativeText })
+    }
+
+    @Test
+    fun alternativesCanBeReadAloud() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        val viewModel = createViewModel()
+
+        viewModel.speak("a1")
+
+        assertEquals(listOf("a1" to "Spanish"), speaker.spoken)
+    }
+
     private fun setDue(nativeText: String, due: Long) {
         flashcards.cards.update { all -> all.map { if (it.nativeText == nativeText) it.copy(due = due) else it } }
     }

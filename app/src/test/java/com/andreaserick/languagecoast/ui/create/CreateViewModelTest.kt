@@ -334,7 +334,7 @@ class CreateViewModelTest {
     }
 
     @Test
-    fun alternativesStayOnScreenAndCanReplaceTheTranslation() = runTest {
+    fun alternativesAreStoredWithTheCard() = runTest {
         settings.apiKey.value = "key"
         translator.result = TranslationResult(
             "Wollen wir ins Kino?", "Plans", isSuccess = true,
@@ -343,25 +343,11 @@ class CreateViewModelTest {
         viewModel.onNativeSentenceChange("Shall we go to the cinema tonight?")
         viewModel.save()
 
-        val saved = viewModel.uiState.result as SaveResult.Saved
-        assertEquals(listOf("Sollen wir ins Kino?"), saved.alternatives)
-        assertEquals("Both are fine.", saved.note)
-        // Stored with the card, so they show when studying it.
-        assertEquals(listOf("Sollen wir ins Kino?"), flashcards.cards.value.single().alternatives)
-        assertEquals("Both are fine.", flashcards.cards.value.single().note)
-        // Not hidden after the usual timeout, so there is time to compare.
+        // Stored with the card, so they show when studying it; the preview hides as usual.
+        val card = flashcards.cards.value.single()
+        assertEquals(listOf("Sollen wir ins Kino?"), card.alternatives)
+        assertEquals("Both are fine.", card.note)
         advanceTimeBy(RESULT_VISIBLE_MILLIS + 1)
-        assertTrue(viewModel.uiState.result is SaveResult.Saved)
-
-        viewModel.useAlternative("Sollen wir ins Kino?")
-
-        val switched = viewModel.uiState.result as SaveResult.Saved
-        assertEquals("Sollen wir ins Kino?", switched.targetText)
-        assertEquals(listOf("Wollen wir ins Kino?"), switched.alternatives)
-        assertEquals("Sollen wir ins Kino?", flashcards.cards.value.single().targetText)
-        assertEquals(listOf("Wollen wir ins Kino?"), flashcards.cards.value.single().alternatives)
-
-        viewModel.undoLastSave()
-        assertTrue(flashcards.cards.value.isEmpty())
+        assertNull(viewModel.uiState.result)
     }
 }

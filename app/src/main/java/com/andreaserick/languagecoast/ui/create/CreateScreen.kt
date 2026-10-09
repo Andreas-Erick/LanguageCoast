@@ -34,8 +34,6 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Save
@@ -71,7 +69,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -114,7 +111,6 @@ fun CreateScreen(
         onAddCoast = viewModel::addCoast,
         onSave = viewModel::save,
         onUndo = viewModel::undoLastSave,
-        onUseAlternative = viewModel::useAlternative,
         onStartReview = { viewModel.startReview(onStartReview) }
     )
 }
@@ -130,7 +126,6 @@ private fun CreateContent(
     onAddCoast: (String) -> Unit,
     onSave: () -> Unit,
     onUndo: () -> Unit,
-    onUseAlternative: (String) -> Unit,
     onStartReview: () -> Unit
 ) {
     var showNewCoastDialog by remember { mutableStateOf(false) }
@@ -207,7 +202,7 @@ private fun CreateContent(
                     modifier = Modifier.bringIntoViewRequester(resultRequester)
                 ) {
                     when (val result = uiState.result) {
-                        is SaveResult.Saved -> SavedCard(result, onUndo = onUndo, onUseAlternative = onUseAlternative)
+                        is SaveResult.Saved -> SavedCard(result, onUndo = onUndo)
                         is SaveResult.Error -> ErrorCard(result.message)
                         null -> Unit
                     }
@@ -509,13 +504,9 @@ private fun StartCoastPrompt(onStartCoast: () -> Unit) {
     }
 }
 
-/**
- * Shows the card that was just saved, so a bad translation can be spotted and undone right away.
- * For longer sentences it also offers the model's alternative translations, with a note on how they differ.
- */
+/** Shows the card that was just saved, so a bad translation can be spotted and undone right away. */
 @Composable
-private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit, onUseAlternative: (String) -> Unit) {
-    var showAlternatives by remember(result.added.card.cardId) { mutableStateOf(false) }
+private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = WaveTeal, contentColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -542,38 +533,6 @@ private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit, onUseAlterna
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(end = 12.dp, top = 2.dp)
             )
-
-            if (result.alternatives.isNotEmpty()) {
-                TextButton(
-                    onClick = { showAlternatives = !showAlternatives },
-                    contentPadding = PaddingValues(horizontal = 0.dp),
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                ) {
-                    Text(
-                        text = if (showAlternatives) "Hide alternatives" else plural(result.alternatives.size, "alternative"),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Icon(
-                        if (showAlternatives) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null
-                    )
-                }
-                AnimatedVisibility(visible = showAlternatives) {
-                    Column(modifier = Modifier.padding(end = 12.dp)) {
-                        result.note?.let {
-                            Text(it, fontSize = 14.sp, fontStyle = FontStyle.Italic, modifier = Modifier.padding(bottom = 6.dp))
-                        }
-                        result.alternatives.forEach { alternative ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(alternative, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                                TextButton(onClick = { onUseAlternative(alternative) }) {
-                                    Text("Use", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

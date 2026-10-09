@@ -139,7 +139,8 @@ internal fun buildTranslationPrompt(request: TranslationRequest): String = with(
     val alternativesText = if (wantsAlternatives(nativeSentence)) {
         "\n\nThis input is long enough that more than one translation can be right. Also give up to two other natural " +
             "translations that differ in a way a learner should know (formality, register, word choice or regional usage), " +
-            "and one short sentence in $nativeLanguage explaining how they differ. " +
+            "and one short sentence in $nativeLanguage explaining how they differ. In that sentence, refer to each version by " +
+            "its wording (e.g. \"du\" vs. \"Sie\"), never by position such as \"the first alternative\", because the user can reorder them. " +
             "If there is no meaningful alternative, write NONE for both."
     } else ""
 
