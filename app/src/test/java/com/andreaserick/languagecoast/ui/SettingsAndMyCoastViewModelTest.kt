@@ -29,7 +29,7 @@ class SettingsAndMyCoastViewModelTest {
 
     @Test
     fun savingApiKeyTrimsItAndShowsConfirmationUntilEdited() = runTest {
-        val viewModel = SettingsViewModel(settings)
+        val viewModel = SettingsViewModel(settings, flashcards)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.saveApiKey("  my-key  ")
@@ -44,13 +44,34 @@ class SettingsAndMyCoastViewModelTest {
 
     @Test
     fun languageAndModelSelectionsArePersisted() = runTest {
-        val viewModel = SettingsViewModel(settings)
+        val viewModel = SettingsViewModel(settings, flashcards)
 
         viewModel.setNativeLanguage("German")
         viewModel.setGeminiModel("gemini-3.5-flash")
 
         assertEquals("German", settings.nativeLanguage.value)
         assertEquals("gemini-3.5-flash", settings.geminiModel.value)
+    }
+
+    @Test
+    fun nativeLanguageOptionsExcludeCoastLanguages() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = SettingsViewModel(settings, flashcards)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        val options = viewModel.uiState.value.nativeLanguageOptions.map { it.name }
+        assertFalse("German" in options)
+        assertTrue("English" in options)
+    }
+
+    @Test
+    fun nativeLanguageCannotBeSetToACoastLanguage() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = SettingsViewModel(settings, flashcards)
+
+        viewModel.setNativeLanguage("German")
+
+        assertEquals(SettingsDefaults.NATIVE_LANGUAGE, settings.nativeLanguage.value)
     }
 
     @Test

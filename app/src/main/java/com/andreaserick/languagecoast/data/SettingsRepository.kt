@@ -32,6 +32,13 @@ fun availableCoastLanguages(coasts: List<Coast>, nativeLanguage: String): List<L
         language.name != nativeLanguage && coasts.none { it.language == language.name }
     }
 
+/**
+ * Languages the user can switch their native language to: not one they already study on a coast,
+ * since cards would then be "translated" into the same language.
+ */
+fun nativeLanguageOptions(coasts: List<Coast>): List<Language> =
+    Languages.ALL.filter { language -> coasts.none { it.language == language.name } }
+
 /** User preferences: native language, active coast, Gemini configuration and the study streak. */
 interface SettingsRepository {
     val nativeLanguage: Flow<String>

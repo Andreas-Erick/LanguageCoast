@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
+import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.Translator
@@ -39,8 +40,12 @@ data class CreateUiState(
     /** The coast new cards are added to; null until the user has started a coast. */
     val selectedCoast: Coast? = null,
     /** Languages a new coast can be started for. */
-    val availableLanguages: List<Language> = emptyList()
-)
+    val availableLanguages: List<Language> = emptyList(),
+    val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE
+) {
+    /** True when the selected coast is in the user's native language, so there's nothing to translate. */
+    val isSameLanguage: Boolean get() = selectedCoast?.language == nativeLanguage
+}
 
 /** Outcome of the last save, shown as a feedback card. */
 sealed interface SaveResult {
@@ -75,7 +80,8 @@ class CreateViewModel @Inject constructor(
                     coasts = coasts,
                     // Fall back to the first coast if none was picked yet or the active one was deleted.
                     selectedCoast = coasts.firstOrNull { it.coastId == activeCoastId } ?: coasts.firstOrNull(),
-                    availableLanguages = availableCoastLanguages(coasts, nativeLanguage)
+                    availableLanguages = availableCoastLanguages(coasts, nativeLanguage),
+                    nativeLanguage = nativeLanguage
                 )
             }
         }
@@ -145,6 +151,7 @@ class CreateViewModel @Inject constructor(
     private suspend fun createCard(state: CreateUiState): SaveResult {
         val nativeText = state.nativeSentence.trim()
         val coast = state.selectedCoast ?: return SaveResult.Error("Start a coast first!")
+        if (state.isSameLanguage) return SaveResult.Error(sameLanguageMessage(coast.language))
 
         if (state.isManualMode) {
             if (state.targetSentence.isBlank()) return SaveResult.Error("Translation cannot be empty in manual mode.")
@@ -173,3 +180,7 @@ class CreateViewModel @Inject constructor(
         return SaveResult.Saved(translation.finalCategory, manual = false)
     }
 }
+
+/** Explains why cards can't be added when a coast's language is the user's native language. */
+fun sameLanguageMessage(language: String) =
+    "$language is your native language, so there's nothing to translate. Pick another coast or change your native language in Settings."
