@@ -26,6 +26,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
   <img src="docs/screenshots/my-coast.png" alt="My Coast screen with Language Islands" width="200" />
   <img src="docs/screenshots/study.png" alt="Flipped flashcard with Again and Easy buttons" width="200" />
   <img src="docs/screenshots/settings.png" alt="Settings screen" width="200" />
+  <img src="docs/screenshots/notification.png" alt="Daily study reminder notification" width="200" />
 </p>
 
 ## ✨ Features
