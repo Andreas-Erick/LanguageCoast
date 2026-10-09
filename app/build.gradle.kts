@@ -52,6 +52,11 @@ android {
             if (hasReleaseKeystore) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            // On-device translation (ML Kit) ships a ~15 MB native library per CPU type. Released APKs keep
+            // only the ones phones use; debug builds keep all, so x86 emulators still work.
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
             optimization {
                 enable = false
             }

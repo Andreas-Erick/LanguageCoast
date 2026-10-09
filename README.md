@@ -23,11 +23,11 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 
 <p align="center">
   <img src="docs/screenshots/create.png" alt="Home screen with today's due cards, the new card form and recently added cards" width="200" />
-  <img src="docs/screenshots/my-coast.png" alt="My Coasts screen with a German and an Icelandic coast" width="200" />
-  <img src="docs/screenshots/coast.png" alt="German Coast with its Language Islands" width="200" />
-  <img src="docs/screenshots/study.png" alt="Flipped flashcard with Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
-  <img src="docs/screenshots/settings.png" alt="Settings screen" width="200" />
-  <img src="docs/screenshots/notification.png" alt="Daily study reminder notification" width="200" />
+  <img src="docs/screenshots/my-coast.png" alt="My Coasts with the study streak and a German and an Icelandic coast, each showing its due cards" width="200" />
+  <img src="docs/screenshots/coast.png" alt="German Coast with its Language Islands and how many cards on each are due" width="200" />
+  <img src="docs/screenshots/study.png" alt="Flipped flashcard with a read-aloud button and Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
+  <img src="docs/screenshots/settings.png" alt="Settings with the native language and the choice of on-device, Gemini or OpenRouter translation" width="200" />
+  <img src="docs/screenshots/notification.png" alt="Daily study reminder saying how many cards are due" width="200" />
 </p>
 
 ## ✨ Features
