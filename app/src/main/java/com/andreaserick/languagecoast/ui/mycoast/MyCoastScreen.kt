@@ -6,23 +6,24 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,34 +40,47 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.andreaserick.languagecoast.data.LanguageIsland
+import com.andreaserick.languagecoast.data.Coast
+import com.andreaserick.languagecoast.data.CoastSummary
+import com.andreaserick.languagecoast.ui.components.NewCoastDialog
 import com.andreaserick.languagecoast.ui.theme.CoralAccent
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 
 /**
- * The "My Coast" screen. Shows the study streak and a grid of "Language Islands"
- * (categories) that contain flashcards.
+ * The "My Coasts" screen. Shows the study streak and one card per coast (language being studied).
  *
- * @param onIslandClick Called with the island ID and name when an island is tapped.
+ * @param onCoastClick Called with the coast ID and display name when a coast is tapped.
  */
 @Composable
 fun MyCoastScreen(
-    onIslandClick: (Int, String) -> Unit,
+    onCoastClick: (Int, String) -> Unit,
     viewModel: MyCoastViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    var islandToDelete by remember { mutableStateOf<LanguageIsland?>(null) }
+    var showNewCoastDialog by remember { mutableStateOf(false) }
+    var coastToDelete by remember { mutableStateOf<Coast?>(null) }
 
-    islandToDelete?.let { island ->
-        DeleteIslandDialog(
-            island = island,
-            onConfirm = {
-                viewModel.deleteIsland(island)
-                islandToDelete = null
+    if (showNewCoastDialog) {
+        NewCoastDialog(
+            availableLanguages = uiState.availableLanguages,
+            onCreate = { language ->
+                viewModel.addCoast(language)
+                showNewCoastDialog = false
             },
-            onDismiss = { islandToDelete = null }
+            onDismiss = { showNewCoastDialog = false }
+        )
+    }
+
+    coastToDelete?.let { coast ->
+        DeleteCoastDialog(
+            coast = coast,
+            onConfirm = {
+                viewModel.deleteCoast(coast)
+                coastToDelete = null
+            },
+            onDismiss = { coastToDelete = null }
         )
     }
 
@@ -76,7 +90,7 @@ fun MyCoastScreen(
             .padding(horizontal = 24.dp)
     ) {
         Text(
-            text = "My Coast",
+            text = "My Coasts",
             fontSize = 32.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -90,24 +104,45 @@ fun MyCoastScreen(
         when {
             // Show nothing while loading to avoid flashing the empty state.
             uiState.isLoading -> Unit
-            uiState.islands.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            uiState.coasts.isEmpty() -> Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
                 Text(
-                    "Your coast is completely empty. Go create some flashcards!",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "You haven't started a coast yet. Pick a language to start your first one!",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = { showNewCoastDialog = true }) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                    Text("Start a Coast")
+                }
             }
-            else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            else -> LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(uiState.islands, key = { it.islandId }) { island ->
-                    IslandCard(
-                        island = island,
-                        onClick = { onIslandClick(island.islandId, island.name) },
-                        onDeleteClick = { islandToDelete = island }
+                items(uiState.coasts, key = { it.coast.coastId }) { summary ->
+                    CoastCard(
+                        summary = summary,
+                        onClick = { onCoastClick(summary.coast.coastId, summary.coast.displayName) },
+                        onDeleteClick = { coastToDelete = summary.coast }
                     )
+                }
+                if (uiState.availableLanguages.isNotEmpty()) {
+                    item {
+                        OutlinedButton(
+                            onClick = { showNewCoastDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 24.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                            Text("New Coast")
+                        }
+                    }
                 }
             }
         }
@@ -115,11 +150,11 @@ fun MyCoastScreen(
 }
 
 @Composable
-private fun DeleteIslandDialog(island: LanguageIsland, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+private fun DeleteCoastDialog(coast: Coast, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Delete Island") },
-        text = { Text("Are you sure you want to delete '${island.name}'? This will also delete all associated flashcards.") },
+        title = { Text("Delete Coast") },
+        text = { Text("Are you sure you want to delete the ${coast.displayName}? This will also delete all of its islands and flashcards.") },
         containerColor = DeepOceanBlue,
         titleContentColor = SandBeige,
         textContentColor = Color.White,
@@ -182,49 +217,54 @@ fun StreakCard(streakCount: Int) {
 }
 
 /**
- * A square card representing a single "Language Island".
+ * A wide card representing one coast, with its island and card counts.
  *
- * @param island The [LanguageIsland] to display.
+ * @param summary The coast and its counts.
  * @param onClick Called when the card is tapped.
  * @param onDeleteClick Called when the delete button is tapped.
  */
 @Composable
-fun IslandCard(island: LanguageIsland, onClick: () -> Unit, onDeleteClick: () -> Unit) {
+fun CoastCard(summary: CoastSummary, onClick: () -> Unit, onDeleteClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            IconButton(
-                onClick = onDeleteClick,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete Island",
-                    tint = DeepOceanBlue.copy(alpha = 0.7f),
-                    modifier = Modifier.size(20.dp)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 20.dp, end = 56.dp)) {
+                Text(
+                    text = summary.coast.displayName,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = DeepOceanBlue
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${plural(summary.islandCount, "island")} · ${plural(summary.cardCount, "card")}",
+                    fontSize = 14.sp,
+                    color = DeepOceanBlue.copy(alpha = 0.75f)
                 )
             }
 
-            Text(
-                text = island.name,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = DeepOceanBlue,
-                textAlign = TextAlign.Center,
+            IconButton(
+                onClick = onDeleteClick,
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(16.dp)
-            )
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete Coast",
+                    tint = DeepOceanBlue.copy(alpha = 0.7f),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
     }
 }
+
+private fun plural(count: Int, noun: String) = if (count == 1) "1 $noun" else "$count ${noun}s"
