@@ -18,18 +18,6 @@ object SettingsDefaults {
     const val NATIVE_LANGUAGE = "English"
     const val GEMINI_MODEL = "gemini-2.5-flash"
 
-    val SUPPORTED_LANGUAGES = listOf(
-        "English",
-        "Spanish",
-        "French",
-        "German",
-        "Italian",
-        "Japanese",
-        "Korean",
-        "Icelandic",
-        "Norwegian"
-    )
-
     val GEMINI_MODELS = listOf(
         "gemini-2.5-flash",
         "gemini-3.5-flash",
@@ -38,11 +26,18 @@ object SettingsDefaults {
     )
 }
 
-/** Supported languages a new coast can be started for: not the native language and without a coast yet. */
-fun availableCoastLanguages(coasts: List<Coast>, nativeLanguage: String): List<String> =
-    SettingsDefaults.SUPPORTED_LANGUAGES.filter { language ->
-        language != nativeLanguage && coasts.none { it.language == language }
+/** Languages a new coast can be started for: not the native language and without a coast yet. */
+fun availableCoastLanguages(coasts: List<Coast>, nativeLanguage: String): List<Language> =
+    Languages.ALL.filter { language ->
+        language.name != nativeLanguage && coasts.none { it.language == language.name }
     }
+
+/**
+ * Languages the user can switch their native language to: not one they already study on a coast,
+ * since cards would then be "translated" into the same language.
+ */
+fun nativeLanguageOptions(coasts: List<Coast>): List<Language> =
+    Languages.ALL.filter { language -> coasts.none { it.language == language.name } }
 
 /** User preferences: native language, active coast, Gemini configuration and the study streak. */
 interface SettingsRepository {
