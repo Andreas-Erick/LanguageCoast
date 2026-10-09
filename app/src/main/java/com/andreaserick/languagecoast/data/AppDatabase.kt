@@ -2,14 +2,17 @@ package com.andreaserick.languagecoast.data
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverter
+import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Coast::class, LanguageIsland::class, Flashcard::class],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun languageCoastDao(): LanguageCoastDao
@@ -84,5 +87,22 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE IF EXISTS `study_progress`")
             }
         }
+
+        /** v6 stores alternative translations and a note with each card; existing cards have none. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `alternatives` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `note` TEXT")
+            }
+        }
     }
+}
+
+/** Stores [Flashcard.alternatives] as one line per alternative; an alternative never spans lines. */
+class Converters {
+    @TypeConverter
+    fun alternativesToText(alternatives: List<String>): String = alternatives.joinToString("\n")
+
+    @TypeConverter
+    fun textToAlternatives(text: String): List<String> = text.split("\n").filter { it.isNotBlank() }
 }

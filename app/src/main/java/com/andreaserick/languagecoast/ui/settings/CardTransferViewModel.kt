@@ -37,8 +37,10 @@ data class ImportPreview(
 ) {
     /** The cards that will be imported, with the options applied. */
     val cardsToImport: List<ImportedCard>
-        get() = cards.drop(if (skipFirstRow) 1 else 0)
-            .map { if (swapColumns) it.copy(nativeText = it.targetText, targetText = it.nativeText) else it }
+        get() = cards.drop(if (skipFirstRow) 1 else 0).map {
+            // Alternatives are translations of the back, so they don't survive swapping the sides.
+            if (swapColumns) it.copy(nativeText = it.targetText, targetText = it.nativeText, alternatives = emptyList(), note = null) else it
+        }
 }
 
 data class CardTransferUiState(
@@ -132,7 +134,9 @@ class CardTransferViewModel @Inject constructor(
                         coastId = preview.coastId,
                         nativeText = card.nativeText,
                         targetText = card.targetText,
-                        category = card.island ?: DEFAULT_IMPORT_ISLAND
+                        category = card.island ?: DEFAULT_IMPORT_ISLAND,
+                        alternatives = card.alternatives,
+                        note = card.note
                     )
                 }
             }

@@ -146,9 +146,25 @@ class StudyViewModel @Inject constructor(
 
     /** Reads the current card's translation aloud. */
     fun speakAnswer() {
+        uiState.value.currentCard?.let { speak(it.targetText) }
+    }
+
+    /** Reads [text] (e.g. one of the current card's alternatives) aloud in the coast's language. */
+    fun speak(text: String) {
         val state = uiState.value
-        val card = state.currentCard ?: return
-        if (state.canSpeak) speaker.speak(card.targetText, state.targetLanguage)
+        if (state.canSpeak) speaker.speak(text, state.targetLanguage)
+    }
+
+    /**
+     * Makes [alternative] the current card's translation. The previous translation takes its place
+     * among the alternatives, so the user can switch back.
+     */
+    fun makeMainTranslation(alternative: String) {
+        val card = uiState.value.currentCard ?: return
+        if (alternative !in card.alternatives) return
+        val alternatives = card.alternatives.map { if (it == alternative) card.targetText else it }
+        // observeCards re-emits the updated card, which replaces it in the session.
+        viewModelScope.launch { flashcards.updateTranslation(card.cardId, alternative, alternatives) }
     }
 
     /** Grades the current card, saves its new schedule and moves on. */

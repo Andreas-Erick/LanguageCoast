@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,6 +56,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +75,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import kotlinx.coroutines.delay
 import com.andreaserick.languagecoast.R
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.RecentCard
@@ -182,10 +187,19 @@ private fun CreateContent(
                     onSave = onSave
                 )
 
+                // The preview appears below the form, often off screen; scroll to it once it has expanded.
+                val resultRequester = remember { BringIntoViewRequester() }
+                LaunchedEffect(uiState.result) {
+                    if (uiState.result != null) {
+                        delay(RESULT_SCROLL_DELAY_MILLIS)
+                        resultRequester.bringIntoView()
+                    }
+                }
                 AnimatedVisibility(
                     visible = uiState.result != null,
                     enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
+                    exit = shrinkVertically() + fadeOut(),
+                    modifier = Modifier.bringIntoViewRequester(resultRequester)
                 ) {
                     when (val result = uiState.result) {
                         is SaveResult.Saved -> SavedCard(result, onUndo = onUndo)
@@ -199,6 +213,9 @@ private fun CreateContent(
         }
     }
 }
+
+/** Long enough for the save preview's expand animation to finish before scrolling to it. */
+private const val RESULT_SCROLL_DELAY_MILLIS = 350L
 
 /** The streak shown in the header, e.g. "🔥 4". */
 @Composable

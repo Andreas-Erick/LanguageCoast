@@ -143,4 +143,30 @@ class CardTransferViewModelTest {
         assertNull(viewModel.preview)
         assertEquals("Start a coast first, then import cards into it.", viewModel.uiState.value.message)
     }
+
+    @Test
+    fun importedAlternativesAreStoredWithTheCard() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = createViewModel()
+        viewModel.onImportFileRead("\"Do you want to come?\"\t\"Möchtest du kommen?\n\nAlso: Willst du kommen?\nNote: Casual.\"\n")
+
+        viewModel.confirmImport {}
+
+        val card = flashcards.cards.value.single()
+        assertEquals("Möchtest du kommen?", card.targetText)
+        assertEquals(listOf("Willst du kommen?"), card.alternatives)
+        assertEquals("Casual.", card.note)
+    }
+
+    @Test
+    fun swappingSidesDropsAlternatives() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = createViewModel()
+        viewModel.onImportFileRead("\"Möchtest du kommen?\n\nAlso: Willst du kommen?\"\t\"Do you want to come?\"\n")
+
+        viewModel.setSwapColumns(true)
+        viewModel.confirmImport {}
+
+        assertTrue(flashcards.cards.value.single().alternatives.isEmpty())
+    }
 }

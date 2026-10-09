@@ -8,7 +8,13 @@ data class CoastContent(
 )
 
 /** One card read from an import file; [island] is null when the file doesn't say. */
-data class ImportedCard(val nativeText: String, val targetText: String, val island: String?)
+data class ImportedCard(
+    val nativeText: String,
+    val targetText: String,
+    val island: String?,
+    val alternatives: List<String> = emptyList(),
+    val note: String? = null
+)
 
 /** File formats cards can be exported to. */
 enum class ExportFormat(val label: String, val extension: String, val mimeType: String) {
@@ -37,7 +43,7 @@ private fun ankiExport(contents: List<CoastContent>): String = buildString {
         content.islandsWithCards().forEach { (island, cards) ->
             val deck = "${content.coast.displayName}$DECK_SEPARATOR${island.name}"
             cards.forEach { card ->
-                appendLine(listOf(card.nativeText, card.targetText, deck).joinToString("\t") { tsvField(it) })
+                appendLine(listOf(card.nativeText, cardBack(card), deck).joinToString("\t") { tsvField(it) })
             }
         }
     }
@@ -53,9 +59,36 @@ private fun markdownExport(contents: List<CoastContent>, nativeLanguage: String)
             appendLine()
             appendLine("| ${markdownCell(nativeLanguage)} | ${markdownCell(content.coast.language)} |")
             appendLine("| --- | --- |")
-            cards.forEach { appendLine("| ${markdownCell(it.nativeText)} | ${markdownCell(it.targetText)} |") }
+            cards.forEach { appendLine("| ${markdownCell(it.nativeText)} | ${markdownCell(cardBack(it)).replace("<br><br>", "<br>")} |") }
         }
     }
+}
+
+/**
+ * The back of [card] as exported: the translation, then its alternatives and note on their own lines
+ * ("Also: a / b", "Note: ..."). [splitCardBack] reads this back on import.
+ */
+private fun cardBack(card: Flashcard): String = buildString {
+    append(card.targetText)
+    if (card.alternatives.isNotEmpty()) {
+        append("\n\n$ALSO_PREFIX").append(card.alternatives.joinToString(ALTERNATIVES_SEPARATOR))
+        card.note?.let { append("\n$NOTE_PREFIX").append(it) }
+    }
+}
+
+private const val ALSO_PREFIX = "Also: "
+private const val NOTE_PREFIX = "Note: "
+private const val ALTERNATIVES_SEPARATOR = " / "
+
+/** Splits an exported card back (see [cardBack]) into the translation, its alternatives and its note. */
+internal fun splitCardBack(back: String): Triple<String, List<String>, String?> {
+    val start = back.indexOf("\n$ALSO_PREFIX")
+    if (start < 0) return Triple(back.trim(), emptyList(), null)
+    val extras = back.substring(start).lines().map { it.trim() }
+    val alternatives = extras.firstOrNull { it.startsWith(ALSO_PREFIX) }?.removePrefix(ALSO_PREFIX)
+        ?.split(ALTERNATIVES_SEPARATOR)?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+    val note = extras.firstOrNull { it.startsWith(NOTE_PREFIX) }?.removePrefix(NOTE_PREFIX)?.trim()?.takeIf { it.isNotEmpty() }
+    return Triple(back.substring(0, start).trim(), alternatives, note)
 }
 
 /** Islands in the order they were created, each with its cards in the order they were added; empty islands are left out. */
@@ -92,18 +125,28 @@ fun parseCardFile(text: String): List<ImportedCard> {
     val deckColumn = column("deck")
     val metadataColumns = listOfNotNull(deckColumn, column("notetype"), column("tags"), column("guid")).toSet()
 
+    fun clean(field: String) = if (isHtml) htmlToText(field) else field.trim()
+
     return splitRecords(body, separator).mapNotNull { record ->
         val fields = record.filterIndexed { index, _ -> index !in metadataColumns }
-            .map { if (isHtml) htmlToText(it) else it.trim() }
-        val nativeText = fields.getOrNull(0).orEmpty()
-        val targetText = fields.getOrNull(1).orEmpty()
+        val nativeText = clean(fields.getOrNull(0).orEmpty())
+        // Anki keeps the back's line breaks as <br>; turn them back into lines to find the alternatives.
+        val back = fields.getOrNull(1).orEmpty().let { if (isHtml) it.replace(HTML_BREAK, "\n") else it }
+        val (translation, alternatives, note) = splitCardBack(back)
+        val targetText = clean(translation)
         if (nativeText.isEmpty() || targetText.isEmpty()) return@mapNotNull null
         val island = when {
             deckColumn != null -> record.getOrNull(deckColumn)?.substringAfterLast(DECK_SEPARATOR)
             headers.isEmpty() -> fields.getOrNull(2)
             else -> null
         }
-        ImportedCard(nativeText, targetText, island?.trim()?.takeIf { it.isNotEmpty() })
+        ImportedCard(
+            nativeText = nativeText,
+            targetText = targetText,
+            island = island?.trim()?.takeIf { it.isNotEmpty() },
+            alternatives = alternatives.map(::clean).filter { it.isNotEmpty() },
+            note = note?.let(::clean)?.takeIf { it.isNotEmpty() }
+        )
     }
 }
 
@@ -119,7 +162,14 @@ private fun separatorFromHeader(value: String): Char? = when (value.lowercase())
 
 /** Tab if the first row has one, otherwise semicolon or comma (spreadsheets in many locales export with semicolons). */
 private fun detectSeparator(body: String): Char {
-    val firstRow = body.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty()
+    // The first row's characters outside quotes; a quoted field may span several lines.
+    val firstRow = StringBuilder()
+    var inQuotes = false
+    for (c in body.trimStart()) {
+        if (c == '"') inQuotes = !inQuotes
+        else if (c == '\n' && !inQuotes) break
+        else if (!inQuotes) firstRow.append(c)
+    }
     return when {
         '\t' in firstRow -> '\t'
         firstRow.count { it == ';' } > firstRow.count { it == ',' } -> ';'

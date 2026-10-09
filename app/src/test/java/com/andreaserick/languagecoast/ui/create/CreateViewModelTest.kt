@@ -332,4 +332,22 @@ class CreateViewModelTest {
 
         assertEquals(listOf("n1"), viewModel.uiState.recentCards.map { it.card.nativeText })
     }
+
+    @Test
+    fun alternativesAreStoredWithTheCard() = runTest {
+        settings.apiKey.value = "key"
+        translator.result = TranslationResult(
+            "Wollen wir ins Kino?", "Plans", isSuccess = true,
+            alternatives = listOf("Sollen wir ins Kino?"), note = "Both are fine."
+        )
+        viewModel.onNativeSentenceChange("Shall we go to the cinema tonight?")
+        viewModel.save()
+
+        // Stored with the card, so they show when studying it; the preview hides as usual.
+        val card = flashcards.cards.value.single()
+        assertEquals(listOf("Sollen wir ins Kino?"), card.alternatives)
+        assertEquals("Both are fine.", card.note)
+        advanceTimeBy(RESULT_VISIBLE_MILLIS + 1)
+        assertNull(viewModel.uiState.result)
+    }
 }
