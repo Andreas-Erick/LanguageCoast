@@ -148,6 +148,8 @@ git tag v1.0
 git push origin v1.0
 ```
 
+The version name comes from the tag (`v1.0` → `1.0`) and the version code from the workflow run number, so there is no need to edit `build.gradle.kts` before a release.
+
 The workflow needs these repository secrets (*Settings → Secrets and variables → Actions*): `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`.
 
 To sign release builds locally, place a `keystore.properties` file in the project root (it is git-ignored):
