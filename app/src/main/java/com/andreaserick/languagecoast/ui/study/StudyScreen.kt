@@ -508,7 +508,7 @@ internal fun intervalLabel(days: Int): String = when {
 
 /**
  * A study view that requires the user to type the translation of the native text.
- * After checking, the card is graded with the grade buttons like in Flip mode.
+ * A correct answer is graded with the grade buttons like in Flip mode; a wrong one counts as "Again".
  *
  * @param currentCard The [Flashcard] data to test against.
  * @param intervals Days until the card is due again after each grade, shown on the buttons.
@@ -556,8 +556,7 @@ fun TypeStudyView(
         if (!hasChecked) {
             Button(
                 onClick = {
-                    // Perform a simple case-insensitive comparison
-                    isCorrect = userInput.trim().equals(currentCard.targetText.trim(), ignoreCase = true)
+                    isCorrect = answerMatches(userInput, currentCard.targetText)
                     hasChecked = true
                     haptics.performHapticFeedback(if (isCorrect) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
                 },
@@ -609,10 +608,41 @@ fun TypeStudyView(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            // The user grades themselves: a near miss (a typo, a missing accent) can still count as remembered.
-            GradeButtons(intervals = intervals, onGrade = onGrade)
+            if (isCorrect) {
+                GradeButtons(intervals = intervals, onGrade = onGrade)
+            } else {
+                // A wrong answer means the card wasn't remembered, so there is nothing to grade: it's "Again".
+                Button(
+                    onClick = { onGrade(Grade.Again) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                ) {
+                    Text("Continue", fontSize = 18.sp)
+                }
+                Text(
+                    text = "This card comes back later in this session.",
+                    fontSize = 13.sp,
+                    color = SandMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
         }
     }
+}
+
+/**
+ * Whether a typed answer matches the card's translation, ignoring case, punctuation and extra spaces
+ * ("wo ist der Strand" matches "Wo ist der Strand?"). Accents and other letters must match exactly.
+ */
+internal fun answerMatches(typed: String, expected: String): Boolean {
+    fun normalize(text: String) = text.lowercase()
+        .map { if (it.isLetterOrDigit()) it else ' ' }
+        .joinToString("")
+        .split(' ')
+        .filter { it.isNotEmpty() }
+    return normalize(typed) == normalize(expected)
 }
 
 /**
