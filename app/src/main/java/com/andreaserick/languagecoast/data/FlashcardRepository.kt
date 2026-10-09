@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 /** Everything removed by one delete, so it can be put back with [FlashcardRepository.restore]. */
@@ -58,6 +59,9 @@ interface FlashcardRepository {
 
     /** Records that a study session on [islandId] was completed at [time] (epoch millis). */
     suspend fun markIslandStudied(islandId: Int, time: Long)
+
+    /** Every coast with its islands and cards, oldest coast first, for exporting. */
+    suspend fun getAllContent(): List<CoastContent>
 }
 
 class OfflineFlashcardRepository @Inject constructor(
@@ -127,4 +131,10 @@ class OfflineFlashcardRepository @Inject constructor(
     override suspend fun restore(content: DeletedContent) = dao.restore(content)
 
     override suspend fun markIslandStudied(islandId: Int, time: Long) = dao.setIslandLastStudied(islandId, time)
+
+    override suspend fun getAllContent(): List<CoastContent> =
+        dao.getAllCoasts().first().map { coast ->
+            val islands = dao.getIslandsForCoastOnce(coast.coastId)
+            CoastContent(coast, islands, dao.getCardsForIslandsOnce(islands.map { it.islandId }))
+        }
 }
