@@ -5,6 +5,7 @@ import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
+import com.andreaserick.languagecoast.testing.FakeSpeaker
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,13 +29,15 @@ class StudyViewModelTest {
 
     private val flashcards = FakeFlashcardRepository()
     private val settings = FakeSettingsRepository()
+    private val speaker = FakeSpeaker()
 
     private fun TestScope.createViewModel(islandId: Int = 1): StudyViewModel {
         val viewModel = StudyViewModel(
             SavedStateHandle(mapOf("islandId" to islandId, "islandName" to "Island $islandId")),
             flashcards,
             settings,
-            TEST_CLOCK
+            TEST_CLOCK,
+            speaker
         )
         // uiState is only computed while collected (WhileSubscribed).
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
@@ -262,6 +265,39 @@ class StudyViewModelTest {
 
         assertFalse(viewModel.state.isCaughtUp)
         assertEquals(2, viewModel.state.sessionCards.size)
+    }
+
+    @Test
+    fun speakingReadsTheTranslationInTheCoastLanguage() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        val viewModel = createViewModel()
+
+        assertTrue(viewModel.state.canSpeak)
+        viewModel.speakAnswer()
+
+        assertEquals(listOf("t1" to "Spanish"), speaker.spoken)
+    }
+
+    @Test
+    fun noVoiceForTheLanguageMeansNothingIsRead() = runTest {
+        speaker.available = emptySet()
+        flashcards.seed(islandId = 1, cardCount = 1)
+        val viewModel = createViewModel()
+
+        assertFalse(viewModel.state.canSpeak)
+        viewModel.speakAnswer()
+
+        assertTrue(speaker.spoken.isEmpty())
+    }
+
+    @Test
+    fun gradingStopsReadingTheOldAnswer() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        val viewModel = createViewModel()
+
+        viewModel.onGrade(Grade.Good)
+
+        assertEquals(1, speaker.stops)
     }
 
     private fun setDue(nativeText: String, due: Long) {
