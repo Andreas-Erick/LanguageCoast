@@ -18,8 +18,11 @@ data class AddedCard(
 
 /** Source of truth for coasts, islands and flashcards. */
 interface FlashcardRepository {
-    /** @param studiedSince Islands that finished a session at or after this time count as studied recently. */
-    fun observeCoastSummaries(studiedSince: Long): Flow<List<CoastSummary>>
+    /**
+     * @param studiedSince Islands that finished a session at or after this time count as studied recently.
+     * @param now The time due cards are counted at.
+     */
+    fun observeCoastSummaries(studiedSince: Long, now: Long): Flow<List<CoastSummary>>
     fun observeCoasts(): Flow<List<Coast>>
     fun observeCoast(coastId: Int): Flow<Coast?>
     fun observeCoastForIsland(islandId: Int): Flow<Coast?>
@@ -31,7 +34,8 @@ interface FlashcardRepository {
     suspend fun deleteCoast(coast: Coast): DeletedContent
 
     fun observeIslands(coastId: Int): Flow<List<LanguageIsland>>
-    fun observeIslandSummaries(coastId: Int): Flow<List<IslandSummary>>
+    /** @param now The time due cards are counted at. */
+    fun observeIslandSummaries(coastId: Int, now: Long): Flow<List<IslandSummary>>
     fun observeCards(islandId: Int): Flow<List<Flashcard>>
 
     /**
@@ -53,6 +57,12 @@ interface FlashcardRepository {
     suspend fun deleteIsland(island: LanguageIsland): DeletedContent
     suspend fun deleteFlashcard(card: Flashcard): DeletedContent
 
+    /** Saves [card]'s new scheduling fields after it was graded. */
+    suspend fun saveReview(card: Flashcard)
+
+    /** Number of cards on all coasts that are due at [now]. */
+    suspend fun countDueCards(now: Long): Int
+
     /** Puts back what a delete removed, with the original IDs. */
     suspend fun restore(content: DeletedContent)
 
@@ -64,8 +74,8 @@ class OfflineFlashcardRepository @Inject constructor(
     private val dao: LanguageCoastDao
 ) : FlashcardRepository {
 
-    override fun observeCoastSummaries(studiedSince: Long): Flow<List<CoastSummary>> =
-        dao.getCoastSummaries(studiedSince)
+    override fun observeCoastSummaries(studiedSince: Long, now: Long): Flow<List<CoastSummary>> =
+        dao.getCoastSummaries(studiedSince, now)
 
     override fun observeCoasts(): Flow<List<Coast>> = dao.getAllCoasts()
 
@@ -86,7 +96,8 @@ class OfflineFlashcardRepository @Inject constructor(
 
     override fun observeIslands(coastId: Int): Flow<List<LanguageIsland>> = dao.getIslandsForCoast(coastId)
 
-    override fun observeIslandSummaries(coastId: Int): Flow<List<IslandSummary>> = dao.getIslandSummaries(coastId)
+    override fun observeIslandSummaries(coastId: Int, now: Long): Flow<List<IslandSummary>> =
+        dao.getIslandSummaries(coastId, now)
 
     override fun observeCards(islandId: Int): Flow<List<Flashcard>> = dao.getCardsForIsland(islandId)
 
@@ -123,6 +134,10 @@ class OfflineFlashcardRepository @Inject constructor(
         dao.deleteFlashcard(card)
         return DeletedContent(cards = listOf(card))
     }
+
+    override suspend fun saveReview(card: Flashcard) = dao.updateFlashcard(card)
+
+    override suspend fun countDueCards(now: Long): Int = dao.countDueCards(now)
 
     override suspend fun restore(content: DeletedContent) = dao.restore(content)
 

@@ -6,7 +6,11 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+
+/** SQL for [isDue]: new cards, and reviewed cards whose due time has passed at `:now`. */
+private const val DUE = "(flashcards.due IS NULL OR flashcards.due <= :now)"
 
 @Dao
 interface LanguageCoastDao {
@@ -22,13 +26,16 @@ interface LanguageCoastDao {
             (SELECT COUNT(*) FROM flashcards
                 INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
                 WHERE language_islands.coastId = coasts.coastId) AS cardCount,
+            (SELECT COUNT(*) FROM flashcards
+                INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
+                WHERE language_islands.coastId = coasts.coastId AND $DUE) AS dueCount,
             (SELECT MAX(lastStudied) FROM language_islands WHERE language_islands.coastId = coasts.coastId) AS lastStudied,
             (SELECT COUNT(*) FROM language_islands
                 WHERE language_islands.coastId = coasts.coastId AND language_islands.lastStudied >= :studiedSince) AS islandsStudiedRecently
         FROM coasts ORDER BY creationDate ASC
         """
     )
-    fun getCoastSummaries(studiedSince: Long): Flow<List<CoastSummary>>
+    fun getCoastSummaries(studiedSince: Long, now: Long): Flow<List<CoastSummary>>
 
     @Query("SELECT * FROM coasts ORDER BY creationDate ASC")
     fun getAllCoasts(): Flow<List<Coast>>
@@ -58,11 +65,12 @@ interface LanguageCoastDao {
     @Query(
         """
         SELECT language_islands.*,
-            (SELECT COUNT(*) FROM flashcards WHERE flashcards.islandId = language_islands.islandId) AS cardCount
+            (SELECT COUNT(*) FROM flashcards WHERE flashcards.islandId = language_islands.islandId) AS cardCount,
+            (SELECT COUNT(*) FROM flashcards WHERE flashcards.islandId = language_islands.islandId AND $DUE) AS dueCount
         FROM language_islands WHERE coastId = :coastId ORDER BY creationDate DESC
         """
     )
-    fun getIslandSummaries(coastId: Int): Flow<List<IslandSummary>>
+    fun getIslandSummaries(coastId: Int, now: Long): Flow<List<IslandSummary>>
 
     @Query("SELECT * FROM language_islands WHERE coastId = :coastId AND name = :name LIMIT 1")
     suspend fun getIslandByName(coastId: Int, name: String): LanguageIsland?
@@ -85,6 +93,12 @@ interface LanguageCoastDao {
 
     @Query("SELECT COUNT(*) FROM flashcards WHERE islandId = :islandId")
     suspend fun countCardsInIsland(islandId: Int): Int
+
+    @Update
+    suspend fun updateFlashcard(flashcard: Flashcard)
+
+    @Query("SELECT COUNT(*) FROM flashcards WHERE $DUE")
+    suspend fun countDueCards(now: Long): Int
 
     @Delete
     suspend fun deleteFlashcard(flashcard: Flashcard)
@@ -112,8 +126,4 @@ interface LanguageCoastDao {
         insertIslands(content.islands)
         insertFlashcards(content.cards)
     }
-
-    // --- Study Progress ---
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertStudyProgress(progress: StudyProgress)
 }

@@ -42,7 +42,7 @@ class CoastViewModel @Inject constructor(
     private val coastName: String = savedStateHandle["coastName"] ?: ""
 
     val uiState: StateFlow<CoastUiState> =
-        combine(flashcards.observeCoast(coastId), flashcards.observeIslandSummaries(coastId)) { coast, islands ->
+        combine(flashcards.observeCoast(coastId), flashcards.observeIslandSummaries(coastId, now = clock.millis())) { coast, islands ->
             CoastUiState(
                 coastName = coast?.displayName ?: coastName,
                 nativeName = coast?.let { Languages.byName(it.language) }?.nativeName?.takeIf { it != coast?.language },

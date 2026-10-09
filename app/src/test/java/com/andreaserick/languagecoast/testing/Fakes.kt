@@ -15,6 +15,7 @@ import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.TranslationResult
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.emojiForCategory
+import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +36,7 @@ class FakeFlashcardRepository : FlashcardRepository {
     val islands = MutableStateFlow<List<LanguageIsland>>(emptyList())
     val cards = MutableStateFlow<List<Flashcard>>(emptyList())
 
-    override fun observeCoastSummaries(studiedSince: Long): Flow<List<CoastSummary>> =
+    override fun observeCoastSummaries(studiedSince: Long, now: Long): Flow<List<CoastSummary>> =
         combine(coasts, islands, cards) { coasts, islands, cards ->
             coasts.map { coast ->
                 val coastIslands = islands.filter { it.coastId == coast.coastId }
@@ -44,6 +45,7 @@ class FakeFlashcardRepository : FlashcardRepository {
                     coast = coast,
                     islandCount = islandIds.size,
                     cardCount = cards.count { it.islandId in islandIds },
+                    dueCount = cards.count { it.islandId in islandIds && isDue(it, now) },
                     lastStudied = coastIslands.mapNotNull { it.lastStudied }.maxOrNull(),
                     islandsStudiedRecently = coastIslands.count { (it.lastStudied ?: Long.MIN_VALUE) >= studiedSince }
                 )
@@ -78,10 +80,11 @@ class FakeFlashcardRepository : FlashcardRepository {
     override fun observeIslands(coastId: Int): Flow<List<LanguageIsland>> =
         islands.map { all -> all.filter { it.coastId == coastId } }
 
-    override fun observeIslandSummaries(coastId: Int): Flow<List<IslandSummary>> =
+    override fun observeIslandSummaries(coastId: Int, now: Long): Flow<List<IslandSummary>> =
         combine(islands, cards) { islands, cards ->
             islands.filter { it.coastId == coastId }.map { island ->
-                IslandSummary(island, cardCount = cards.count { it.islandId == island.islandId })
+                val islandCards = cards.filter { it.islandId == island.islandId }
+                IslandSummary(island, cardCount = islandCards.size, dueCount = islandCards.count { isDue(it, now) })
             }
         }
 
@@ -129,6 +132,12 @@ class FakeFlashcardRepository : FlashcardRepository {
         cards.update { it - card }
         return DeletedContent(cards = listOf(card))
     }
+
+    override suspend fun saveReview(card: Flashcard) {
+        cards.update { all -> all.map { if (it.cardId == card.cardId) card else it } }
+    }
+
+    override suspend fun countDueCards(now: Long): Int = cards.value.count { isDue(it, now) }
 
     override suspend fun restore(content: DeletedContent) {
         coasts.update { (it + content.coasts).sortedBy { coast -> coast.coastId } }

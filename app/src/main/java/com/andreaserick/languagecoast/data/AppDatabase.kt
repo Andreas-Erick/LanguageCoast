@@ -6,8 +6,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Coast::class, LanguageIsland::class, Flashcard::class, StudyProgress::class],
-    version = 4,
+    entities = [Coast::class, LanguageIsland::class, Flashcard::class],
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -68,6 +68,20 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `language_islands` ADD COLUMN `emoji` TEXT")
                 db.execSQL("ALTER TABLE `language_islands` ADD COLUMN `lastStudied` INTEGER")
+            }
+        }
+
+        /**
+         * v5 adds spaced repetition fields to flashcards; existing cards start as new cards, due right away.
+         * It also drops the `study_progress` table, which was never written to.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `stability` REAL")
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `difficulty` REAL")
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `lastReviewed` INTEGER")
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `due` INTEGER")
+                db.execSQL("DROP TABLE IF EXISTS `study_progress`")
             }
         }
     }
