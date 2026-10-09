@@ -6,8 +6,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [LanguageIsland::class, Flashcard::class, StudyProgress::class],
-    version = 2,
+    entities = [Coast::class, LanguageIsland::class, Flashcard::class, StudyProgress::class],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +22,44 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_flashcards_islandId` ON `flashcards` (`islandId`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_progress_cardId` ON `study_progress` (`cardId`)")
+            }
+        }
+
+        /**
+         * v3 adds coasts (one per target language) and moves every existing island onto a coast
+         * for the language the user was studying before, read lazily via [legacyTargetLanguage].
+         */
+        fun migration2To3(legacyTargetLanguage: () -> String) = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `coasts` (`coastId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`language` TEXT NOT NULL, `creationDate` INTEGER NOT NULL)"
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_coasts_language` ON `coasts` (`language`)")
+
+                val hasIslands = db.query("SELECT 1 FROM `language_islands` LIMIT 1").use { it.moveToFirst() }
+                if (hasIslands) {
+                    db.execSQL(
+                        "INSERT INTO `coasts` (`coastId`, `language`, `creationDate`) VALUES (1, ?, ?)",
+                        arrayOf<Any>(legacyTargetLanguage(), System.currentTimeMillis())
+                    )
+                }
+
+                // SQLite cannot add a foreign-key column with ALTER TABLE, so rebuild the islands table.
+                // Room only enables foreign keys after migrations, so dropping the old table does not
+                // cascade into flashcards.
+                db.execSQL(
+                    "CREATE TABLE `language_islands_new` (`islandId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`coastId` INTEGER NOT NULL, `name` TEXT NOT NULL, `creationDate` INTEGER NOT NULL, " +
+                        "FOREIGN KEY(`coastId`) REFERENCES `coasts`(`coastId`) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                db.execSQL(
+                    "INSERT INTO `language_islands_new` (`islandId`, `coastId`, `name`, `creationDate`) " +
+                        "SELECT `islandId`, 1, `name`, `creationDate` FROM `language_islands`"
+                )
+                db.execSQL("DROP TABLE `language_islands`")
+                db.execSQL("ALTER TABLE `language_islands_new` RENAME TO `language_islands`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_language_islands_coastId` ON `language_islands` (`coastId`)")
             }
         }
     }

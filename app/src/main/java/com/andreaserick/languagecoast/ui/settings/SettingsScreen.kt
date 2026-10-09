@@ -13,11 +13,6 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -39,11 +33,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.SettingsDefaults
+import com.andreaserick.languagecoast.ui.components.SelectionDropdown
 import com.andreaserick.languagecoast.ui.theme.SandBeige
-import com.andreaserick.languagecoast.ui.theme.WaveTeal
 
 /**
- * The "Settings" screen. Configures native/target languages, the Gemini model,
+ * The "Settings" screen. Configures the native language, the Gemini model,
  * and the user's Google Gemini API key.
  */
 @Composable
@@ -69,7 +63,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         )
 
         SectionLabel("Native Language")
-        SettingsDropdown(
+        SelectionDropdown(
             options = SettingsDefaults.SUPPORTED_LANGUAGES,
             selected = uiState.nativeLanguage,
             onSelected = viewModel::setNativeLanguage
@@ -77,17 +71,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionLabel("Target Language")
-        SettingsDropdown(
-            options = SettingsDefaults.SUPPORTED_LANGUAGES,
-            selected = uiState.targetLanguage,
-            onSelected = viewModel::setTargetLanguage
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
         SectionLabel("Gemini Model")
-        SettingsDropdown(
+        SelectionDropdown(
             options = SettingsDefaults.GEMINI_MODELS,
             selected = uiState.geminiModel,
             onSelected = viewModel::setGeminiModel
@@ -157,56 +142,4 @@ private fun SectionLabel(text: String) {
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(bottom = 8.dp)
     )
-}
-
-/**
- * A read-only dropdown for picking one value from [options].
- *
- * @param options The values to choose from.
- * @param selected The currently selected value.
- * @param onSelected Called when the user picks a value.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SettingsDropdown(options: List<String>, selected: String, onSelected: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                .fillMaxWidth(),
-            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            containerColor = WaveTeal
-        ) {
-            options.forEach { option ->
-                val isSelected = option == selected
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            option,
-                            color = if (isSelected) SandBeige else Color.White,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                    },
-                    onClick = {
-                        onSelected(option)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
 }
