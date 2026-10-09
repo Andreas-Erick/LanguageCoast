@@ -1,20 +1,33 @@
 package com.andreaserick.languagecoast.testing
 
+import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.CoastSummary
+import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
+import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.LanguageIsland
+import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.TranslationResult
 import com.andreaserick.languagecoast.data.Translator
+import com.andreaserick.languagecoast.data.emojiForCategory
+import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+
+/** A clock fixed at noon UTC on 2026-10-09 (a Friday). */
+val TEST_CLOCK: Clock = Clock.fixed(Instant.parse("2026-10-09T12:00:00Z"), ZoneOffset.UTC)
 
 /** In-memory [FlashcardRepository]. */
 class FakeFlashcardRepository : FlashcardRepository {
@@ -22,11 +35,18 @@ class FakeFlashcardRepository : FlashcardRepository {
     val islands = MutableStateFlow<List<LanguageIsland>>(emptyList())
     val cards = MutableStateFlow<List<Flashcard>>(emptyList())
 
-    override fun observeCoastSummaries(): Flow<List<CoastSummary>> =
+    override fun observeCoastSummaries(studiedSince: Long): Flow<List<CoastSummary>> =
         combine(coasts, islands, cards) { coasts, islands, cards ->
             coasts.map { coast ->
-                val islandIds = islands.filter { it.coastId == coast.coastId }.mapTo(HashSet()) { it.islandId }
-                CoastSummary(coast, islandCount = islandIds.size, cardCount = cards.count { it.islandId in islandIds })
+                val coastIslands = islands.filter { it.coastId == coast.coastId }
+                val islandIds = coastIslands.mapTo(HashSet()) { it.islandId }
+                CoastSummary(
+                    coast = coast,
+                    islandCount = islandIds.size,
+                    cardCount = cards.count { it.islandId in islandIds },
+                    lastStudied = coastIslands.mapNotNull { it.lastStudied }.maxOrNull(),
+                    islandsStudiedRecently = coastIslands.count { (it.lastStudied ?: Long.MIN_VALUE) >= studiedSince }
+                )
             }
         }
 
@@ -43,33 +63,81 @@ class FakeFlashcardRepository : FlashcardRepository {
 
     override suspend fun addCoast(language: String): Int =
         coasts.value.firstOrNull { it.language == language }?.coastId
-            ?: Coast(coastId = coasts.value.size + 1, language = language).also { new -> coasts.update { it + new } }.coastId
+            ?: seedCoast(nextId(coasts.value.map { it.coastId }), language).coastId
 
-    override suspend fun deleteCoast(coast: Coast) {
+    override suspend fun deleteCoast(coast: Coast): DeletedContent {
+        val coastIslands = islands.value.filter { it.coastId == coast.coastId }
+        val ids = coastIslands.mapTo(HashSet()) { it.islandId }
+        val content = DeletedContent(listOf(coast), coastIslands, cards.value.filter { it.islandId in ids })
         coasts.update { it - coast }
-        islands.value.filter { it.coastId == coast.coastId }.forEach { deleteIsland(it) }
+        islands.update { all -> all.filterNot { it.islandId in ids } }
+        cards.update { all -> all.filterNot { it.islandId in ids } }
+        return content
     }
 
     override fun observeIslands(coastId: Int): Flow<List<LanguageIsland>> =
         islands.map { all -> all.filter { it.coastId == coastId } }
 
+    override fun observeIslandSummaries(coastId: Int): Flow<List<IslandSummary>> =
+        combine(islands, cards) { islands, cards ->
+            islands.filter { it.coastId == coastId }.map { island ->
+                IslandSummary(island, cardCount = cards.count { it.islandId == island.islandId })
+            }
+        }
+
     override fun observeCards(islandId: Int): Flow<List<Flashcard>> =
         cards.map { all -> all.filter { it.islandId == islandId } }
 
-    override suspend fun addFlashcard(coastId: Int, nativeText: String, targetText: String, category: String) {
-        val island = islands.value.firstOrNull { it.coastId == coastId && it.name == category }
-            ?: LanguageIsland(islandId = islands.value.size + 1, coastId = coastId, name = category)
-                .also { new -> islands.update { it + new } }
-        cards.update { it + Flashcard(cardId = it.size + 1, islandId = island.islandId, nativeText = nativeText, targetText = targetText) }
+    override suspend fun addFlashcard(
+        coastId: Int,
+        nativeText: String,
+        targetText: String,
+        category: String,
+        emoji: String?
+    ): AddedCard {
+        val existing = islands.value.firstOrNull { it.coastId == coastId && it.name == category }
+        val island = existing ?: LanguageIsland(
+            islandId = nextId(islands.value.map { it.islandId }),
+            coastId = coastId,
+            name = category,
+            emoji = emoji ?: emojiForCategory(category)
+        ).also { new -> islands.update { it + new } }
+        val card = Flashcard(
+            cardId = nextId(cards.value.map { it.cardId }),
+            islandId = island.islandId,
+            nativeText = nativeText,
+            targetText = targetText
+        )
+        cards.update { it + card }
+        return AddedCard(card, createdIsland = island.takeIf { existing == null })
     }
 
-    override suspend fun deleteIsland(island: LanguageIsland) {
-        islands.update { it - island }
+    override suspend fun undoAdd(added: AddedCard) {
+        cards.update { it - added.card }
+        val island = added.createdIsland ?: return
+        if (cards.value.none { it.islandId == island.islandId }) islands.update { all -> all.filterNot { it.islandId == island.islandId } }
+    }
+
+    override suspend fun deleteIsland(island: LanguageIsland): DeletedContent {
+        val content = DeletedContent(islands = listOf(island), cards = cards.value.filter { it.islandId == island.islandId })
+        islands.update { all -> all.filterNot { it.islandId == island.islandId } }
         cards.update { all -> all.filterNot { it.islandId == island.islandId } }
+        return content
     }
 
-    override suspend fun deleteFlashcard(card: Flashcard) {
+    override suspend fun deleteFlashcard(card: Flashcard): DeletedContent {
         cards.update { it - card }
+        return DeletedContent(cards = listOf(card))
+    }
+
+    override suspend fun restore(content: DeletedContent) {
+        coasts.update { (it + content.coasts).sortedBy { coast -> coast.coastId } }
+        islands.update { (it + content.islands).sortedBy { island -> island.islandId } }
+        cards.update { (it + content.cards).sortedBy { card -> card.cardId } }
+    }
+
+    override suspend fun markIslandStudied(islandId: Int, time: Long) {
+        islands.update { all -> all.map { if (it.islandId == islandId) it.copy(lastStudied = time) else it } }
     }
 
     /** Adds a coast with an explicit ID. */
@@ -84,11 +152,14 @@ class FakeFlashcardRepository : FlashcardRepository {
         if (coasts.value.none { it.coastId == coastId }) seedCoast(coastId, "Spanish")
         islands.update { it + LanguageIsland(islandId = islandId, coastId = coastId, name = "Island $islandId") }
         cards.update { existing ->
+            val firstId = nextId(existing.map { it.cardId })
             existing + (1..cardCount).map { i ->
-                Flashcard(cardId = existing.size + i, islandId = islandId, nativeText = "n$i", targetText = "t$i")
+                Flashcard(cardId = firstId + i - 1, islandId = islandId, nativeText = "n$i", targetText = "t$i")
             }
         }
     }
+
+    private fun nextId(ids: List<Int>) = (ids.maxOrNull() ?: 0) + 1
 }
 
 /** In-memory [SettingsRepository] that counts streak updates. */
@@ -98,6 +169,8 @@ class FakeSettingsRepository : SettingsRepository {
     override val apiKey = MutableStateFlow("")
     override val geminiModel = MutableStateFlow(SettingsDefaults.GEMINI_MODEL)
     override val streakCount = MutableStateFlow(0)
+    override val studyDays = MutableStateFlow<Set<LocalDate>>(emptySet())
+    override val reminderSettings = MutableStateFlow(ReminderSettings())
 
     var studySessionsRecorded = 0
         private set
@@ -108,6 +181,7 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setActiveCoastId(coastId: Int) { activeCoastId.value = coastId }
     override suspend fun setApiKey(key: String) { apiKey.value = key }
     override suspend fun setGeminiModel(model: String) { geminiModel.value = model }
+    override suspend fun setReminderSettings(reminder: ReminderSettings) { reminderSettings.value = reminder }
 
     override suspend fun recordStudySession() {
         studySessionsRecorded++
@@ -115,6 +189,18 @@ class FakeSettingsRepository : SettingsRepository {
 
     override suspend fun refreshStreak() {
         streakRefreshes++
+    }
+}
+
+/** [ReminderScheduler] that only counts calls. */
+class FakeReminderScheduler : ReminderScheduler {
+    var reschedules = 0
+        private set
+
+    override suspend fun ensureScheduled() = Unit
+
+    override suspend fun reschedule() {
+        reschedules++
     }
 }
 

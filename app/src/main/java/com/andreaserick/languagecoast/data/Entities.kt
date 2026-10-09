@@ -26,11 +26,18 @@ data class Coast(
     val displayName: String get() = "$language Coast"
 }
 
-/** A [Coast] with the number of islands and cards on it, for the coast overview. */
+/**
+ * A [Coast] with what the coast overview shows about it.
+ *
+ * @property lastStudied When an island on this coast last finished a study session, or null if never.
+ * @property islandsStudiedRecently Islands that finished a study session since the time the query was given.
+ */
 data class CoastSummary(
     @Embedded val coast: Coast,
     val islandCount: Int,
-    val cardCount: Int
+    val cardCount: Int,
+    val lastStudied: Long? = null,
+    val islandsStudiedRecently: Int = 0
 )
 
 /**
@@ -40,6 +47,8 @@ data class CoastSummary(
  * @property coastId The ID of the [Coast] this island belongs to.
  * @property name The display name of the category (e.g., "Food", "Travel"), unique within its coast.
  * @property creationDate Timestamp of when the island was created.
+ * @property emoji An emoji picturing the category (e.g. "🍽️"), or null to use [islandEmoji]'s fallback.
+ * @property lastStudied When a study session on this island was last completed, or null if never.
  */
 @Entity(
     tableName = "language_islands",
@@ -57,7 +66,15 @@ data class LanguageIsland(
     @PrimaryKey(autoGenerate = true) val islandId: Int = 0,
     val coastId: Int,
     val name: String,
-    val creationDate: Long = System.currentTimeMillis()
+    val creationDate: Long = System.currentTimeMillis(),
+    val emoji: String? = null,
+    val lastStudied: Long? = null
+)
+
+/** A [LanguageIsland] with its number of cards. */
+data class IslandSummary(
+    @Embedded val island: LanguageIsland,
+    val cardCount: Int
 )
 
 /**

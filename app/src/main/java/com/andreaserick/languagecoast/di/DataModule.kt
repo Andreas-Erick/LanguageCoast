@@ -6,6 +6,8 @@ import com.andreaserick.languagecoast.data.GeminiTranslator
 import com.andreaserick.languagecoast.data.OfflineFlashcardRepository
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.Translator
+import com.andreaserick.languagecoast.notifications.ReminderScheduler
+import com.andreaserick.languagecoast.notifications.WorkManagerReminderScheduler
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -27,4 +29,7 @@ abstract class DataModule {
 
     @Binds
     abstract fun bindTranslator(impl: GeminiTranslator): Translator
+
+    @Binds
+    abstract fun bindReminderScheduler(impl: WorkManagerReminderScheduler): ReminderScheduler
 }

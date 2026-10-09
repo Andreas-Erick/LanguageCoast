@@ -30,7 +30,8 @@ object AppModule {
             .addMigrations(
                 AppDatabase.MIGRATION_1_2,
                 // Migrations run on Room's background thread, so blocking on DataStore here is safe.
-                AppDatabase.migration2To3 { runBlocking { dataStore.readLegacyTargetLanguage() } }
+                AppDatabase.migration2To3 { runBlocking { dataStore.readLegacyTargetLanguage() } },
+                AppDatabase.MIGRATION_3_4
             )
             .build()
 

@@ -3,6 +3,7 @@ package com.andreaserick.languagecoast.ui.study
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.SettingsDefaults
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.Clock
 import javax.inject.Inject
 
 data class StudyUiState(
@@ -24,9 +26,14 @@ data class StudyUiState(
     val hasCards: Boolean = false,
     /** Cards still left in this session, in study order. */
     val sessionCards: List<Flashcard> = emptyList(),
+    /** Number of cards the session started with. */
+    val totalCards: Int = 0,
     val currentIndex: Int = 0,
     val isTypingMode: Boolean = false,
     val isSessionComplete: Boolean = false,
+    /** How many times "Again" was pressed in this session. */
+    val againCount: Int = 0,
+    val streakCount: Int = 0,
     val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
     /** The language of the coast this island is on. */
     val targetLanguage: String = ""
@@ -34,6 +41,9 @@ data class StudyUiState(
     val currentCard: Flashcard? get() = sessionCards.getOrNull(currentIndex)
     val canGoBack: Boolean get() = currentIndex > 0
     val canGoForward: Boolean get() = currentIndex < sessionCards.size - 1
+
+    /** Share of the session's cards already marked "Easy", from 0 to 1. */
+    val progress: Float get() = if (totalCards == 0) 0f else (totalCards - sessionCards.size).toFloat() / totalCards
 }
 
 /**
@@ -44,7 +54,8 @@ data class StudyUiState(
 class StudyViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val flashcards: FlashcardRepository,
-    private val settings: SettingsRepository
+    private val settings: SettingsRepository,
+    private val clock: Clock
 ) : ViewModel() {
 
     // Populated by Navigation from the StudyScreenRoute properties.
@@ -55,6 +66,7 @@ class StudyViewModel @Inject constructor(
         val allCards: List<Flashcard> = emptyList(),
         val cards: List<Flashcard> = emptyList(),
         val index: Int = 0,
+        val againCount: Int = 0,
         val isStarted: Boolean = false,
         val isLoading: Boolean = true,
         val isTypingMode: Boolean = false
@@ -65,16 +77,20 @@ class StudyViewModel @Inject constructor(
     val uiState: StateFlow<StudyUiState> = combine(
         session,
         settings.nativeLanguage,
-        flashcards.observeCoastForIsland(islandId).map { it?.language.orEmpty() }
-    ) { s, nativeLanguage, targetLanguage ->
+        flashcards.observeCoastForIsland(islandId).map { it?.language.orEmpty() },
+        settings.streakCount
+    ) { s, nativeLanguage, targetLanguage, streak ->
         StudyUiState(
             islandName = islandName,
             isLoading = s.isLoading,
             hasCards = s.allCards.isNotEmpty(),
             sessionCards = s.cards,
+            totalCards = s.allCards.size,
             currentIndex = s.index,
             isTypingMode = s.isTypingMode,
             isSessionComplete = s.isStarted && s.allCards.isNotEmpty() && s.cards.isEmpty(),
+            againCount = s.againCount,
+            streakCount = streak,
             nativeLanguage = nativeLanguage,
             targetLanguage = targetLanguage
         )
@@ -98,7 +114,7 @@ class StudyViewModel @Inject constructor(
 
     fun onAgain() = updateSession { s ->
         val card = s.cards.getOrNull(s.index) ?: return@updateSession s
-        s.copy(cards = s.cards - card + card)
+        s.copy(cards = s.cards - card + card, againCount = s.againCount + 1)
     }
 
     fun onEasy() = updateSession { s ->
@@ -110,15 +126,19 @@ class StudyViewModel @Inject constructor(
 
     fun previous() = updateSession { it.copy(index = it.index - 1) }
 
-    fun restart() = updateSession { it.copy(cards = it.allCards, index = 0) }
+    fun restart() = updateSession { it.copy(cards = it.allCards, index = 0, againCount = 0) }
 
     fun setTypingMode(enabled: Boolean) = updateSession { it.copy(isTypingMode = enabled) }
 
-    fun deleteCurrentCard() {
+    /** Deletes the current card; [onDeleted] receives it so the delete can be undone. */
+    fun deleteCurrentCard(onDeleted: (DeletedContent) -> Unit) {
         val card = uiState.value.currentCard ?: return
         // observeCards re-emits without the card, which removes it from the session.
-        viewModelScope.launch { flashcards.deleteFlashcard(card) }
+        viewModelScope.launch { onDeleted(flashcards.deleteFlashcard(card)) }
     }
+
+    /** Puts back a deleted card. Not tied to this ViewModel's scope, so undo works after leaving the screen. */
+    suspend fun restore(content: DeletedContent) = flashcards.restore(content)
 
     private fun updateSession(transform: (Session) -> Session) {
         val before = session.value
@@ -127,7 +147,10 @@ class StudyViewModel @Inject constructor(
 
         val justCompleted = before.cards.isNotEmpty() && after.cards.isEmpty() && after.allCards.isNotEmpty()
         if (justCompleted) {
-            viewModelScope.launch { settings.recordStudySession() }
+            viewModelScope.launch {
+                settings.recordStudySession()
+                flashcards.markIslandStudied(islandId, clock.millis())
+            }
         }
     }
 }

@@ -1,10 +1,12 @@
 package com.andreaserick.languagecoast.ui.create
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,7 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
@@ -31,8 +33,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -50,7 +56,11 @@ import com.andreaserick.languagecoast.R
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.components.SelectionDropdown
-import com.andreaserick.languagecoast.ui.theme.CoralAccent
+import com.andreaserick.languagecoast.ui.theme.CoralText
+import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
+import com.andreaserick.languagecoast.ui.theme.SandBeige
+import com.andreaserick.languagecoast.ui.theme.SandMuted
+import com.andreaserick.languagecoast.ui.theme.WaveTeal
 
 /**
  * The "Create" screen. Lets users create new flashcards from a native sentence, either
@@ -67,7 +77,8 @@ fun CreateScreen(viewModel: CreateViewModel = hiltViewModel()) {
         onManualModeChange = viewModel::onManualModeChange,
         onCoastSelected = viewModel::onCoastSelected,
         onAddCoast = viewModel::addCoast,
-        onSave = viewModel::save
+        onSave = viewModel::save,
+        onUndo = viewModel::undoLastSave
     )
 }
 
@@ -80,10 +91,13 @@ private fun CreateContent(
     onManualModeChange: (Boolean) -> Unit,
     onCoastSelected: (Coast) -> Unit,
     onAddCoast: (String) -> Unit,
-    onSave: () -> Unit
+    onSave: () -> Unit,
+    onUndo: () -> Unit
 ) {
     val isManualMode = uiState.isManualMode
     var showNewCoastDialog by remember { mutableStateOf(false) }
+    // The big logo welcomes new users; once they have a coast it shrinks to make room for the form.
+    val logoSize by animateDpAsState(if (uiState.coasts.isEmpty()) 200.dp else 96.dp, label = "logo")
 
     if (showNewCoastDialog) {
         LanguagePickerDialog(
@@ -106,13 +120,13 @@ private fun CreateContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
         Image(
             painter = painterResource(id = R.drawable.logo_language_coast),
-            contentDescription = "Language Coast Logo",
-            modifier = Modifier.size(200.dp)
+            contentDescription = "Language Coast",
+            modifier = Modifier.size(logoSize)
         )
-        Spacer(modifier = Modifier.height(15.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         val selectedCoast = uiState.selectedCoast
         when {
@@ -135,7 +149,7 @@ private fun CreateContent(
         if (uiState.isSameLanguage) {
             Text(
                 text = sameLanguageMessage(selectedCoast.language),
-                color = CoralAccent,
+                color = CoralText,
                 fontSize = 14.sp,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -143,21 +157,11 @@ private fun CreateContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 16.dp)
-        ) {
-            Text("Manual Entry", color = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.width(8.dp))
-            Switch(
-                checked = !isManualMode,
-                onCheckedChange = { onManualModeChange(!it) }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("AI", color = MaterialTheme.colorScheme.primary)
-        }
+        ModeSelector(isManualMode = isManualMode, onManualModeChange = onManualModeChange)
+
+        Spacer(modifier = Modifier.height(20.dp))
 
         OutlinedTextField(
             value = uiState.nativeSentence,
@@ -174,11 +178,11 @@ private fun CreateContent(
             OutlinedTextField(
                 value = uiState.targetSentence,
                 onValueChange = onTargetSentenceChange,
-                label = { Text("${selectedCoast?.language} Translation") },
+                label = { Text("${selectedCoast.language} Translation") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         OutlinedTextField(
@@ -191,7 +195,7 @@ private fun CreateContent(
             singleLine = true
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         Button(
             onClick = onSave,
@@ -217,19 +221,59 @@ private fun CreateContent(
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut()
         ) {
-            uiState.result?.let { ResultCard(it) }
+            when (val result = uiState.result) {
+                is SaveResult.Saved -> SavedCard(result, onUndo = onUndo)
+                is SaveResult.Error -> ErrorCard(result.message)
+                null -> Unit
+            }
         }
         Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+/** Chooses between Gemini translating the card and the user typing the translation themselves. */
+@Composable
+private fun ModeSelector(isManualMode: Boolean, onManualModeChange: (Boolean) -> Unit) {
+    val colors = SegmentedButtonDefaults.colors(
+        activeContainerColor = SandBeige,
+        activeContentColor = DeepOceanBlue,
+        activeBorderColor = SandBeige,
+        inactiveContainerColor = Color.Transparent,
+        inactiveContentColor = SandBeige,
+        inactiveBorderColor = SandMuted
+    )
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        SegmentedButton(
+            selected = !isManualMode,
+            onClick = { onManualModeChange(false) },
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+            colors = colors,
+            icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            label = { Text("AI translates") }
+        )
+        SegmentedButton(
+            selected = isManualMode,
+            onClick = { onManualModeChange(true) },
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+            colors = colors,
+            icon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            label = { Text("I'll type it") }
+        )
     }
 }
 
 /** Shown instead of the form until the user has started their first coast. */
 @Composable
 private fun StartCoastPrompt(onStartCoast: () -> Unit) {
-    Spacer(modifier = Modifier.height(16.dp))
     Text(
-        "Welcome! Start a coast for the language you want to learn. You can add more coasts later.",
-        color = MaterialTheme.colorScheme.primary,
+        "Welcome!",
+        style = MaterialTheme.typography.headlineMedium,
+        color = SandBeige
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        "Start a coast for the language you want to learn. You can add more coasts later.",
+        color = SandBeige,
         textAlign = TextAlign.Center
     )
     Spacer(modifier = Modifier.height(24.dp))
@@ -244,40 +288,54 @@ private fun StartCoastPrompt(onStartCoast: () -> Unit) {
     }
 }
 
-/** Feedback card shown after a save attempt. */
+/** Shows the card that was just saved, so a bad translation can be spotted and undone right away. */
 @Composable
-private fun ResultCard(result: SaveResult) {
-    val isError = result is SaveResult.Error
-    val message = when (result) {
-        is SaveResult.Saved -> if (result.manual) "Manually saved to ${result.category}!" else "AI saved to ${result.category}!"
-        is SaveResult.Error -> "Error: ${result.message}"
-    }
-
+private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
-            contentColor = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
-        ),
+        colors = CardDefaults.cardColors(containerColor = WaveTeal, contentColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 32.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            .padding(bottom = 16.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = if (isError) Icons.Default.Error else Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 4.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(result.emoji, fontSize = 22.sp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Saved to ${result.category}",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onUndo) {
+                    Text("Undo", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(result.nativeText, fontSize = 15.sp, modifier = Modifier.padding(end = 12.dp))
             Text(
-                text = message,
+                text = "→ ${result.targetText}",
+                fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp
+                modifier = Modifier.padding(end = 12.dp, top = 2.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun ErrorCard(message: String) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DeepOceanBlue, contentColor = Color.White),
+        border = BorderStroke(1.dp, CoralText),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp)
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Error, contentDescription = null, tint = CoralText)
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(text = message, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
     }
 }
