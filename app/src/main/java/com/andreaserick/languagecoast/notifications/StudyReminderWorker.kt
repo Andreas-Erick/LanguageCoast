@@ -7,6 +7,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsRepository
 import dagger.hilt.EntryPoint
@@ -114,14 +115,16 @@ class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
     @InstallIn(SingletonComponent::class)
     interface SchedulerEntryPoint {
         fun reminderScheduler(): WorkManagerReminderScheduler
+        fun flashcardRepository(): FlashcardRepository
+        fun clock(): Clock
     }
 
     override suspend fun doWork(): Result {
         Log.d("StudyReminderWorker", "Showing study reminder")
-        NotificationHelper.showStudyNotification(applicationContext)
-        EntryPointAccessors.fromApplication(applicationContext, SchedulerEntryPoint::class.java)
-            .reminderScheduler()
-            .scheduleNext()
+        val entryPoint = EntryPointAccessors.fromApplication(applicationContext, SchedulerEntryPoint::class.java)
+        val dueCount = entryPoint.flashcardRepository().countDueCards(entryPoint.clock().millis())
+        NotificationHelper.showStudyNotification(applicationContext, dueCount)
+        entryPoint.reminderScheduler().scheduleNext()
         return Result.success()
     }
 }

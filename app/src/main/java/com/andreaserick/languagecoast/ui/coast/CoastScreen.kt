@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
+import com.andreaserick.languagecoast.ui.components.cardCountLabel
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
@@ -147,7 +148,7 @@ fun IslandCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(text = plural(summary.cardCount, "card"), fontSize = 13.sp, color = onCardSecondary)
+                Text(text = cardCountLabel(summary.cardCount, summary.dueCount), fontSize = 13.sp, color = onCardSecondary)
             }
 
             Text(

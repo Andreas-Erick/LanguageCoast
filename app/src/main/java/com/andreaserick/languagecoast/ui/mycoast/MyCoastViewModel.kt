@@ -45,7 +45,7 @@ class MyCoastViewModel @Inject constructor(
 ) : ViewModel() {
 
     val uiState: StateFlow<MyCoastUiState> = combine(
-        flashcards.observeCoastSummaries(studiedSince = clock.millis() - RECENT_STUDY_WINDOW.toMillis()),
+        flashcards.observeCoastSummaries(studiedSince = clock.millis() - RECENT_STUDY_WINDOW.toMillis(), now = clock.millis()),
         settings.nativeLanguage,
         settings.streakCount,
         settings.studyDays
