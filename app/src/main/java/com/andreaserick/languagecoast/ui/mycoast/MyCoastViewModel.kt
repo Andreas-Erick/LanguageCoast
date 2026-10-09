@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.CoastSummary
 import com.andreaserick.languagecoast.data.FlashcardRepository
+import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.availableCoastLanguages
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,7 +19,7 @@ import javax.inject.Inject
 data class MyCoastUiState(
     val coasts: List<CoastSummary> = emptyList(),
     /** Languages a new coast can be started for. */
-    val availableLanguages: List<String> = emptyList(),
+    val availableLanguages: List<Language> = emptyList(),
     val streakCount: Int = 0,
     val isLoading: Boolean = true
 )

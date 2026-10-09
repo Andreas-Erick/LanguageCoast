@@ -115,11 +115,29 @@ class CreateViewModelTest {
     }
 
     @Test
+    fun coastInNativeLanguageBlocksSavingInBothModes() = runTest {
+        // e.g. a coast migrated from an old setup whose target language equalled the native one
+        settings.nativeLanguage.value = "Spanish"
+        settings.apiKey.value = "key"
+        assertTrue(viewModel.uiState.isSameLanguage)
+
+        viewModel.onNativeSentenceChange("Hola")
+        viewModel.save()
+        assertEquals(SaveResult.Error(sameLanguageMessage("Spanish")), viewModel.uiState.result)
+        assertNull(translator.lastRequest)
+
+        viewModel.onManualModeChange(true)
+        viewModel.onTargetSentenceChange("Hola")
+        viewModel.save()
+        assertTrue(flashcards.cards.value.isEmpty())
+    }
+
+    @Test
     fun addingCoastFromCreateSelectsIt() = runTest {
         viewModel.addCoast("Korean")
 
         assertEquals("Korean", viewModel.uiState.selectedCoast?.language)
-        assertFalse("Korean" in viewModel.uiState.availableLanguages)
+        assertFalse("Korean" in viewModel.uiState.availableLanguages.map { it.name })
     }
 
     @Test

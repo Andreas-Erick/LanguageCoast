@@ -218,16 +218,19 @@ fun FlipStudyView(
                 // Keep content upright regardless of the card's rotation
                 Box(modifier = Modifier.graphicsLayer { rotationY = if (isFlipped) 180f else 0f }) {
                     if (isFlipped) {
+                        // Words are only clickable when dict.cc has a dictionary for the language.
+                        val hasDictionary = dictCcSearchUrl("", nativeLang, targetLang) != null
                         ClickableWordSentence(
                             sentence = currentCard.targetText,
-                            onWordClick = { word ->
-                                val url = dictCcSearchUrl(word, nativeLang, targetLang)
-                                try {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-                                } catch (e: ActivityNotFoundException) {
-                                    Toast.makeText(context, "No browser found to open dict.cc", Toast.LENGTH_SHORT).show()
+                            onWordClick = if (hasDictionary) { word ->
+                                dictCcSearchUrl(word, nativeLang, targetLang)?.let { url ->
+                                    try {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                                    } catch (e: ActivityNotFoundException) {
+                                        Toast.makeText(context, "No browser found to open dict.cc", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
-                            }
+                            } else null
                         )
                     } else {
                         Text(
@@ -399,10 +402,11 @@ fun SessionCompleteView(onRestart: () -> Unit, onBack: () -> Unit) {
  *
  * @param sentence The full sentence to display.
  * @param onWordClick Callback triggered when a word is clicked, passing the sanitized word.
+ *   If null, the words are shown as plain text.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ClickableWordSentence(sentence: String, onWordClick: (String) -> Unit) {
+fun ClickableWordSentence(sentence: String, onWordClick: ((String) -> Unit)?) {
     // FlowRow automatically wraps words to the next line
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
@@ -417,13 +421,15 @@ fun ClickableWordSentence(sentence: String, onWordClick: (String) -> Unit) {
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .clickable {
-                        // Strip punctuation so we search for just the word (e.g., "hola!" -> "hola")
-                        val cleanWord = word.replace(Regex("[^\\p{L}\\p{Nd}]+"), "")
-                        if (cleanWord.isNotBlank()) {
-                            onWordClick(cleanWord)
+                    .then(
+                        if (onWordClick == null) Modifier else Modifier.clickable {
+                            // Strip punctuation so we search for just the word (e.g., "hola!" -> "hola")
+                            val cleanWord = word.replace(Regex("[^\\p{L}\\p{Nd}]+"), "")
+                            if (cleanWord.isNotBlank()) {
+                                onWordClick(cleanWord)
+                            }
                         }
-                    }
+                    )
                     .padding(vertical = 4.dp, horizontal = 2.dp)
             )
         }

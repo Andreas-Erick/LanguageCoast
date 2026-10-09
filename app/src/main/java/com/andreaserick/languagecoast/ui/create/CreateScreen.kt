@@ -48,8 +48,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.andreaserick.languagecoast.R
 import com.andreaserick.languagecoast.data.Coast
-import com.andreaserick.languagecoast.ui.components.NewCoastDialog
+import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.components.SelectionDropdown
+import com.andreaserick.languagecoast.ui.theme.CoralAccent
 
 /**
  * The "Create" screen. Lets users create new flashcards from a native sentence, either
@@ -85,10 +86,12 @@ private fun CreateContent(
     var showNewCoastDialog by remember { mutableStateOf(false) }
 
     if (showNewCoastDialog) {
-        NewCoastDialog(
-            availableLanguages = uiState.availableLanguages,
-            onCreate = { language ->
-                onAddCoast(language)
+        LanguagePickerDialog(
+            title = "New Coast",
+            subtitle = "Which language do you want to study?",
+            languages = uiState.availableLanguages,
+            onPick = { language ->
+                onAddCoast(language.name)
                 showNewCoastDialog = false
             },
             onDismiss = { showNewCoastDialog = false }
@@ -128,6 +131,17 @@ private fun CreateContent(
             label = "Adding to",
             modifier = Modifier.fillMaxWidth()
         )
+
+        if (uiState.isSameLanguage) {
+            Text(
+                text = sameLanguageMessage(selectedCoast.language),
+                color = CoralAccent,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -184,7 +198,7 @@ private fun CreateContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            enabled = !uiState.isSaving && uiState.nativeSentence.isNotBlank()
+            enabled = !uiState.isSaving && uiState.nativeSentence.isNotBlank() && !uiState.isSameLanguage
         ) {
             if (uiState.isSaving) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
