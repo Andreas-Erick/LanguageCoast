@@ -20,9 +20,11 @@ import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.emojiForCategory
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
+import com.andreaserick.languagecoast.speech.Speaker
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import java.time.Clock
@@ -247,5 +249,22 @@ class FakeTranslator(
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
         lastRequest = request
         return result
+    }
+}
+
+/** [Speaker] that records what it was asked to read; [available] says which languages have a voice. */
+class FakeSpeaker(var available: Set<String> = setOf("Spanish")) : Speaker {
+    val spoken = mutableListOf<Pair<String, String>>()
+    var stops = 0
+        private set
+
+    override fun canSpeak(language: String): Flow<Boolean> = flowOf(language in available)
+
+    override fun speak(text: String, language: String) {
+        spoken += text to language
+    }
+
+    override fun stop() {
+        stops++
     }
 }

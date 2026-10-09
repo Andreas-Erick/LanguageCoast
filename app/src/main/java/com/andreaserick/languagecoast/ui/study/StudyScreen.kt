@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
@@ -165,14 +166,20 @@ fun StudyScreen(onNavigateBack: () -> Unit, viewModel: StudyViewModel = hiltView
                     // when we move to a different card.
                     key(currentCard.cardId) {
                         if (uiState.isTypingMode) {
-                            TypeStudyView(currentCard = currentCard, intervals = uiState.gradeIntervals, onGrade = viewModel::onGrade)
+                            TypeStudyView(
+                                currentCard = currentCard,
+                                intervals = uiState.gradeIntervals,
+                                onGrade = viewModel::onGrade,
+                                onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak }
+                            )
                         } else {
                             FlipStudyView(
                                 currentCard = currentCard,
                                 nativeLang = uiState.nativeLanguage,
                                 targetLang = uiState.targetLanguage,
                                 intervals = uiState.gradeIntervals,
-                                onGrade = viewModel::onGrade
+                                onGrade = viewModel::onGrade,
+                                onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak }
                             )
                         }
                     }
@@ -286,6 +293,7 @@ private const val SWIPE_THRESHOLD_DP = 110
  * @param targetLang The language being studied.
  * @param intervals Days until the card is due again after each grade, shown on the buttons.
  * @param onGrade Callback when the card is graded.
+ * @param onSpeak Reads the translation aloud; null hides the speaker button (no voice for the language).
  */
 @Composable
 fun FlipStudyView(
@@ -293,7 +301,8 @@ fun FlipStudyView(
     nativeLang: String,
     targetLang: String,
     intervals: Map<Grade, Int>,
-    onGrade: (Grade) -> Unit
+    onGrade: (Grade) -> Unit,
+    onSpeak: (() -> Unit)? = null
 ) {
     var isFlipped by remember(currentCard) { mutableStateOf(false) }
     val context = LocalContext.current
@@ -386,6 +395,11 @@ fun FlipStudyView(
                                     }
                                 } else null
                             )
+                            if (onSpeak != null) {
+                                IconButton(onClick = onSpeak, modifier = Modifier.align(Alignment.TopEnd)) {
+                                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = DeepOceanBlue)
+                                }
+                            }
                         } else {
                             Text(
                                 text = currentCard.nativeText,
@@ -499,9 +513,15 @@ internal fun intervalLabel(days: Int): String = when {
  * @param currentCard The [Flashcard] data to test against.
  * @param intervals Days until the card is due again after each grade, shown on the buttons.
  * @param onGrade Callback when the card is graded.
+ * @param onSpeak Reads the translation aloud once checked; null hides the button (no voice for the language).
  */
 @Composable
-fun TypeStudyView(currentCard: Flashcard, intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) {
+fun TypeStudyView(
+    currentCard: Flashcard,
+    intervals: Map<Grade, Int>,
+    onGrade: (Grade) -> Unit,
+    onSpeak: (() -> Unit)? = null
+) {
     var userInput by remember(currentCard) { mutableStateOf("") }
     var hasChecked by remember(currentCard) { mutableStateOf(false) }
     var isCorrect by remember(currentCard) { mutableStateOf(false) }
@@ -576,6 +596,15 @@ fun TypeStudyView(currentCard: Flashcard, intervals: Map<Grade, Int>, onGrade: (
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
+                    }
+                    if (onSpeak != null) {
+                        TextButton(
+                            onClick = onSpeak,
+                            colors = ButtonDefaults.textButtonColors(contentColor = if (isCorrect) DeepOceanBlue else SandBeige)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, modifier = Modifier.padding(end = 6.dp))
+                            Text("Listen")
+                        }
                     }
                 }
             }
