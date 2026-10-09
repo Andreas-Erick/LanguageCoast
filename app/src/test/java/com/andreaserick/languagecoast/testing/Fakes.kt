@@ -2,6 +2,7 @@ package com.andreaserick.languagecoast.testing
 
 import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.Coast
+import com.andreaserick.languagecoast.data.CoastContent
 import com.andreaserick.languagecoast.data.CoastSummary
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.Flashcard
@@ -138,6 +139,12 @@ class FakeFlashcardRepository : FlashcardRepository {
 
     override suspend fun markIslandStudied(islandId: Int, time: Long) {
         islands.update { all -> all.map { if (it.islandId == islandId) it.copy(lastStudied = time) else it } }
+    }
+
+    override suspend fun getAllContent(): List<CoastContent> = coasts.value.map { coast ->
+        val coastIslands = islands.value.filter { it.coastId == coast.coastId }
+        val ids = coastIslands.mapTo(HashSet()) { it.islandId }
+        CoastContent(coast, coastIslands, cards.value.filter { it.islandId in ids })
     }
 
     /** Adds a coast with an explicit ID. */
