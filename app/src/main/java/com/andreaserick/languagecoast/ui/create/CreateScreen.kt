@@ -48,7 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.andreaserick.languagecoast.R
 import com.andreaserick.languagecoast.data.Coast
-import com.andreaserick.languagecoast.ui.components.NewCoastDialog
+import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.components.SelectionDropdown
 
 /**
@@ -85,10 +85,12 @@ private fun CreateContent(
     var showNewCoastDialog by remember { mutableStateOf(false) }
 
     if (showNewCoastDialog) {
-        NewCoastDialog(
-            availableLanguages = uiState.availableLanguages,
-            onCreate = { language ->
-                onAddCoast(language)
+        LanguagePickerDialog(
+            title = "New Coast",
+            subtitle = "Which language do you want to study?",
+            languages = uiState.availableLanguages,
+            onPick = { language ->
+                onAddCoast(language.name)
                 showNewCoastDialog = false
             },
             onDismiss = { showNewCoastDialog = false }

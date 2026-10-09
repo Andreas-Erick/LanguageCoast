@@ -1,39 +1,35 @@
 package com.andreaserick.languagecoast.util
 
+import com.andreaserick.languagecoast.data.Languages
 import java.net.URLEncoder
 
-private val DICT_CC_LANGUAGE_CODES = mapOf(
-    "English" to "en",
-    "Spanish" to "es",
-    "French" to "fr",
-    "German" to "de",
-    "Italian" to "it",
-    "Japanese" to "ja",
-    "Korean" to "ko",
-    "Icelandic" to "is",
-    "Norwegian" to "no"
-)
+/** dict.cc only has dictionaries between English or German and another language. */
+private val DICT_CC_HUB_CODES = setOf("en", "de")
 
 /**
- * Determines the dict.cc subdomain for a language pair, e.g. "esen" for Spanish/English.
- * dict.cc puts the non-English language first.
+ * The dict.cc subdomain for looking up words of [targetLang], e.g. "enis" for English/Icelandic.
+ *
+ * Uses the native/target pair when dict.cc has it; otherwise falls back to the target language's
+ * English dictionary (e.g. French speakers learning Spanish get "enes"). Returns null when dict.cc
+ * has no dictionary for the target language at all.
  *
  * @param nativeLang The user's native language name.
  * @param targetLang The name of the language being learned.
  */
-fun getDictCcPrefix(nativeLang: String, targetLang: String): String {
-    val nativeCode = DICT_CC_LANGUAGE_CODES[nativeLang] ?: "en"
-    val targetCode = DICT_CC_LANGUAGE_CODES[targetLang] ?: "de"
+fun getDictCcPrefix(nativeLang: String, targetLang: String): String? =
+    dictCcPair(nativeLang, targetLang) ?: dictCcPair("English", targetLang)
 
-    return when {
-        nativeCode == "en" -> "${targetCode}en"
-        targetCode == "en" -> "${nativeCode}en"
-        else -> "$nativeCode$targetCode" // e.g. "dees" for German/Spanish
-    }
+/** Builds a dict.cc search URL for [word], or null when dict.cc can't look up [targetLang] words. */
+fun dictCcSearchUrl(word: String, nativeLang: String, targetLang: String): String? {
+    val prefix = getDictCcPrefix(nativeLang, targetLang) ?: return null
+    return "https://$prefix.dict.cc/?s=${URLEncoder.encode(word, "UTF-8")}"
 }
 
-/** Builds a dict.cc search URL for [word] using the given language pair. */
-fun dictCcSearchUrl(word: String, nativeLang: String, targetLang: String): String {
-    val prefix = getDictCcPrefix(nativeLang, targetLang)
-    return "https://$prefix.dict.cc/?s=${URLEncoder.encode(word, "UTF-8")}"
+/** The subdomain for a pair dict.cc has, which is the two codes in alphabetical order (e.g. "bgde"). */
+private fun dictCcPair(firstLang: String, secondLang: String): String? {
+    val first = Languages.byName(firstLang)?.takeIf { it.onDictCc } ?: return null
+    val second = Languages.byName(secondLang)?.takeIf { it.onDictCc } ?: return null
+    if (first == second) return null
+    if (first.code !in DICT_CC_HUB_CODES && second.code !in DICT_CC_HUB_CODES) return null
+    return listOf(first.code, second.code).sorted().joinToString("")
 }

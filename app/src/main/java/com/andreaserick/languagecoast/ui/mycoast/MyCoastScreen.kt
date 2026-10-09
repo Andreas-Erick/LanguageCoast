@@ -42,7 +42,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.CoastSummary
-import com.andreaserick.languagecoast.ui.components.NewCoastDialog
+import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.theme.CoralAccent
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
@@ -63,10 +63,12 @@ fun MyCoastScreen(
     var coastToDelete by remember { mutableStateOf<Coast?>(null) }
 
     if (showNewCoastDialog) {
-        NewCoastDialog(
-            availableLanguages = uiState.availableLanguages,
-            onCreate = { language ->
-                viewModel.addCoast(language)
+        LanguagePickerDialog(
+            title = "New Coast",
+            subtitle = "Which language do you want to study?",
+            languages = uiState.availableLanguages,
+            onPick = { language ->
+                viewModel.addCoast(language.name)
                 showNewCoastDialog = false
             },
             onDismiss = { showNewCoastDialog = false }

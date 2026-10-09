@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.FlashcardRepository
+import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.Translator
@@ -38,7 +39,7 @@ data class CreateUiState(
     /** The coast new cards are added to; null until the user has started a coast. */
     val selectedCoast: Coast? = null,
     /** Languages a new coast can be started for. */
-    val availableLanguages: List<String> = emptyList()
+    val availableLanguages: List<Language> = emptyList()
 )
 
 /** Outcome of the last save, shown as a feedback card. */

@@ -47,12 +47,12 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 ### 🧠 Study modes
 - **Flip Cards**: classic flashcards with an animated flip and *Again* / *Easy* buttons. *Again* moves the card to the end of the session.
 - **Active Type**: test your recall by typing the translation.
-- **Built-in dictionary**: tap any word on the back of a card to look it up on **dict.cc** for your language pair.
+- **Built-in dictionary**: tap any word on the back of a card to look it up on **dict.cc**. It uses your language pair when dict.cc has it (dict.cc pairs every language with English or German) and falls back to the English dictionary otherwise.
 
 ### 🔔 Study reminders
 - A daily reminder arrives at a random time between 9:00 and 21:00, scheduled with **WorkManager**.
 
-**Supported languages:** English, Spanish, French, German, Italian, Japanese, Korean, Icelandic, Norwegian.
+**Supported languages:** all 28 dict.cc languages (Albanian, Bosnian, Bulgarian, Croatian, Czech, Danish, Dutch, English, Esperanto, Finnish, French, German, Greek, Hungarian, Icelandic, Italian, Latin, Norwegian, Polish, Portuguese, Romanian, Russian, Serbian, Slovak, Spanish, Swedish, Turkish, Ukrainian), plus Japanese and Korean without dictionary lookup. The language picker can be searched by English or native name (e.g. *Deutsch*, *Suomi*).
 
 ## 🛠️ Tech stack
 
