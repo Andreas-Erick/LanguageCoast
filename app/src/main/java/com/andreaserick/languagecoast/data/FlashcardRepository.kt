@@ -61,6 +61,9 @@ interface FlashcardRepository {
     /** Saves [card]'s new scheduling fields after it was graded. */
     suspend fun saveReview(card: Flashcard)
 
+    /** Replaces the translation of card [cardId] with [targetText]. */
+    suspend fun updateTranslation(cardId: Int, targetText: String)
+
     /** Number of cards on all coasts that are due at [now]. */
     suspend fun countDueCards(now: Long): Int
 
@@ -143,6 +146,8 @@ class OfflineFlashcardRepository @Inject constructor(
     }
 
     override suspend fun saveReview(card: Flashcard) = dao.updateFlashcard(card)
+
+    override suspend fun updateTranslation(cardId: Int, targetText: String) = dao.setTargetText(cardId, targetText)
 
     override suspend fun countDueCards(now: Long): Int = dao.countDueCards(now)
 

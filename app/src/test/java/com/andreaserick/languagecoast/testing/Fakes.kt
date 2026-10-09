@@ -142,6 +142,10 @@ class FakeFlashcardRepository : FlashcardRepository {
         cards.update { all -> all.map { if (it.cardId == card.cardId) card else it } }
     }
 
+    override suspend fun updateTranslation(cardId: Int, targetText: String) {
+        cards.update { all -> all.map { if (it.cardId == cardId) it.copy(targetText = targetText) else it } }
+    }
+
     override suspend fun countDueCards(now: Long): Int = cards.value.count { isDue(it, now) }
 
     override suspend fun restore(content: DeletedContent) {

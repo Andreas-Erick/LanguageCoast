@@ -332,4 +332,32 @@ class CreateViewModelTest {
 
         assertEquals(listOf("n1"), viewModel.uiState.recentCards.map { it.card.nativeText })
     }
+
+    @Test
+    fun alternativesStayOnScreenAndCanReplaceTheTranslation() = runTest {
+        settings.apiKey.value = "key"
+        translator.result = TranslationResult(
+            "Wollen wir ins Kino?", "Plans", isSuccess = true,
+            alternatives = listOf("Sollen wir ins Kino?"), note = "Both are fine."
+        )
+        viewModel.onNativeSentenceChange("Shall we go to the cinema tonight?")
+        viewModel.save()
+
+        val saved = viewModel.uiState.result as SaveResult.Saved
+        assertEquals(listOf("Sollen wir ins Kino?"), saved.alternatives)
+        assertEquals("Both are fine.", saved.note)
+        // Not hidden after the usual timeout, so there is time to compare.
+        advanceTimeBy(RESULT_VISIBLE_MILLIS + 1)
+        assertTrue(viewModel.uiState.result is SaveResult.Saved)
+
+        viewModel.useAlternative("Sollen wir ins Kino?")
+
+        val switched = viewModel.uiState.result as SaveResult.Saved
+        assertEquals("Sollen wir ins Kino?", switched.targetText)
+        assertEquals(listOf("Wollen wir ins Kino?"), switched.alternatives)
+        assertEquals("Sollen wir ins Kino?", flashcards.cards.value.single().targetText)
+
+        viewModel.undoLastSave()
+        assertTrue(flashcards.cards.value.isEmpty())
+    }
 }
