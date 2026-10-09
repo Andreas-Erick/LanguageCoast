@@ -64,8 +64,9 @@ import com.andreaserick.languagecoast.ui.theme.WaveTeal
 
 /**
  * The "Create" screen. Lets users create new flashcards from a native sentence, either
- * manually (providing their own translation and category) or via Google Gemini, which
- * translates the sentence and picks a category.
+ * manually (providing their own translation and category) or with the translation provider picked
+ * in Settings (on-device, Gemini or OpenRouter), which translates the sentence and, for the cloud
+ * models, picks a category.
  */
 @Composable
 fun CreateScreen(viewModel: CreateViewModel = hiltViewModel()) {
@@ -231,7 +232,7 @@ private fun CreateContent(
     }
 }
 
-/** Chooses between Gemini translating the card and the user typing the translation themselves. */
+/** Chooses between the translation provider translating the card and the user typing the translation themselves. */
 @Composable
 private fun ModeSelector(isManualMode: Boolean, onManualModeChange: (Boolean) -> Unit) {
     val colors = SegmentedButtonDefaults.colors(

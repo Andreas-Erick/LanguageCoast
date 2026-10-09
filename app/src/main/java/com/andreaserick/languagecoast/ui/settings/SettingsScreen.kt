@@ -28,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,9 +61,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
+import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.onDeviceLanguage
 import com.andreaserick.languagecoast.notifications.RANDOM_WINDOW_END_HOUR
 import com.andreaserick.languagecoast.notifications.RANDOM_WINDOW_START_HOUR
 import com.andreaserick.languagecoast.ui.components.LanguageField
@@ -109,15 +113,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 Hint("The language you think in. Each coast sets the language you're learning.")
             }
 
-            SettingsCard(title = "AI translation", icon = Icons.Default.AutoAwesome) {
-                FieldLabel("Gemini model")
-                SelectionDropdown(
-                    options = SettingsDefaults.GEMINI_MODELS,
-                    selected = uiState.geminiModel,
-                    onSelected = viewModel::setGeminiModel
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                ApiKeySection(uiState = uiState, onSave = viewModel::saveApiKey, onEdited = viewModel::onApiKeyEdited)
+            SettingsCard(title = "Translation", icon = Icons.Default.AutoAwesome) {
+                TranslationProviderSection(uiState = uiState, viewModel = viewModel)
             }
 
             SettingsCard(title = "Study reminders", icon = Icons.Default.NotificationsActive) {
@@ -187,14 +184,28 @@ internal fun coastChipColors() = FilterChipDefaults.filterChipColors(
     selectedLabelColor = DeepOceanBlue
 )
 
+/**
+ * An API key field with a "saved" status chip and a Save button.
+ *
+ * @param savedKey The key currently saved, or "" if none.
+ * @param justSaved Whether the key was saved in this visit and not edited since, to say "Saved" on the button.
+ */
 @Composable
-private fun ApiKeySection(uiState: SettingsUiState, onSave: (String) -> Unit, onEdited: () -> Unit) {
-    var currentInput by remember(uiState.savedApiKey) { mutableStateOf(uiState.savedApiKey) }
+private fun ApiKeySection(
+    title: String,
+    hint: String,
+    placeholder: String,
+    savedKey: String,
+    justSaved: Boolean,
+    onSave: (String) -> Unit,
+    onEdited: () -> Unit
+) {
+    var currentInput by remember(savedKey) { mutableStateOf(savedKey) }
     var passwordVisible by remember { mutableStateOf(false) }
-    val isSaved = uiState.savedApiKey.isNotEmpty() && currentInput.trim() == uiState.savedApiKey
+    val isSaved = savedKey.isNotEmpty() && currentInput.trim() == savedKey
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Google Gemini API key", color = MistWhite, fontSize = 14.sp, modifier = Modifier.weight(1f))
+        Text(title, color = MistWhite, fontSize = 14.sp, modifier = Modifier.weight(1f))
         AssistChip(
             onClick = {},
             enabled = false,
@@ -202,7 +213,7 @@ private fun ApiKeySection(uiState: SettingsUiState, onSave: (String) -> Unit, on
                 Text(
                     when {
                         isSaved -> "Key saved"
-                        uiState.savedApiKey.isEmpty() -> "No key yet"
+                        savedKey.isEmpty() -> "No key yet"
                         else -> "Unsaved changes"
                     }
                 )
@@ -218,7 +229,7 @@ private fun ApiKeySection(uiState: SettingsUiState, onSave: (String) -> Unit, on
             border = if (isSaved) null else AssistChipDefaults.assistChipBorder(enabled = false, disabledBorderColor = SandMuted)
         )
     }
-    Hint("Get a free key from Google AI Studio. It stays on this device.")
+    Hint(hint)
     Spacer(modifier = Modifier.height(12.dp))
 
     OutlinedTextField(
@@ -228,7 +239,7 @@ private fun ApiKeySection(uiState: SettingsUiState, onSave: (String) -> Unit, on
             onEdited()
         },
         label = { Text("API Key") },
-        placeholder = { Text("AIzaSy...") },
+        placeholder = { Text(placeholder) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -248,11 +259,86 @@ private fun ApiKeySection(uiState: SettingsUiState, onSave: (String) -> Unit, on
     Button(
         onClick = { onSave(currentInput) },
         enabled = !isSaved && currentInput.isNotBlank(),
+        // Dark text: white on sand is below 4.5:1 contrast.
+        colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue),
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp)
     ) {
-        Text(if (uiState.apiKeySaved) "Saved" else "Save API Key", fontSize = 16.sp)
+        Text(if (justSaved) "Saved" else "Save API Key", fontSize = 16.sp)
+    }
+}
+
+/** How each translation provider is set up: nothing for on-device, a model and key for the cloud ones. */
+@Composable
+private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: SettingsViewModel) {
+    FieldLabel("Translate with")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TranslationProvider.entries.forEach { provider ->
+            FilterChip(
+                selected = provider == uiState.translationProvider,
+                onClick = { viewModel.setTranslationProvider(provider) },
+                label = { Text(provider.label) },
+                colors = coastChipColors()
+            )
+        }
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+
+    when (uiState.translationProvider) {
+        TranslationProvider.OnDevice -> {
+            val unsupported = remember { Languages.ALL.filter { onDeviceLanguage(it.name) == null }.map { it.name } }
+            Hint(
+                "Free and private, and works offline. Each language is downloaded once (about 30 MB). " +
+                    "It only translates, so cards go into the category you type, or \"$DEFAULT_CATEGORY\"."
+            )
+            if (unsupported.isNotEmpty()) Hint("Not available for ${unsupported.joinToString(", ")}.")
+        }
+        TranslationProvider.Gemini -> {
+            Spacer(modifier = Modifier.height(8.dp))
+            FieldLabel("Gemini model")
+            SelectionDropdown(
+                options = SettingsDefaults.GEMINI_MODELS,
+                selected = uiState.geminiModel,
+                onSelected = viewModel::setGeminiModel
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            ApiKeySection(
+                title = "Google Gemini API key",
+                hint = "Get a free key from Google AI Studio. It stays on this device.",
+                placeholder = "AIzaSy...",
+                savedKey = uiState.savedApiKey,
+                justSaved = uiState.apiKeySaved,
+                onSave = viewModel::saveApiKey,
+                onEdited = viewModel::onApiKeyEdited
+            )
+        }
+        TranslationProvider.OpenRouter -> {
+            Spacer(modifier = Modifier.height(8.dp))
+            FieldLabel("Model")
+            var model by remember { mutableStateOf(uiState.openRouterModel) }
+            OutlinedTextField(
+                value = model,
+                onValueChange = {
+                    model = it
+                    viewModel.setOpenRouterModel(it)
+                },
+                placeholder = { Text(SettingsDefaults.OPENROUTER_MODEL) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Hint("\"${SettingsDefaults.OPENROUTER_MODEL}\" picks a model for you. Find other model IDs on openrouter.ai/models.")
+            Spacer(modifier = Modifier.height(16.dp))
+            ApiKeySection(
+                title = "OpenRouter API key",
+                hint = "Create a key on openrouter.ai. Requests are paid from your OpenRouter credits. The key stays on this device.",
+                placeholder = "sk-or-...",
+                savedKey = uiState.savedOpenRouterKey,
+                justSaved = uiState.openRouterSaved,
+                onSave = viewModel::saveOpenRouterKey,
+                onEdited = viewModel::onOpenRouterKeyEdited
+            )
+        }
     }
 }
 

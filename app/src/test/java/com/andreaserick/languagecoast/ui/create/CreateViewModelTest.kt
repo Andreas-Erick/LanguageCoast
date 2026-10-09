@@ -1,5 +1,8 @@
 package com.andreaserick.languagecoast.ui.create
 
+import com.andreaserick.languagecoast.data.SettingsDefaults
+import com.andreaserick.languagecoast.data.TranslationEngine
+import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationResult
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
@@ -71,7 +74,7 @@ class CreateViewModelTest {
 
         viewModel.save()
 
-        assertEquals(SaveResult.Error("Please enter an API Key in Settings first!"), viewModel.uiState.result)
+        assertEquals(SaveResult.Error("Please enter a Gemini API key in Settings first!"), viewModel.uiState.result)
         assertNull(translator.lastRequest)
     }
 
@@ -87,7 +90,7 @@ class CreateViewModelTest {
         viewModel.save()
 
         val request = translator.lastRequest!!
-        assertEquals("key", request.apiKey)
+        assertEquals(TranslationEngine.Gemini("key", SettingsDefaults.GEMINI_MODEL), request.engine)
         assertEquals("Icelandic", request.targetLanguage)
         assertEquals(listOf("Island 2"), request.existingCategories)
         val result = viewModel.uiState.result as SaveResult.Saved
@@ -218,5 +221,52 @@ class CreateViewModelTest {
 
         assertNull(viewModel.uiState.result)
         assertNull(translator.lastRequest)
+    }
+
+    @Test
+    fun onDeviceTranslationNeedsNoKey() = runTest {
+        settings.translationProvider.value = TranslationProvider.OnDevice
+        viewModel.onNativeSentenceChange("Hello")
+
+        viewModel.save()
+
+        assertEquals(TranslationEngine.OnDevice, translator.lastRequest!!.engine)
+        assertTrue(viewModel.uiState.result is SaveResult.Saved)
+    }
+
+    @Test
+    fun openRouterUsesItsKeyAndFallsBackToTheAutoModel() = runTest {
+        settings.translationProvider.value = TranslationProvider.OpenRouter
+        settings.openRouterKey.value = "sk-or-key"
+        settings.openRouterModel.value = "  "
+        viewModel.onNativeSentenceChange("Hello")
+
+        viewModel.save()
+
+        assertEquals(TranslationEngine.OpenRouter("sk-or-key", SettingsDefaults.OPENROUTER_MODEL), translator.lastRequest!!.engine)
+    }
+
+    @Test
+    fun openRouterWithoutKeyShowsError() = runTest {
+        settings.translationProvider.value = TranslationProvider.OpenRouter
+        settings.apiKey.value = "a Gemini key doesn't count"
+        viewModel.onNativeSentenceChange("Hello")
+
+        viewModel.save()
+
+        assertEquals(SaveResult.Error("Please enter an OpenRouter API key in Settings first!"), viewModel.uiState.result)
+        assertNull(translator.lastRequest)
+    }
+
+    @Test
+    fun translatorErrorMessageIsShown() = runTest {
+        settings.translationProvider.value = TranslationProvider.OnDevice
+        translator.result = TranslationResult.failure("On-device translation doesn't cover Latin.")
+        viewModel.onNativeSentenceChange("Hello")
+
+        viewModel.save()
+
+        assertEquals(SaveResult.Error("On-device translation doesn't cover Latin."), viewModel.uiState.result)
+        assertTrue(flashcards.cards.value.isEmpty())
     }
 }

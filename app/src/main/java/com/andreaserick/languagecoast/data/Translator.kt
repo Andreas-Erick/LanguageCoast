@@ -2,6 +2,7 @@ package com.andreaserick.languagecoast.data
 
 import android.util.Log
 import com.google.genai.Client
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -16,11 +17,26 @@ interface Translator {
     suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult
 }
 
+/** Where translations come from, as picked in Settings. */
+enum class TranslationProvider(val label: String) {
+    /** Google ML Kit on the phone: free and offline, but it only translates and can't pick a category. */
+    OnDevice("On-device"),
+    Gemini("Gemini"),
+    /** One API key for many cloud models (GPT, Claude, Llama, …) through openrouter.ai. */
+    OpenRouter("OpenRouter")
+}
+
+/** The provider for one translation, with what it needs to run. */
+sealed interface TranslationEngine {
+    data object OnDevice : TranslationEngine
+    data class Gemini(val apiKey: String, val model: String) : TranslationEngine
+    data class OpenRouter(val apiKey: String, val model: String) : TranslationEngine
+}
+
 /**
  * Everything needed for one translation.
  *
- * @property apiKey The Google Gemini API key used for authentication.
- * @property modelName The Gemini model to use.
+ * @property engine The provider that translates, with its key and model.
  * @property nativeSentence The original sentence in the user's native language.
  * @property nativeLanguage The language [nativeSentence] is written in.
  * @property targetLanguage The language to translate the sentence into.
@@ -28,8 +44,7 @@ interface Translator {
  * @property existingCategories Already created categories, to help the AI stay consistent.
  */
 data class TranslationRequest(
-    val apiKey: String,
-    val modelName: String,
+    val engine: TranslationEngine,
     val nativeSentence: String,
     val nativeLanguage: String,
     val targetLanguage: String,
@@ -37,7 +52,20 @@ data class TranslationRequest(
     val existingCategories: List<String>
 )
 
-/** [Translator] backed by Google Gemini. */
+/** The production [Translator]: hands each request to the translator for its [TranslationRequest.engine]. */
+class RoutingTranslator @Inject constructor(
+    private val onDevice: OnDeviceTranslator,
+    private val gemini: GeminiTranslator,
+    private val openRouter: OpenRouterTranslator
+) : Translator {
+    override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult = when (request.engine) {
+        TranslationEngine.OnDevice -> onDevice.translateAndCategorize(request)
+        is TranslationEngine.Gemini -> gemini.translateAndCategorize(request)
+        is TranslationEngine.OpenRouter -> openRouter.translateAndCategorize(request)
+    }
+}
+
+/** [Translator] backed by Google Gemini; expects a [TranslationEngine.Gemini] request. */
 @Singleton
 class GeminiTranslator @Inject constructor() : Translator {
 
@@ -54,14 +82,17 @@ class GeminiTranslator @Inject constructor() : Translator {
             }
 
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
+        val engine = request.engine as? TranslationEngine.Gemini ?: return TranslationResult.FAILURE
         val prompt = buildTranslationPrompt(request)
         return try {
             val responseText = withContext(Dispatchers.IO) {
                 // The trailing null uses the default GenerateContentConfig.
-                clientFor(request.apiKey).models.generateContent(request.modelName, prompt, null).text()
+                clientFor(engine.apiKey).models.generateContent(engine.model, prompt, null).text()
                     ?: throw IllegalStateException("Empty response from AI")
             }
             parseTranslationResponse(responseText)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Translation request failed", e)
             TranslationResult.FAILURE
@@ -73,7 +104,7 @@ class GeminiTranslator @Inject constructor() : Translator {
     }
 }
 
-/** Builds the Gemini prompt for [request]. */
+/** Builds the prompt cloud models (Gemini, OpenRouter) get for [request]. */
 internal fun buildTranslationPrompt(request: TranslationRequest): String = with(request) {
     val categoryText = if (existingCategories.isEmpty()) {
         "You have no existing categories yet. Generate a brand new, single-word category (the name of the category should be in English)."
@@ -145,14 +176,22 @@ private fun looksLikeEmoji(text: String): Boolean =
  * @property finalCategory The category assigned to the translation (from the user, an existing one, or newly generated).
  * @property isSuccess Whether the AI request and parsing succeeded.
  * @property emoji An emoji picturing the category, if the model gave a usable one.
+ * @property errorMessage Why the translation failed, worded for the user, if known.
  */
 data class TranslationResult(
     val translatedText: String,
     val finalCategory: String,
     val isSuccess: Boolean,
-    val emoji: String? = null
+    val emoji: String? = null,
+    val errorMessage: String? = null
 ) {
     companion object {
         val FAILURE = TranslationResult("Error: Could not translate", "Error", isSuccess = false)
+
+        /** A failure with a message the user can act on. */
+        fun failure(message: String) = FAILURE.copy(errorMessage = message)
     }
 }
+
+/** Category for cards whose translation came without one (manual or on-device) when the user left it blank. */
+const val DEFAULT_CATEGORY = "My Words"
