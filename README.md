@@ -26,6 +26,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
   <img src="docs/screenshots/my-coast.png" alt="My Coasts with the study streak and a German and an Icelandic coast, each showing its due cards" width="200" />
   <img src="docs/screenshots/coast.png" alt="German Coast with its Language Islands and how many cards on each are due" width="200" />
   <img src="docs/screenshots/study.png" alt="Flipped flashcard with a read-aloud button and Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
+  <img src="docs/screenshots/alternatives.png" alt="Sheet with other ways to say a sentence, a note on formal and informal forms, and read-aloud and Make main buttons" width="200" />
   <img src="docs/screenshots/settings.png" alt="Settings with the native language and the choice of on-device, Gemini or OpenRouter translation" width="200" />
   <img src="docs/screenshots/notification.png" alt="Daily study reminder saying how many cards are due" width="200" />
 </p>
@@ -68,7 +69,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - A daily reminder, scheduled with **WorkManager**: at a surprise time between 9:00 and 21:00, or at a fixed time you pick in Settings. It can also be turned off.
 
 ### 📤 Export & import
-- **Export to Anki**: save one coast or all of them as a text file that Anki imports with *File › Import*. Each island becomes a subdeck (e.g. *German Coast::Greetings*).
+- **Export to Anki**: save one coast or all of them as a text file that Anki imports with *File › Import*. Each island becomes a subdeck (e.g. *German Coast::Greetings*), and alternatives and notes go on the back of the card. Review progress isn't exported, so cards start fresh in Anki.
 - **Export to Markdown**: one table per island, to read, print or keep in your notes app.
 - **Import from CSV or tab-separated files**, e.g. a spreadsheet or an Anki notes export. A third column (or Anki's deck column) picks the island, a header row is detected, and cards the coast already has are skipped. Imports can be undone.
 - Files are saved and opened with the system file picker, so they can go to Downloads, Google Drive and so on. The app needs no storage permission.
@@ -86,6 +87,8 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 | Database | [Room](https://developer.android.com/training/data-storage/room) |
 | Preferences | [Jetpack DataStore](https://developer.android.com/topic/libraries/architecture/datastore) |
 | Navigation | [Navigation Compose](https://developer.android.com/jetpack/compose/navigation) with type-safe routes |
+| Spaced repetition | [FSRS-5](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm) with its default parameters (implemented in `data/SpacedRepetition.kt`) |
+| Text-to-speech | Android [`TextToSpeech`](https://developer.android.com/reference/android/speech/tts/TextToSpeech) with the voices installed on the phone |
 | Background work | [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) |
 | Testing | JUnit 4, kotlinx-coroutines-test, hand-written fakes |
 | CI/CD | GitHub Actions (tests on every push, signed APK on every release tag) |
@@ -116,6 +119,7 @@ app/src/main/java/com/andreaserick/languagecoast/
 ├── di/                      # Hilt modules
 ├── navigation/              # Type-safe route definitions
 ├── notifications/           # Daily study reminder (WorkManager + notification)
+├── speech/                  # Reading cards aloud (text-to-speech)
 ├── ui/
 │   ├── coast/               # Each feature has a Screen + ViewModel
 │   ├── components/          # Shared composables (screen header, language picker, dropdown, undo snackbar)
@@ -150,11 +154,13 @@ app/src/main/java/com/andreaserick/languagecoast/
 ```bash
 ./gradlew testDebugUnitTest
 ```
-The unit tests cover the ViewModels, the streak rules, prompt building and response parsing. They run on every push via GitHub Actions.
+The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing (Gemini and OpenRouter), export and import, and answer checking in Active Type. They run on every push via GitHub Actions. Database migrations are tested on a device or emulator with `./gradlew connectedDebugAndroidTest`.
 
 ## 📦 Releases
 
-Signed APKs are published on the [Releases](https://github.com/Andreas-Erick/LanguageCoast/releases) page. Download the APK on an Android device to install it. You may need to allow installs from unknown sources.
+Signed APKs are published on the [Releases](https://github.com/Andreas-Erick/LanguageCoast/releases) page. Download the APK on an Android device to install it. You may need to allow installs from unknown sources. Installing a new version over an old one keeps your cards and progress.
+
+The released APK is built for ARM phones (practically every Android phone) to keep it small. To run the app on an x86 emulator, build it from Android Studio instead.
 
 <details>
 <summary>How releases are built (for maintainers)</summary>
