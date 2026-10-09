@@ -11,11 +11,14 @@ import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.data.reviewOutcomes
+import com.andreaserick.languagecoast.speech.Speaker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -47,7 +50,9 @@ data class StudyUiState(
     val streakCount: Int = 0,
     val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
     /** The language of the coast this island is on. */
-    val targetLanguage: String = ""
+    val targetLanguage: String = "",
+    /** Whether the phone has a voice to read [targetLanguage] aloud. */
+    val canSpeak: Boolean = false
 ) {
     val currentCard: Flashcard? get() = sessionCards.getOrNull(currentIndex)
     val canGoBack: Boolean get() = currentIndex > 0
@@ -67,7 +72,8 @@ class StudyViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
-    private val clock: Clock
+    private val clock: Clock,
+    private val speaker: Speaker
 ) : ViewModel() {
 
     // Populated by Navigation from the StudyScreenRoute properties.
@@ -87,12 +93,16 @@ class StudyViewModel @Inject constructor(
 
     private val session = MutableStateFlow(Session())
 
+    private val targetLanguage = flashcards.observeCoastForIsland(islandId).map { it?.language.orEmpty() }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<StudyUiState> = combine(
         session,
         settings.nativeLanguage,
-        flashcards.observeCoastForIsland(islandId).map { it?.language.orEmpty() },
-        settings.streakCount
-    ) { s, nativeLanguage, targetLanguage, streak ->
+        targetLanguage,
+        settings.streakCount,
+        targetLanguage.flatMapLatest { speaker.canSpeak(it) }
+    ) { s, nativeLanguage, targetLanguage, streak, canSpeak ->
         val now = clock.instant()
         StudyUiState(
             islandName = islandName,
@@ -111,7 +121,8 @@ class StudyViewModel @Inject constructor(
             againCount = s.againCount,
             streakCount = streak,
             nativeLanguage = nativeLanguage,
-            targetLanguage = targetLanguage
+            targetLanguage = targetLanguage,
+            canSpeak = canSpeak
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StudyUiState(islandName = islandName))
 
@@ -133,9 +144,18 @@ class StudyViewModel @Inject constructor(
         }
     }
 
+    /** Reads the current card's translation aloud. */
+    fun speakAnswer() {
+        val state = uiState.value
+        val card = state.currentCard ?: return
+        if (state.canSpeak) speaker.speak(card.targetText, state.targetLanguage)
+    }
+
     /** Grades the current card, saves its new schedule and moves on. */
     fun onGrade(grade: Grade) {
         val card = session.value.let { it.cards.getOrNull(it.index) } ?: return
+        // Don't keep reading the old answer over the next card.
+        speaker.stop()
         val reviewed = reviewOutcomes(card, clock.instant(), clock.zone).getValue(grade).card
         updateSession { s ->
             val rest = s.cards.filterNot { it.cardId == card.cardId }
@@ -175,6 +195,10 @@ class StudyViewModel @Inject constructor(
                 flashcards.markIslandStudied(islandId, clock.millis())
             }
         }
+    }
+
+    override fun onCleared() {
+        speaker.stop()
     }
 
     private fun daysUntilNextDue(cards: List<Flashcard>, now: Instant): Int? {
