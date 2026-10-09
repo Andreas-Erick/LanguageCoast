@@ -5,14 +5,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.Translator
+import com.andreaserick.languagecoast.data.availableCoastLanguages
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -29,7 +32,13 @@ data class CreateUiState(
     val category: String = "",
     val isManualMode: Boolean = false,
     val isSaving: Boolean = false,
-    val result: SaveResult? = null
+    val result: SaveResult? = null,
+    val isLoadingCoasts: Boolean = true,
+    val coasts: List<Coast> = emptyList(),
+    /** The coast new cards are added to; null until the user has started a coast. */
+    val selectedCoast: Coast? = null,
+    /** Languages a new coast can be started for. */
+    val availableLanguages: List<String> = emptyList()
 )
 
 /** Outcome of the last save, shown as a feedback card. */
@@ -50,6 +59,38 @@ class CreateViewModel @Inject constructor(
         private set
 
     private var dismissJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            combine(
+                flashcards.observeCoasts(),
+                settings.activeCoastId,
+                settings.nativeLanguage
+            ) { coasts, activeCoastId, nativeLanguage ->
+                Triple(coasts, activeCoastId, nativeLanguage)
+            }.collect { (coasts, activeCoastId, nativeLanguage) ->
+                uiState = uiState.copy(
+                    isLoadingCoasts = false,
+                    coasts = coasts,
+                    // Fall back to the first coast if none was picked yet or the active one was deleted.
+                    selectedCoast = coasts.firstOrNull { it.coastId == activeCoastId } ?: coasts.firstOrNull(),
+                    availableLanguages = availableCoastLanguages(coasts, nativeLanguage)
+                )
+            }
+        }
+    }
+
+    fun onCoastSelected(coast: Coast) {
+        viewModelScope.launch { settings.setActiveCoastId(coast.coastId) }
+    }
+
+    /** Starts a coast for [language] and selects it. */
+    fun addCoast(language: String) {
+        viewModelScope.launch {
+            val coastId = flashcards.addCoast(language)
+            settings.setActiveCoastId(coastId)
+        }
+    }
 
     fun onNativeSentenceChange(value: String) {
         uiState = uiState.copy(nativeSentence = value)
@@ -102,11 +143,12 @@ class CreateViewModel @Inject constructor(
 
     private suspend fun createCard(state: CreateUiState): SaveResult {
         val nativeText = state.nativeSentence.trim()
+        val coast = state.selectedCoast ?: return SaveResult.Error("Start a coast first!")
 
         if (state.isManualMode) {
             if (state.targetSentence.isBlank()) return SaveResult.Error("Translation cannot be empty in manual mode.")
             val category = state.category.trim().ifBlank { DEFAULT_MANUAL_CATEGORY }
-            flashcards.addFlashcard(nativeText, state.targetSentence.trim(), category)
+            flashcards.addFlashcard(coast.coastId, nativeText, state.targetSentence.trim(), category)
             return SaveResult.Saved(category, manual = true)
         }
 
@@ -119,14 +161,14 @@ class CreateViewModel @Inject constructor(
                 modelName = settings.geminiModel.first(),
                 nativeSentence = nativeText,
                 nativeLanguage = settings.nativeLanguage.first(),
-                targetLanguage = settings.targetLanguage.first(),
+                targetLanguage = coast.language,
                 userCategory = state.category.trim(),
-                existingCategories = flashcards.observeIslands().first().map { it.name }
+                existingCategories = flashcards.observeIslands(coast.coastId).first().map { it.name }
             )
         )
         if (!translation.isSuccess) return SaveResult.Error("AI Translation Failed.")
 
-        flashcards.addFlashcard(nativeText, translation.translatedText, translation.finalCategory)
+        flashcards.addFlashcard(coast.coastId, nativeText, translation.translatedText, translation.finalCategory)
         return SaveResult.Saved(translation.finalCategory, manual = false)
     }
 }

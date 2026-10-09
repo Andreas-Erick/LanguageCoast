@@ -27,6 +27,7 @@ class CreateViewModelTest {
 
     @Before
     fun setUp() {
+        flashcards.seedCoast(coastId = 1, language = "Spanish")
         viewModel = CreateViewModel(flashcards, settings, translator)
     }
 
@@ -70,10 +71,12 @@ class CreateViewModelTest {
     }
 
     @Test
-    fun aiSaveSendsSettingsAndExistingIslandsToTranslator() = runTest {
+    fun aiSaveUsesSelectedCoastLanguageAndOnlyItsIslands() = runTest {
         settings.apiKey.value = "key"
-        settings.targetLanguage.value = "Icelandic"
-        flashcards.seed(islandId = 1, cardCount = 1)
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
+        flashcards.seedCoast(coastId = 2, language = "Icelandic")
+        flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
+        viewModel.onCoastSelected(flashcards.coasts.value.last())
         viewModel.onNativeSentenceChange("horse")
 
         viewModel.save()
@@ -81,9 +84,42 @@ class CreateViewModelTest {
         val request = translator.lastRequest!!
         assertEquals("key", request.apiKey)
         assertEquals("Icelandic", request.targetLanguage)
-        assertEquals(listOf("Island 1"), request.existingCategories)
+        assertEquals(listOf("Island 2"), request.existingCategories)
         assertEquals(SaveResult.Saved("Greetings", manual = false), viewModel.uiState.result)
-        assertTrue(flashcards.cards.value.any { it.targetText == "Hola" })
+        val newIsland = flashcards.islands.value.single { it.name == "Greetings" }
+        assertEquals(2, newIsland.coastId)
+    }
+
+    @Test
+    fun firstCoastIsSelectedUntilAnotherIsPicked() = runTest {
+        flashcards.seedCoast(coastId = 2, language = "German")
+        assertEquals("Spanish", viewModel.uiState.selectedCoast?.language)
+
+        viewModel.onCoastSelected(flashcards.coasts.value.last())
+
+        assertEquals(2, settings.activeCoastId.value)
+        assertEquals("German", viewModel.uiState.selectedCoast?.language)
+    }
+
+    @Test
+    fun withoutCoastsSavingAsksToStartOne() = runTest {
+        flashcards.coasts.value = emptyList()
+        viewModel.onManualModeChange(true)
+        viewModel.onNativeSentenceChange("Hello")
+        viewModel.onTargetSentenceChange("Hola")
+
+        viewModel.save()
+
+        assertEquals(SaveResult.Error("Start a coast first!"), viewModel.uiState.result)
+        assertTrue(flashcards.cards.value.isEmpty())
+    }
+
+    @Test
+    fun addingCoastFromCreateSelectsIt() = runTest {
+        viewModel.addCoast("Korean")
+
+        assertEquals("Korean", viewModel.uiState.selectedCoast?.language)
+        assertFalse("Korean" in viewModel.uiState.availableLanguages)
     }
 
     @Test

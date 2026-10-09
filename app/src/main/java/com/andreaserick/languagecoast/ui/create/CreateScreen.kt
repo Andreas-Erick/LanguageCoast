@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
@@ -33,14 +34,22 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.andreaserick.languagecoast.R
+import com.andreaserick.languagecoast.data.Coast
+import com.andreaserick.languagecoast.ui.components.NewCoastDialog
+import com.andreaserick.languagecoast.ui.components.SelectionDropdown
 
 /**
  * The "Create" screen. Lets users create new flashcards from a native sentence, either
@@ -55,6 +64,8 @@ fun CreateScreen(viewModel: CreateViewModel = hiltViewModel()) {
         onTargetSentenceChange = viewModel::onTargetSentenceChange,
         onCategoryChange = viewModel::onCategoryChange,
         onManualModeChange = viewModel::onManualModeChange,
+        onCoastSelected = viewModel::onCoastSelected,
+        onAddCoast = viewModel::addCoast,
         onSave = viewModel::save
     )
 }
@@ -66,9 +77,23 @@ private fun CreateContent(
     onTargetSentenceChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
     onManualModeChange: (Boolean) -> Unit,
+    onCoastSelected: (Coast) -> Unit,
+    onAddCoast: (String) -> Unit,
     onSave: () -> Unit
 ) {
     val isManualMode = uiState.isManualMode
+    var showNewCoastDialog by remember { mutableStateOf(false) }
+
+    if (showNewCoastDialog) {
+        NewCoastDialog(
+            availableLanguages = uiState.availableLanguages,
+            onCreate = { language ->
+                onAddCoast(language)
+                showNewCoastDialog = false
+            },
+            onDismiss = { showNewCoastDialog = false }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -85,6 +110,26 @@ private fun CreateContent(
             modifier = Modifier.size(200.dp)
         )
         Spacer(modifier = Modifier.height(15.dp))
+
+        val selectedCoast = uiState.selectedCoast
+        when {
+            uiState.isLoadingCoasts -> return@Column
+            selectedCoast == null -> {
+                StartCoastPrompt(onStartCoast = { showNewCoastDialog = true })
+                return@Column
+            }
+        }
+
+        SelectionDropdown(
+            options = uiState.coasts,
+            selected = selectedCoast,
+            onSelected = onCoastSelected,
+            optionLabel = { it.displayName },
+            label = "Adding to",
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -115,8 +160,7 @@ private fun CreateContent(
             OutlinedTextField(
                 value = uiState.targetSentence,
                 onValueChange = onTargetSentenceChange,
-                label = { Text("Target Translation") },
-                placeholder = { Text("e.g., ¿Dónde está la estación de tren?") },
+                label = { Text("${selectedCoast?.language} Translation") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2
             )
@@ -162,6 +206,27 @@ private fun CreateContent(
             uiState.result?.let { ResultCard(it) }
         }
         Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+/** Shown instead of the form until the user has started their first coast. */
+@Composable
+private fun StartCoastPrompt(onStartCoast: () -> Unit) {
+    Spacer(modifier = Modifier.height(16.dp))
+    Text(
+        "Welcome! Start a coast for the language you want to learn. You can add more coasts later.",
+        color = MaterialTheme.colorScheme.primary,
+        textAlign = TextAlign.Center
+    )
+    Spacer(modifier = Modifier.height(24.dp))
+    Button(
+        onClick = onStartCoast,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+    ) {
+        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+        Text("Start a Coast", fontSize = 18.sp)
     }
 }
 

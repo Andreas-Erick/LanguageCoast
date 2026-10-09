@@ -15,7 +15,6 @@ import javax.inject.Inject
 
 data class SettingsUiState(
     val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
-    val targetLanguage: String = SettingsDefaults.TARGET_LANGUAGE,
     val geminiModel: String = SettingsDefaults.GEMINI_MODEL,
     val savedApiKey: String = "",
     val apiKeySaved: Boolean = false
@@ -30,20 +29,15 @@ class SettingsViewModel @Inject constructor(
 
     val uiState: StateFlow<SettingsUiState> = combine(
         settings.nativeLanguage,
-        settings.targetLanguage,
         settings.geminiModel,
         settings.apiKey,
         apiKeySaved
-    ) { native, target, model, apiKey, saved ->
-        SettingsUiState(native, target, model, apiKey, saved)
+    ) { native, model, apiKey, saved ->
+        SettingsUiState(native, model, apiKey, saved)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     fun setNativeLanguage(language: String) {
         viewModelScope.launch { settings.setNativeLanguage(language) }
-    }
-
-    fun setTargetLanguage(language: String) {
-        viewModelScope.launch { settings.setTargetLanguage(language) }
     }
 
     fun setGeminiModel(model: String) {
