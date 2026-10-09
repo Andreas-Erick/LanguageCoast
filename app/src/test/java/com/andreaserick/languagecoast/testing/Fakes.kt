@@ -12,6 +12,7 @@ import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.TranslationResult
 import com.andreaserick.languagecoast.data.Translator
@@ -173,8 +174,11 @@ class FakeFlashcardRepository : FlashcardRepository {
 class FakeSettingsRepository : SettingsRepository {
     override val nativeLanguage = MutableStateFlow(SettingsDefaults.NATIVE_LANGUAGE)
     override val activeCoastId = MutableStateFlow<Int?>(null)
+    override val translationProvider = MutableStateFlow(TranslationProvider.Gemini)
     override val apiKey = MutableStateFlow("")
     override val geminiModel = MutableStateFlow(SettingsDefaults.GEMINI_MODEL)
+    override val openRouterKey = MutableStateFlow("")
+    override val openRouterModel = MutableStateFlow(SettingsDefaults.OPENROUTER_MODEL)
     override val streakCount = MutableStateFlow(0)
     override val studyDays = MutableStateFlow<Set<LocalDate>>(emptySet())
     override val reminderSettings = MutableStateFlow(ReminderSettings())
@@ -188,6 +192,9 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setActiveCoastId(coastId: Int) { activeCoastId.value = coastId }
     override suspend fun setApiKey(key: String) { apiKey.value = key }
     override suspend fun setGeminiModel(model: String) { geminiModel.value = model }
+    override suspend fun setTranslationProvider(provider: TranslationProvider) { translationProvider.value = provider }
+    override suspend fun setOpenRouterKey(key: String) { openRouterKey.value = key }
+    override suspend fun setOpenRouterModel(model: String) { openRouterModel.value = model }
     override suspend fun setReminderSettings(reminder: ReminderSettings) { reminderSettings.value = reminder }
 
     override suspend fun recordStudySession() {

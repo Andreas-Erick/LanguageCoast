@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
+import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeReminderScheduler
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
@@ -48,6 +49,27 @@ class SettingsAndMyCoastViewModelTest {
 
         viewModel.onApiKeyEdited()
         assertFalse(viewModel.uiState.value.apiKeySaved)
+    }
+
+    @Test
+    fun providerAndOpenRouterSettingsArePersistedSeparatelyFromGemini() = runTest {
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.setTranslationProvider(TranslationProvider.OpenRouter)
+        viewModel.setOpenRouterModel("anthropic/claude-haiku")
+        viewModel.saveOpenRouterKey(" sk-or-key ")
+
+        val state = viewModel.uiState.value
+        assertEquals(TranslationProvider.OpenRouter, state.translationProvider)
+        assertEquals("anthropic/claude-haiku", state.openRouterModel)
+        assertEquals("sk-or-key", state.savedOpenRouterKey)
+        assertTrue(state.openRouterSaved)
+        assertFalse(state.apiKeySaved)
+        assertEquals("", settings.apiKey.value)
+
+        viewModel.onOpenRouterKeyEdited()
+        assertFalse(viewModel.uiState.value.openRouterSaved)
     }
 
     @Test

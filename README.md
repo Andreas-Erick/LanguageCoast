@@ -5,7 +5,7 @@
 <h1 align="center">🌊 Language Coast</h1>
 
 <p align="center">
-  An AI-powered flashcard app for Android, built with Jetpack Compose and Google Gemini.
+  An AI-powered flashcard app for Android, built with Jetpack Compose, Google Gemini and on-device translation.
 </p>
 
 <p align="center">
@@ -17,7 +17,7 @@
 
 ---
 
-Language Coast is a flashcard app that changes how you build vocabulary. It combines **Google Gemini** with a coastal-themed UI. Each language you learn gets its own **Coast** (e.g. a *German Coast* and an *Icelandic Coast*). Type what you want to say, and Gemini translates it and files it into one of that coast's "Language Islands", ready to study.
+Language Coast is a flashcard app that changes how you build vocabulary. It combines AI translation with a coastal-themed UI. Each language you learn gets its own **Coast** (e.g. a *German Coast* and an *Icelandic Coast*). Type what you want to say, and the AI translates it and files it into one of that coast's "Language Islands", ready to study.
 
 ## 📱 Screenshots
 
@@ -33,10 +33,13 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 ## ✨ Features
 
 ### 🤖 AI-powered card creation
-- **Smart translations**: uses Google Gemini (`gemini-2.5-flash` by default, selectable in Settings) for natural, context-aware translations.
-- **Auto-categorization**: Gemini sorts each new card into an island such as *Travel*, *Restaurant* or *Greetings*, reusing your existing islands whenever one fits.
+- **Three ways to translate**, picked in Settings:
+  - **On-device** (Google ML Kit): free, private and offline once a language is downloaded (about 30 MB). It only translates, so cards go into the category you type. Covers every app language except Bosnian, Latin and Serbian.
+  - **Google Gemini** (`gemini-2.5-flash` by default) for natural, context-aware translations.
+  - **OpenRouter**: one API key for many cloud models (GPT, Claude, Llama, …). `openrouter/auto` picks a model for you, or enter any model ID.
+- **Auto-categorization**: the cloud models sort each new card into an island such as *Travel*, *Restaurant* or *Greetings*, reusing your existing islands whenever one fits.
 - **Icelandic noun rule**: single Icelandic nouns are returned with their definite and plural forms (e.g. *hestur, hesturinn, hestar*).
-- **Island emojis**: Gemini also picks an emoji for each new island (🍽️ *Restaurant*, ✈️ *Travel*).
+- **Island emojis**: the cloud models also pick an emoji for each new island (🍽️ *Restaurant*, ✈️ *Travel*).
 - **Manual mode**: you can skip the AI and enter your own translation and category.
 - **Instant preview with undo**: after saving you see the card that was created and can undo it right away.
 
@@ -72,7 +75,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 | Architecture | MVVM: ViewModels + repositories, unidirectional data flow with `StateFlow` |
 | Dependency injection | [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) |
 | UI | [Jetpack Compose](https://developer.android.com/compose) + Material 3 (100% Kotlin) |
-| AI | [Google Gen AI Java SDK](https://github.com/googleapis/java-genai) (Gemini) |
+| Translation | [Google Gen AI Java SDK](https://github.com/googleapis/java-genai) (Gemini), [OpenRouter](https://openrouter.ai/docs) API, [ML Kit Translation](https://developers.google.com/ml-kit/language/translation) (on-device) |
 | Database | [Room](https://developer.android.com/training/data-storage/room) |
 | Preferences | [Jetpack DataStore](https://developer.android.com/topic/libraries/architecture/datastore) |
 | Navigation | [Navigation Compose](https://developer.android.com/jetpack/compose/navigation) with type-safe routes |
@@ -89,6 +92,8 @@ flowchart LR
     VM --> FR["FlashcardRepository"] --> Room[("Room")]
     VM --> SR["SettingsRepository"] --> DS[("DataStore")]
     VM --> TR["Translator"] --> Gemini(["Gemini API"])
+    TR --> OpenRouter(["OpenRouter API"])
+    TR --> MLKit(["ML Kit (on-device)"])
 ```
 
 - **Screens** are stateless: they render a UI state and forward user events to their ViewModel.
@@ -100,7 +105,7 @@ flowchart LR
 ```
 app/src/main/java/com/andreaserick/languagecoast/
 ├── MainActivity.kt          # Entry point, bottom navigation and NavHost
-├── data/                    # Repositories, Room entities/DAO, DataStore settings, Gemini translator
+├── data/                    # Repositories, Room entities/DAO, DataStore settings, translators
 ├── di/                      # Hilt modules
 ├── navigation/              # Type-safe route definitions
 ├── notifications/           # Daily study reminder (WorkManager + notification)
@@ -120,7 +125,7 @@ app/src/main/java/com/andreaserick/languagecoast/
 ### Prerequisites
 - A recent version of **Android Studio** that supports Android Gradle Plugin 9.2.
 - **JDK 21** (Gradle can download it automatically through the toolchain resolver).
-- A **Google Gemini API key**, which you can get from [Google AI Studio](https://aistudio.google.com/). It is only needed for AI mode.
+- Optionally a **Google Gemini API key** ([Google AI Studio](https://aistudio.google.com/)) or an **OpenRouter API key** ([openrouter.ai](https://openrouter.ai/)). On-device translation needs no key.
 
 ### Setup
 1. Clone the repository:
@@ -129,10 +134,10 @@ app/src/main/java/com/andreaserick/languagecoast/
    ```
 2. Open the project in Android Studio and let Gradle sync.
 3. Run the app on an emulator or a physical device (Android 8.0 / API 26 or higher).
-4. Open **Settings**, choose your native language, and paste your **Gemini API key**.
+4. Open **Settings**, choose your native language and how to translate: on-device needs nothing else, Gemini and OpenRouter need their API key.
 5. Start a coast for the language you want to learn, then create your first island!
 
-> **Your API key stays on your device.** The app keeps it in local app storage (DataStore). It is never compiled into the app, so you don't need to add it to `local.properties`.
+> **Your API keys stay on your device.** The app keeps them in local app storage (DataStore). They are never compiled into the app, so you don't need to add them to `local.properties`.
 
 ### Running tests
 ```bash

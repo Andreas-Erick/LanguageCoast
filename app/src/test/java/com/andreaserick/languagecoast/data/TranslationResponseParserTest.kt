@@ -55,8 +55,7 @@ class TranslationResponseParserTest {
     }
 
     private fun request(existingCategories: List<String>) = TranslationRequest(
-        apiKey = "key",
-        modelName = "model",
+        engine = TranslationEngine.OnDevice,
         nativeSentence = "horse",
         nativeLanguage = "English",
         targetLanguage = "Icelandic",
