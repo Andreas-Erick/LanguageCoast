@@ -114,7 +114,7 @@ internal fun buildTranslationPrompt(request: TranslationRequest): String = with(
         }. Only create a brand new category (with the name of the category in English) if none of these fit. For example, possible categories could be: Small Talk, About Me, Asking for Help, Restaurant, Hotel, My Passions, Sport, Academia, Household Items and so on."
     }
 
-    """
+    val instructions = """
         You are a master language translator for a flashcard app.
         Translate the following input (which may be a single word or a full sentence) from $nativeLanguage into $targetLanguage.
 
@@ -133,18 +133,44 @@ internal fun buildTranslationPrompt(request: TranslationRequest): String = with(
         (Example: hestur, hesturinn, hestar)
 
         Also pick a single emoji that pictures the category (for example 🍽️ for Restaurant or ✈️ for Travel).
-
-        Format your EXACT response like this (do not add any other text):
-        TRANSLATION: [your translation]
-        CATEGORY: [the category]
-        EMOJI: [one emoji]
     """.trimIndent()
+
+    // Longer sentences are where several translations can be right, so ask what a learner should know about them.
+    val alternativesText = if (wantsAlternatives(nativeSentence)) {
+        "\n\nThis input is long enough that more than one translation can be right. Also give up to two other natural " +
+            "translations that differ in a way a learner should know (formality, register, word choice or regional usage), " +
+            "and one short sentence in $nativeLanguage explaining how they differ. In that sentence, refer to each version by " +
+            "its wording (e.g. \"du\" vs. \"Sie\"), never by position such as \"the first alternative\", because the user can reorder them. " +
+            "If there is no meaningful alternative, write NONE for both."
+    } else ""
+
+    val format = buildString {
+        appendLine("Format your EXACT response like this (do not add any other text):")
+        appendLine("TRANSLATION: [your translation]")
+        appendLine("CATEGORY: [the category]")
+        append("EMOJI: [one emoji]")
+        if (wantsAlternatives(nativeSentence)) {
+            appendLine()
+            appendLine("ALTERNATIVES: [alternative 1] || [alternative 2]")
+            append("NOTE: [one sentence]")
+        }
+    }
+
+    "$instructions$alternativesText\n\n$format"
 }
 
+/** Inputs with at least this many words get alternative translations (see [buildTranslationPrompt]). */
+const val ALTERNATIVES_MIN_WORDS = 6
+
+/** Whether [sentence] is long enough to ask for alternative translations. */
+internal fun wantsAlternatives(sentence: String): Boolean =
+    sentence.split(Regex("\\s+")).count { it.isNotBlank() } >= ALTERNATIVES_MIN_WORDS
+
 /**
- * Parses a model response of the form `TRANSLATION: ... CATEGORY: ... EMOJI: ...`.
+ * Parses a model response of the form `TRANSLATION: ... CATEGORY: ... EMOJI: ...`, optionally followed by
+ * `ALTERNATIVES: a || b` and `NOTE: ...`.
  * Returns [TranslationResult.FAILURE] if the translation or category is missing or empty;
- * the emoji is optional and dropped if it doesn't look like one.
+ * the emoji is optional and dropped if it doesn't look like one, and "NONE" means no alternatives or note.
  */
 internal fun parseTranslationResponse(responseText: String): TranslationResult {
     // Models occasionally wrap the labels in Markdown bold; strip that before parsing.
@@ -158,8 +184,23 @@ internal fun parseTranslationResponse(responseText: String): TranslationResult {
 
     val emoji = if (text.contains("EMOJI:")) text.substringAfter("EMOJI:").trim().lineSequence().first().trim() else ""
 
+    fun line(label: String) = if (text.contains(label)) text.substringAfter(label).trim().lineSequence().first().trim() else ""
+    val alternatives = line("ALTERNATIVES:").split("||")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.equals("NONE", ignoreCase = true) && it != translation }
+        .distinct()
+        .take(2)
+    val note = line("NOTE:").takeIf { it.isNotEmpty() && !it.equals("NONE", ignoreCase = true) && alternatives.isNotEmpty() }
+
     return if (translation.isNotEmpty() && category.isNotEmpty()) {
-        TranslationResult(translation, category, isSuccess = true, emoji = emoji.takeIf(::looksLikeEmoji))
+        TranslationResult(
+            translation,
+            category,
+            isSuccess = true,
+            emoji = emoji.takeIf(::looksLikeEmoji),
+            alternatives = alternatives,
+            note = note
+        )
     } else {
         TranslationResult.FAILURE
     }
@@ -177,13 +218,17 @@ private fun looksLikeEmoji(text: String): Boolean =
  * @property isSuccess Whether the AI request and parsing succeeded.
  * @property emoji An emoji picturing the category, if the model gave a usable one.
  * @property errorMessage Why the translation failed, worded for the user, if known.
+ * @property alternatives Other correct translations of a longer sentence (at most two), for the user to pick from.
+ * @property note How [alternatives] differ from the translation (e.g. formal vs. informal), if there are any.
  */
 data class TranslationResult(
     val translatedText: String,
     val finalCategory: String,
     val isSuccess: Boolean,
     val emoji: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val alternatives: List<String> = emptyList(),
+    val note: String? = null
 ) {
     companion object {
         val FAILURE = TranslationResult("Error: Could not translate", "Error", isSuccess = false)

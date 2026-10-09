@@ -272,7 +272,13 @@ class CreateViewModel @Inject constructor(
         if (!translation.isSuccess) return SaveResult.Error(translation.errorMessage ?: "AI Translation Failed.")
 
         val added = flashcards.addFlashcard(
-            coast.coastId, nativeText, translation.translatedText, translation.finalCategory, translation.emoji
+            coastId = coast.coastId,
+            nativeText = nativeText,
+            targetText = translation.translatedText,
+            category = translation.finalCategory,
+            emoji = translation.emoji,
+            alternatives = translation.alternatives,
+            note = translation.note
         )
         return saved(added, coast.coastId, translation.finalCategory, manual = false)
     }

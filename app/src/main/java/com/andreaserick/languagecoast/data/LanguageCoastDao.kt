@@ -107,6 +107,9 @@ interface LanguageCoastDao {
     @Update
     suspend fun updateFlashcard(flashcard: Flashcard)
 
+    @Query("UPDATE flashcards SET targetText = :targetText, alternatives = :alternatives WHERE cardId = :cardId")
+    suspend fun setTranslation(cardId: Int, targetText: String, alternatives: List<String>)
+
     @Query("SELECT COUNT(*) FROM flashcards WHERE $DUE")
     suspend fun countDueCards(now: Long): Int
 
