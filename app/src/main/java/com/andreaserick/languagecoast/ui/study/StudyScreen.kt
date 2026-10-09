@@ -3,6 +3,7 @@ package com.andreaserick.languagecoast.ui.study
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
@@ -32,6 +33,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -71,6 +74,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -433,6 +437,9 @@ fun FlipStudyView(
             color = SandMuted,
             textAlign = TextAlign.Center
         )
+        if (isFlipped && currentCard.alternatives.isNotEmpty()) {
+            CardAlternatives(alternatives = currentCard.alternatives, note = currentCard.note)
+        }
         Spacer(modifier = Modifier.height(16.dp))
 
         if (isFlipped) {
@@ -556,7 +563,7 @@ fun TypeStudyView(
         if (!hasChecked) {
             Button(
                 onClick = {
-                    isCorrect = answerMatches(userInput, currentCard.targetText)
+                    isCorrect = isCorrectAnswer(userInput, currentCard)
                     hasChecked = true
                     haptics.performHapticFeedback(if (isCorrect) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
                 },
@@ -596,6 +603,20 @@ fun TypeStudyView(
                             textAlign = TextAlign.Center
                         )
                     }
+                    // The other correct translations: besides the one typed, or besides the answer shown above.
+                    val others = if (isCorrect) {
+                        (listOf(currentCard.targetText) + currentCard.alternatives).filterNot { answerMatches(userInput, it) }
+                    } else {
+                        currentCard.alternatives
+                    }
+                    if (currentCard.alternatives.isNotEmpty() && others.isNotEmpty()) {
+                        Text(
+                            text = "Also correct: ${others.joinToString(" · ")}",
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
                     if (onSpeak != null) {
                         TextButton(
                             onClick = onSpeak,
@@ -631,6 +652,43 @@ fun TypeStudyView(
         }
     }
 }
+
+/**
+ * A card's other correct translations, collapsed behind "2 alternatives" so the back of the card stays
+ * simple; expanding shows the note on how they differ and the alternatives themselves.
+ */
+@Composable
+private fun CardAlternatives(alternatives: List<String>, note: String?) {
+    var expanded by remember(alternatives) { mutableStateOf(false) }
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+        TextButton(onClick = { expanded = !expanded }, colors = ButtonDefaults.textButtonColors(contentColor = SandBeige)) {
+            Text(if (expanded) "Hide alternatives" else plural(alternatives.size, "alternative"), fontWeight = FontWeight.SemiBold)
+            Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
+        }
+        AnimatedVisibility(visible = expanded) {
+            // Space between alternatives, since each one may wrap over several lines.
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                note?.let {
+                    Text(
+                        it,
+                        fontSize = 13.sp,
+                        fontStyle = FontStyle.Italic,
+                        color = MistWhite,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
+                alternatives.forEach {
+                    Text(it, color = SandBeige, fontSize = 17.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                }
+            }
+        }
+    }
+}
+
+/** Whether [typed] matches [card]'s translation or one of its alternatives (see [answerMatches]). */
+internal fun isCorrectAnswer(typed: String, card: Flashcard): Boolean =
+    (listOf(card.targetText) + card.alternatives).any { answerMatches(typed, it) }
 
 /**
  * Whether a typed answer matches the card's translation, ignoring case, punctuation and extra spaces

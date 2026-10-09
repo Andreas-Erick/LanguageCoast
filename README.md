@@ -46,7 +46,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Island emojis**: the cloud models also pick an emoji for each new island (🍽️ *Restaurant*, ✈️ *Travel*).
 - **Manual mode**: you can skip the AI and enter your own translation and category.
 - **Instant preview with undo**: after saving you see the card that was created and can undo it right away.
-- **Alternatives for longer sentences**: for sentences of 6 words or more, Gemini and OpenRouter also suggest up to two other translations with a note on how they differ (e.g. formal vs. informal). Tap *Use* to make one the card's translation.
+- **Alternatives for longer sentences**: for sentences of 6 words or more, Gemini and OpenRouter also suggest up to two other translations with a note on how they differ (e.g. formal vs. informal). Tap *Use* to make one the card's translation. The alternatives are saved with the card: they show under the answer when studying, count as correct in Active Type, and are included in exports.
 
 ### 🏝️ My Coasts
 - **One coast per language**: study several languages side by side, each with its own islands. Pick which coast new cards go to right on the Create screen.

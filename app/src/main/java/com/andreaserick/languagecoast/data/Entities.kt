@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -102,6 +103,8 @@ data class IslandSummary(
  * @property difficulty Spaced repetition difficulty from 1 to 10, or null if the card was never reviewed.
  * @property lastReviewed When the card was last graded (epoch millis), or null if never.
  * @property due When the card should next be studied (epoch millis), or null for a new card, which is due right away.
+ * @property alternatives Other correct translations (from the AI, for longer sentences), shown on the back when studying.
+ * @property note How [alternatives] differ from [targetText] (e.g. formal vs. informal), if there are any.
  */
 @Entity(
     tableName = "flashcards",
@@ -124,5 +127,7 @@ data class Flashcard(
     val stability: Double? = null,
     val difficulty: Double? = null,
     val lastReviewed: Long? = null,
-    val due: Long? = null
+    val due: Long? = null,
+    @ColumnInfo(defaultValue = "") val alternatives: List<String> = emptyList(),
+    val note: String? = null
 )

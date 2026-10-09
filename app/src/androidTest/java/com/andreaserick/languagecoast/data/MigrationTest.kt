@@ -64,6 +64,8 @@ class MigrationTest {
         // v5: existing cards start as new cards, due right away.
         val card = dao.getCardsForIsland(1).first().single()
         assertTrue(card.stability == null && card.difficulty == null && card.lastReviewed == null && card.due == null)
+        // v6: no alternatives or note yet.
+        assertTrue(card.alternatives.isEmpty() && card.note == null)
         assertEquals(listOf(1, 1), dao.getIslandSummaries(coast.coastId, now = 0).first().map { it.dueCount })
         assertEquals(2, dao.getCoastSummaries(studiedSince = 0, now = 0).first().single().dueCount)
     }
@@ -122,7 +124,8 @@ class MigrationTest {
                 AppDatabase.MIGRATION_1_2,
                 AppDatabase.migration2To3 { legacyTargetLanguage },
                 AppDatabase.MIGRATION_3_4,
-                AppDatabase.MIGRATION_4_5
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6
             )
             .build()
             .also { database = it }

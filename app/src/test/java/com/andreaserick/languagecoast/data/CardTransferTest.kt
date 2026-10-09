@@ -104,4 +104,49 @@ class CardTransferTest {
 
         assertEquals(listOf(ImportedCard("Hello", "Hallo", null)), cards)
     }
+
+    private val withAlternatives = german.copy(
+        cards = listOf(
+            Flashcard(
+                cardId = 1, islandId = 1, nativeText = "Do you want to come?", targetText = "Möchtest du kommen?",
+                alternatives = listOf("Willst du kommen?", "Möchten Sie kommen?"), note = "Sie is formal."
+            )
+        )
+    )
+
+    @Test
+    fun alternativesAndNoteGoOnTheBackAndComeBackOnImport() {
+        val anki = exportCards(listOf(withAlternatives), ExportFormat.Anki, "English")
+
+        assertTrue("\"Möchtest du kommen?\n\nAlso: Willst du kommen? / Möchten Sie kommen?\nNote: Sie is formal.\"" in anki)
+        assertEquals(
+            listOf(
+                ImportedCard(
+                    "Do you want to come?", "Möchtest du kommen?", "Greetings",
+                    alternatives = listOf("Willst du kommen?", "Möchten Sie kommen?"), note = "Sie is formal."
+                )
+            ),
+            parseCardFile(anki)
+        )
+    }
+
+    @Test
+    fun alternativesSurviveAnAnkiExportWithHtmlLineBreaks() {
+        val file = "#separator:tab\n#html:true\nDo you want to come?\tMöchtest du kommen?<br><br>Also: Willst du kommen?<br>Note: Casual.\n"
+
+        val card = parseCardFile(file).single()
+
+        assertEquals("Möchtest du kommen?", card.targetText)
+        assertEquals(listOf("Willst du kommen?"), card.alternatives)
+        assertEquals("Casual.", card.note)
+    }
+
+    @Test
+    fun markdownShowsAlternativesUnderTheTranslation() {
+        val markdown = exportCards(listOf(withAlternatives), ExportFormat.Markdown, "English")
+
+        assertTrue(
+            "| Do you want to come? | Möchtest du kommen?<br>Also: Willst du kommen? / Möchten Sie kommen?<br>Note: Sie is formal. |" in markdown
+        )
+    }
 }

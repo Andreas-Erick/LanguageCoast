@@ -101,7 +101,9 @@ class FakeFlashcardRepository : FlashcardRepository {
         nativeText: String,
         targetText: String,
         category: String,
-        emoji: String?
+        emoji: String?,
+        alternatives: List<String>,
+        note: String?
     ): AddedCard {
         val existing = islands.value.firstOrNull { it.coastId == coastId && it.name == category }
         val island = existing ?: LanguageIsland(
@@ -114,7 +116,9 @@ class FakeFlashcardRepository : FlashcardRepository {
             cardId = nextId(cards.value.map { it.cardId }),
             islandId = island.islandId,
             nativeText = nativeText,
-            targetText = targetText
+            targetText = targetText,
+            alternatives = alternatives,
+            note = note
         )
         cards.update { it + card }
         return AddedCard(card, createdIsland = island.takeIf { existing == null })
@@ -142,8 +146,8 @@ class FakeFlashcardRepository : FlashcardRepository {
         cards.update { all -> all.map { if (it.cardId == card.cardId) card else it } }
     }
 
-    override suspend fun updateTranslation(cardId: Int, targetText: String) {
-        cards.update { all -> all.map { if (it.cardId == cardId) it.copy(targetText = targetText) else it } }
+    override suspend fun updateTranslation(cardId: Int, targetText: String, alternatives: List<String>) {
+        cards.update { all -> all.map { if (it.cardId == cardId) it.copy(targetText = targetText, alternatives = alternatives) else it } }
     }
 
     override suspend fun countDueCards(now: Long): Int = cards.value.count { isDue(it, now) }
