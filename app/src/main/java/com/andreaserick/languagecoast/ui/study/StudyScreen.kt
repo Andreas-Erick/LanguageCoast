@@ -28,6 +28,7 @@ import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.ui.theme.CoralAccent
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
+import com.andreaserick.languagecoast.ui.theme.SurfLightBlue
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
 import com.andreaserick.languagecoast.util.dictCcSearchUrl
 
@@ -115,21 +116,24 @@ fun StudyScreen(onNavigateBack: () -> Unit, viewModel: StudyViewModel = hiltView
                         }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        Button(
-                            onClick = viewModel::previous,
-                            enabled = uiState.canGoBack,
-                            colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
-                        ) { Text("Previous") }
+                    // Navigation is pointless with a single card
+                    if (uiState.sessionCards.size > 1) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            Button(
+                                onClick = viewModel::previous,
+                                enabled = uiState.canGoBack,
+                                colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
+                            ) { Text("Previous") }
 
-                        Button(
-                            onClick = viewModel::next,
-                            enabled = uiState.canGoForward,
-                            colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
-                        ) { Text("Next") }
+                            Button(
+                                onClick = viewModel::next,
+                                enabled = uiState.canGoForward,
+                                colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
+                            ) { Text("Next") }
+                        }
                     }
                 }
             }
@@ -204,8 +208,10 @@ fun FlipStudyView(
                 }
                 .clickable { isFlipped = !isFlipped },
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            // Light card faces with dark text keep both sides readable
             colors = CardDefaults.cardColors(
-                containerColor = if (isFlipped) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                containerColor = if (isFlipped) SandBeige else SurfLightBlue,
+                contentColor = DeepOceanBlue
             )
         ) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -279,12 +285,13 @@ fun TypeStudyView(currentCard: Flashcard) {
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text("Translate this:", color = MaterialTheme.colorScheme.secondary)
+        Text("Translate this:", color = SandBeige.copy(alpha = 0.8f))
 
         Text(
             text = currentCard.nativeText,
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
+            color = SandBeige,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
         )
@@ -323,10 +330,10 @@ fun TypeStudyView(currentCard: Flashcard) {
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("❌ Not quite.", color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
                         Text("Correct answer:", color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(top = 8.dp))
-                        Text(currentCard.targetText, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(currentCard.targetText, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                     }
                 }
             }
@@ -409,7 +416,6 @@ fun ClickableWordSentence(sentence: String, onWordClick: (String) -> Unit) {
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier
                     .clickable {
                         // Strip punctuation so we search for just the word (e.g., "hola!" -> "hola")

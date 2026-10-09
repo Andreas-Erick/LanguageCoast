@@ -21,6 +21,9 @@ private val CoastColorScheme = lightColorScheme(
     primary = SandBeige,        // Used for main buttons and top bars
     onPrimary = Color.White,        // Used for text INSIDE main buttons
 
+    primaryContainer = WaveTeal,    // Highlighted cards (e.g., save confirmation)
+    onPrimaryContainer = Color.White,
+
     secondary = WaveTeal,           // Used for secondary elements
     onSecondary = Color.White,
 
