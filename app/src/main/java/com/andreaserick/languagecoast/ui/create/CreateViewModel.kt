@@ -11,12 +11,17 @@ import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.Translator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /** Category used for manual cards when the user leaves the category blank. */
 const val DEFAULT_MANUAL_CATEGORY = "My Words"
+
+/** How long the save feedback card stays on screen. */
+const val RESULT_VISIBLE_MILLIS = 5_000L
 
 data class CreateUiState(
     val nativeSentence: String = "",
@@ -44,6 +49,8 @@ class CreateViewModel @Inject constructor(
     var uiState by mutableStateOf(CreateUiState())
         private set
 
+    private var dismissJob: Job? = null
+
     fun onNativeSentenceChange(value: String) {
         uiState = uiState.copy(nativeSentence = value)
     }
@@ -63,6 +70,7 @@ class CreateViewModel @Inject constructor(
     fun save() {
         val state = uiState
         if (state.nativeSentence.isBlank() || state.isSaving) return
+        dismissJob?.cancel()
         uiState = state.copy(isSaving = true, result = null)
 
         viewModelScope.launch {
@@ -79,6 +87,16 @@ class CreateViewModel @Inject constructor(
             } else {
                 uiState.copy(isSaving = false, result = result)
             }
+            scheduleResultDismissal()
+        }
+    }
+
+    /** Hides the feedback card after [RESULT_VISIBLE_MILLIS], restarting the timer on every save. */
+    private fun scheduleResultDismissal() {
+        dismissJob?.cancel()
+        dismissJob = viewModelScope.launch {
+            delay(RESULT_VISIBLE_MILLIS)
+            uiState = uiState.copy(result = null)
         }
     }
 

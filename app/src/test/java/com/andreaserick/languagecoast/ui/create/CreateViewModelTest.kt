@@ -5,6 +5,7 @@ import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.FakeTranslator
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -95,6 +96,20 @@ class CreateViewModelTest {
 
         assertEquals(SaveResult.Error("AI Translation Failed."), viewModel.uiState.result)
         assertTrue(flashcards.cards.value.isEmpty())
+    }
+
+    @Test
+    fun resultCardIsHiddenAfterTimeout() = runTest {
+        viewModel.onManualModeChange(true)
+        viewModel.onNativeSentenceChange("Hello")
+        viewModel.onTargetSentenceChange("Hola")
+
+        viewModel.save()
+        advanceTimeBy(RESULT_VISIBLE_MILLIS - 1)
+        assertTrue(viewModel.uiState.result is SaveResult.Saved)
+
+        advanceTimeBy(2)
+        assertNull(viewModel.uiState.result)
     }
 
     @Test
