@@ -72,6 +72,9 @@ interface FlashcardRepository {
 
     /** Every coast with its islands and cards, oldest coast first, for exporting. */
     suspend fun getAllContent(): List<CoastContent>
+
+    /** The [limit] cards most recently added to coast [coastId], newest first. */
+    fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>>
 }
 
 class OfflineFlashcardRepository @Inject constructor(
@@ -152,4 +155,6 @@ class OfflineFlashcardRepository @Inject constructor(
             val islands = dao.getIslandsForCoastOnce(coast.coastId)
             CoastContent(coast, islands, dao.getCardsForIslandsOnce(islands.map { it.islandId }))
         }
+
+    override fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>> = dao.getRecentCards(coastId, limit)
 }

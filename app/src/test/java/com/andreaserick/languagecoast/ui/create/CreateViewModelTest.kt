@@ -8,6 +8,8 @@ import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.FakeTranslator
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
+import com.andreaserick.languagecoast.testing.TEST_CLOCK
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -31,7 +33,7 @@ class CreateViewModelTest {
     @Before
     fun setUp() {
         flashcards.seedCoast(coastId = 1, language = "Spanish")
-        viewModel = CreateViewModel(flashcards, settings, translator)
+        viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
     }
 
     @Test
@@ -268,5 +270,66 @@ class CreateViewModelTest {
 
         assertEquals(SaveResult.Error("On-device translation doesn't cover Latin."), viewModel.uiState.result)
         assertTrue(flashcards.cards.value.isEmpty())
+    }
+
+    @Test
+    fun todaySummaryCountsDueCardsAndCoastsWithThem() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2, coastId = 1)
+        flashcards.seedCoast(coastId = 2, language = "Icelandic")
+        flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
+        settings.streakCount.value = 4
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
+
+        assertTrue(viewModel.uiState.hasCards)
+        assertEquals(3, viewModel.uiState.dueCount)
+        assertEquals(2, viewModel.uiState.dueCoastCount)
+        assertEquals(4, viewModel.uiState.streakCount)
+    }
+
+    @Test
+    fun startReviewOpensTheIslandWithTheMostDueCardsOnTheSelectedCoast() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
+        flashcards.seed(islandId = 2, cardCount = 3, coastId = 1)
+        flashcards.seedCoast(coastId = 2, language = "Icelandic")
+        flashcards.seed(islandId = 3, cardCount = 5, coastId = 2)
+        settings.activeCoastId.value = 1
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
+        var opened: Pair<Int, String>? = null
+
+        viewModel.startReview { id, name -> opened = id to name }
+
+        assertEquals(2 to "Island 2", opened)
+    }
+
+    @Test
+    fun startReviewFallsBackToTheCoastWithTheMostDueCards() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
+        // Nothing on the selected coast is due.
+        flashcards.cards.update { all -> all.map { it.copy(due = Long.MAX_VALUE) } }
+        flashcards.seedCoast(coastId = 2, language = "Icelandic")
+        flashcards.seed(islandId = 2, cardCount = 2, coastId = 2)
+        settings.activeCoastId.value = 1
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
+        var opened: Pair<Int, String>? = null
+
+        viewModel.startReview { id, name -> opened = id to name }
+
+        assertEquals(2 to "Island 2", opened)
+    }
+
+    @Test
+    fun recentCardsAreTheNewestOnTheSelectedCoast() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 4, coastId = 1)
+        flashcards.seedCoast(coastId = 2, language = "Icelandic")
+        flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
+        settings.activeCoastId.value = 1
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
+
+        assertEquals(listOf("n4", "n3", "n2"), viewModel.uiState.recentCards.map { it.card.nativeText })
+        assertEquals("Island 1", viewModel.uiState.recentCards.first().islandName)
+
+        viewModel.onCoastSelected(flashcards.coasts.value.last())
+
+        assertEquals(listOf("n1"), viewModel.uiState.recentCards.map { it.card.nativeText })
     }
 }
