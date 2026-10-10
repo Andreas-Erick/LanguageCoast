@@ -53,6 +53,8 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **One coast per language**: study several languages side by side, each with its own islands. Pick which coast new cards go to right on the Create screen.
 - **Language Islands**: on each coast, your vocabulary is grouped into islands by category, each with its emoji, card count and when you last studied it.
 - **Progress at a glance**: coasts show how many islands you explored this week.
+- **Island card list**: *See cards* in an island's ⋮ menu (or the list icon while studying) shows every card with its translation, alternatives and when it is due next.
+- **Edit cards**: fix a card's native text, translation or alternatives, or move it to another island, without losing its review progress.
 - **Daily streaks**: a streak counter and a dot for each day of the week track your study days.
 - **Undo instead of "Are you sure?"**: deleted coasts, islands and cards can be restored from the snackbar.
 - **Offline-first storage**: cards are stored locally with **Room**, and preferences with **Jetpack DataStore**.

@@ -83,6 +83,8 @@ private val GUIDE = listOf(
     GuideSection(
         "📤", "Your cards",
         listOf(
+            "Tap ⋮ on an island and \"See cards\" to list its cards with when each is due next.",
+            "Tap a card there, or \"Edit card\" in the ⋮ menu while studying, to fix its translation and alternatives or move it to another island.",
             "Export a coast to Anki or Markdown, or import cards from a CSV file, under \"Your cards\" in Settings.",
             "Deleted a coast, island or card by accident? Tap \"Undo\" in the message at the bottom."
         )

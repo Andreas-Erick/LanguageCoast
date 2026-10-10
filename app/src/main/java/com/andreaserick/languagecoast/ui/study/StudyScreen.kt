@@ -32,16 +32,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
@@ -87,6 +84,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Grade
+import com.andreaserick.languagecoast.ui.components.CardOptionsMenu
+import com.andreaserick.languagecoast.ui.components.EditCardSheet
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.plural
@@ -112,24 +111,48 @@ import kotlin.random.Random
  * The island is taken from the navigation arguments by [StudyViewModel].
  *
  * @param onNavigateBack Callback to navigate back to the previous screen.
+ * @param onShowCards Called to open the list of the island's cards.
  */
 @Composable
-fun StudyScreen(onNavigateBack: () -> Unit, viewModel: StudyViewModel = hiltViewModel()) {
+fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: StudyViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentCard = uiState.currentCard
     val undoMessenger = LocalUndoMessenger.current
+    var editingCard by remember { mutableStateOf<Flashcard?>(null) }
+
+    editingCard?.let { card ->
+        EditCardSheet(
+            card = card,
+            islands = uiState.coastIslands,
+            nativeLanguage = uiState.nativeLanguage,
+            targetLanguage = uiState.targetLanguage,
+            onSave = { edit ->
+                viewModel.editCard(card.cardId, edit)
+                editingCard = null
+            },
+            onDismiss = { editingCard = null }
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(
             title = uiState.islandName,
             onBack = onNavigateBack,
             actions = {
+                if (uiState.hasCards) {
+                    IconButton(onClick = onShowCards) {
+                        Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = "All cards", tint = SandBeige)
+                    }
+                }
                 if (currentCard != null && !uiState.isSessionComplete) {
-                    CardMenu(onDelete = {
-                        viewModel.deleteCurrentCard { deleted ->
-                            undoMessenger.show("Card deleted") { viewModel.restore(deleted) }
+                    CardOptionsMenu(
+                        onEdit = { editingCard = currentCard },
+                        onDelete = {
+                            viewModel.deleteCurrentCard { deleted ->
+                                undoMessenger.show("Card deleted") { viewModel.restore(deleted) }
+                            }
                         }
-                    })
+                    )
                 }
             }
         )
@@ -213,27 +236,6 @@ fun StudyScreen(onNavigateBack: () -> Unit, viewModel: StudyViewModel = hiltView
                     }
                 }
             }
-        }
-    }
-}
-
-/** The ⋮ menu for the current card. */
-@Composable
-private fun CardMenu(onDelete: () -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Default.MoreVert, contentDescription = "Card options", tint = SandBeige)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = WaveTeal) {
-            DropdownMenuItem(
-                text = { Text("Delete card", color = Color.White) },
-                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White) },
-                onClick = {
-                    expanded = false
-                    onDelete()
-                }
-            )
         }
     }
 }

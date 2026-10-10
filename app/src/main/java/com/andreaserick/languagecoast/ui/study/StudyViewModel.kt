@@ -3,10 +3,12 @@ package com.andreaserick.languagecoast.ui.study
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Grade
+import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.isDue
@@ -19,7 +21,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Clock
@@ -52,7 +54,9 @@ data class StudyUiState(
     /** The language of the coast this island is on. */
     val targetLanguage: String = "",
     /** Whether the phone has a voice to read [targetLanguage] aloud. */
-    val canSpeak: Boolean = false
+    val canSpeak: Boolean = false,
+    /** The islands on this island's coast, which a card can be moved to when editing it. */
+    val coastIslands: List<LanguageIsland> = emptyList()
 ) {
     val currentCard: Flashcard? get() = sessionCards.getOrNull(currentIndex)
     val canGoBack: Boolean get() = currentIndex > 0
@@ -93,16 +97,22 @@ class StudyViewModel @Inject constructor(
 
     private val session = MutableStateFlow(Session())
 
-    private val targetLanguage = flashcards.observeCoastForIsland(islandId).map { it?.language.orEmpty() }
+    /** What the session needs to know about the coast this island is on. */
+    private data class CoastInfo(val language: String, val canSpeak: Boolean, val islands: List<LanguageIsland>)
 
     @OptIn(ExperimentalCoroutinesApi::class)
+    private val coastInfo = flashcards.observeCoastForIsland(islandId).flatMapLatest { coast ->
+        val language = coast?.language.orEmpty()
+        val islands = coast?.let { flashcards.observeIslands(it.coastId) } ?: flowOf(emptyList())
+        combine(speaker.canSpeak(language), islands) { canSpeak, islands -> CoastInfo(language, canSpeak, islands) }
+    }
+
     val uiState: StateFlow<StudyUiState> = combine(
         session,
         settings.nativeLanguage,
-        targetLanguage,
-        settings.streakCount,
-        targetLanguage.flatMapLatest { speaker.canSpeak(it) }
-    ) { s, nativeLanguage, targetLanguage, streak, canSpeak ->
+        coastInfo,
+        settings.streakCount
+    ) { s, nativeLanguage, coast, streak ->
         val now = clock.instant()
         StudyUiState(
             islandName = islandName,
@@ -121,8 +131,9 @@ class StudyViewModel @Inject constructor(
             againCount = s.againCount,
             streakCount = streak,
             nativeLanguage = nativeLanguage,
-            targetLanguage = targetLanguage,
-            canSpeak = canSpeak
+            targetLanguage = coast.language,
+            canSpeak = coast.canSpeak,
+            coastIslands = coast.islands
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StudyUiState(islandName = islandName))
 
@@ -166,6 +177,14 @@ class StudyViewModel @Inject constructor(
         val alternatives = card.alternatives.map { if (it == alternative) card.targetText else it }
         // observeCards re-emits the updated card, which replaces it in the session.
         viewModelScope.launch { flashcards.updateTranslation(card.cardId, alternative, alternatives) }
+    }
+
+    /**
+     * Saves [edit] to card [cardId]. A card moved to another island leaves the session;
+     * otherwise observeCards re-emits it with the changes in place.
+     */
+    fun editCard(cardId: Int, edit: CardEdit) {
+        viewModelScope.launch { flashcards.editCard(cardId, edit) }
     }
 
     /** Grades the current card, saves its new schedule and moves on. */

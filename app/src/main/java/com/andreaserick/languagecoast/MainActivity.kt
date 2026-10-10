@@ -47,8 +47,10 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.andreaserick.languagecoast.navigation.CoastScreenRoute
 import com.andreaserick.languagecoast.navigation.CreateScreenRoute
+import com.andreaserick.languagecoast.navigation.IslandScreenRoute
 import com.andreaserick.languagecoast.navigation.MyCoastScreenRoute
 import com.andreaserick.languagecoast.navigation.SettingsScreenRoute
 import com.andreaserick.languagecoast.navigation.StudyScreenRoute
@@ -59,6 +61,7 @@ import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.OceanBackground
 import com.andreaserick.languagecoast.ui.components.UndoMessenger
 import com.andreaserick.languagecoast.ui.create.CreateScreen
+import com.andreaserick.languagecoast.ui.island.IslandScreen
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastScreen
 import com.andreaserick.languagecoast.ui.settings.SettingsScreen
 import com.andreaserick.languagecoast.ui.study.StudyScreen
@@ -212,16 +215,32 @@ fun LanguageCoastApp(scheduleReminders: () -> Unit) {
                             onIslandClick = { id, name ->
                                 navController.navigate(StudyScreenRoute(islandId = id, islandName = name))
                             },
+                            onShowCards = { id, name ->
+                                navController.navigate(IslandScreenRoute(islandId = id, islandName = name))
+                            },
                             onNavigateBack = { navController.popBackStack() }
                         )
+                    }
+                    composable<IslandScreenRoute>(
+                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
+                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                    ) {
+                        // IslandViewModel reads the route arguments from its SavedStateHandle.
+                        IslandScreen(onNavigateBack = { navController.popBackStack() })
                     }
                     composable<SettingsScreenRoute> { SettingsScreen() }
                     composable<StudyScreenRoute>(
                         enterTransition = { slideIntoContainer(SlideDirection.Up, tween(TRANSITION_MILLIS)) + fadeIn() },
                         popExitTransition = { slideOutOfContainer(SlideDirection.Down, tween(TRANSITION_MILLIS)) + fadeOut() }
-                    ) {
+                    ) { entry ->
+                        val route = entry.toRoute<StudyScreenRoute>()
                         // StudyViewModel reads the route arguments from its SavedStateHandle.
-                        StudyScreen(onNavigateBack = { navController.popBackStack() })
+                        StudyScreen(
+                            onNavigateBack = { navController.popBackStack() },
+                            onShowCards = {
+                                navController.navigate(IslandScreenRoute(islandId = route.islandId, islandName = route.islandName))
+                            }
+                        )
                     }
                 }
             }

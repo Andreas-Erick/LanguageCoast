@@ -15,17 +15,25 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +49,7 @@ import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
+import com.andreaserick.languagecoast.ui.theme.WaveTeal
 import com.andreaserick.languagecoast.ui.theme.cardTint
 import java.time.LocalDate
 
@@ -48,11 +57,13 @@ import java.time.LocalDate
  * A single coast: a grid of its "Language Islands" (categories) that contain flashcards.
  *
  * @param onIslandClick Called with the island ID and name when an island is tapped.
+ * @param onShowCards Called with the island ID and name when See cards is picked in an island's menu.
  * @param onNavigateBack Called when the back arrow is tapped.
  */
 @Composable
 fun CoastScreen(
     onIslandClick: (Int, String) -> Unit,
+    onShowCards: (Int, String) -> Unit,
     onNavigateBack: () -> Unit,
     viewModel: CoastViewModel = hiltViewModel()
 ) {
@@ -92,6 +103,7 @@ fun CoastScreen(
                         summary = summary,
                         today = uiState.today,
                         onClick = { onIslandClick(summary.island.islandId, summary.island.name) },
+                        onShowCards = { onShowCards(summary.island.islandId, summary.island.name) },
                         onDeleteClick = {
                             viewModel.deleteIsland(summary.island) { deleted ->
                                 undoMessenger.show("${summary.island.name} deleted") { viewModel.restore(deleted) }
@@ -106,13 +118,15 @@ fun CoastScreen(
 }
 
 /**
- * A square card for one "Language Island": its emoji, name, card count and last study session.
+ * A square card for one "Language Island": its emoji, name, card count and last study session,
+ * with a ⋮ menu to see its cards or delete it.
  */
 @Composable
 fun IslandCard(
     summary: IslandSummary,
     today: LocalDate,
     onClick: () -> Unit,
+    onShowCards: () -> Unit,
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -128,10 +142,13 @@ fun IslandCard(
         colors = CardDefaults.cardColors(containerColor = cardTint(island.islandId), contentColor = DeepOceanBlue)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // IconButton keeps a 48dp touch target even though the icon is small.
-            IconButton(onClick = onDeleteClick, modifier = Modifier.align(Alignment.TopEnd)) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete ${island.name}", tint = onCardSecondary)
-            }
+            IslandMenu(
+                islandName = island.name,
+                tint = onCardSecondary,
+                onShowCards = onShowCards,
+                onDelete = onDeleteClick,
+                modifier = Modifier.align(Alignment.TopEnd)
+            )
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -160,6 +177,42 @@ fun IslandCard(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .padding(bottom = 10.dp, start = 8.dp, end = 8.dp)
+            )
+        }
+    }
+}
+
+/** The ⋮ menu of an island card: See cards and Delete island. */
+@Composable
+private fun IslandMenu(
+    islandName: String,
+    tint: Color,
+    onShowCards: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        // IconButton keeps a 48dp touch target even though the icon is small.
+        IconButton(onClick = { expanded = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Options for $islandName", tint = tint)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = WaveTeal) {
+            DropdownMenuItem(
+                text = { Text("See cards", color = Color.White) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null, tint = Color.White) },
+                onClick = {
+                    expanded = false
+                    onShowCards()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Delete island", color = Color.White) },
+                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White) },
+                onClick = {
+                    expanded = false
+                    onDelete()
+                }
             )
         }
     }
