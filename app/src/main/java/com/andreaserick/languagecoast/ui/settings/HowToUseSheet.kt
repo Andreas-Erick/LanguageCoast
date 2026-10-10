@@ -90,6 +90,7 @@ private val GUIDE = listOf(
             "Tap ⋮ on an island and \"See cards\" to list its cards with when each is due next.",
             "Tap a card there, or \"Edit card\" in the ⋮ menu while studying, to fix its translation and alternatives or move it to another island.",
             "Export a coast to Anki or Markdown, or import cards from a CSV file, under \"Your cards\" in Settings.",
+            "Changing phones? \"Back up\" under Backup in Settings saves everything, including your progress and streak. \"Restore\" it on the new phone.",
             "Deleted a coast, island or card by accident? Tap \"Undo\" in the message at the bottom."
         )
     )

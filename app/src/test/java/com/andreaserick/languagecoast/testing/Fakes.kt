@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.testing
 
 import com.andreaserick.languagecoast.data.AddedCard
+import com.andreaserick.languagecoast.data.BackupSettings
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.CoastContent
@@ -210,6 +211,12 @@ class FakeFlashcardRepository : FlashcardRepository {
 
     override fun observeAllIslands(): Flow<List<LanguageIsland>> = islands
 
+    override suspend fun replaceAll(coasts: List<Coast>, islands: List<LanguageIsland>, cards: List<Flashcard>) {
+        this.coasts.value = coasts
+        this.islands.value = islands
+        this.cards.value = cards
+    }
+
     /** Adds a coast with an explicit ID. */
     fun seedCoast(coastId: Int, language: String): Coast =
         Coast(coastId = coastId, language = language).also { new -> coasts.update { it + new } }
@@ -267,6 +274,30 @@ class FakeSettingsRepository : SettingsRepository {
 
     override suspend fun refreshStreak() {
         streakRefreshes++
+    }
+
+    override suspend fun backupSettings() = BackupSettings(
+        nativeLanguage = nativeLanguage.value,
+        activeCoastId = activeCoastId.value,
+        translationProvider = translationProvider.value.name,
+        geminiModel = geminiModel.value,
+        openRouterModel = openRouterModel.value,
+        streakCount = streakCount.value,
+        studyDays = studyDays.value.map { it.toString() }.sorted(),
+        reminderEnabled = reminderSettings.value.enabled,
+        studyReversed = studyReversed.value
+    )
+
+    override suspend fun restoreSettings(backup: BackupSettings) {
+        nativeLanguage.value = backup.nativeLanguage
+        activeCoastId.value = backup.activeCoastId
+        backup.translationProvider?.let { name -> translationProvider.value = TranslationProvider.valueOf(name) }
+        backup.geminiModel?.let { geminiModel.value = it }
+        backup.openRouterModel?.let { openRouterModel.value = it }
+        streakCount.value = backup.streakCount
+        studyDays.value = backup.studyDays.mapTo(HashSet()) { LocalDate.parse(it) }
+        reminderSettings.value = ReminderSettings(enabled = backup.reminderEnabled)
+        studyReversed.value = backup.studyReversed
     }
 }
 
