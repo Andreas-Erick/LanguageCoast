@@ -31,7 +31,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
   <img src="docs/screenshots/search.png" alt="Search results across all coasts, each showing its coast, island and when it is due" width="200" />
   <img src="docs/screenshots/settings.png" alt="Settings with the native language and the choice of on-device, Gemini or OpenRouter translation" width="200" />
   <img src="docs/screenshots/notification.png" alt="Daily study reminder saying how many cards are due" width="200" />
-  <img src="docs/screenshots/widget.png" alt="Home-screen widget with the study streak and the cards due today" width="200" />
+  <img src="docs/screenshots/widget.jpg" alt="Home-screen widget with the study streak and the cards due today" width="200" />
 </p>
 
 ## ✨ Features
