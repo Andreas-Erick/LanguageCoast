@@ -350,4 +350,37 @@ class CreateViewModelTest {
         advanceTimeBy(RESULT_VISIBLE_MILLIS + 1)
         assertNull(viewModel.uiState.result)
     }
+
+    @Test
+    fun typingASentenceTheCoastAlreadyHasShowsWhereItIs() = runTest {
+        flashcards.addFlashcard(coastId = 1, nativeText = "Where is the station?", targetText = "¿Dónde está la estación?", category = "Travel")
+
+        viewModel.onNativeSentenceChange("where is the station")
+        val duplicate = viewModel.uiState.duplicate!!
+        assertEquals("Travel", duplicate.islandName)
+        assertEquals("¿Dónde está la estación?", duplicate.card.targetText)
+
+        viewModel.onNativeSentenceChange("where is the stations")
+        assertNull(viewModel.uiState.duplicate)
+    }
+
+    @Test
+    fun cardsOnOtherCoastsAreNotDuplicates() = runTest {
+        flashcards.seedCoast(coastId = 2, language = "German")
+        flashcards.addFlashcard(coastId = 2, nativeText = "Hello", targetText = "Hallo", category = "Greetings")
+
+        viewModel.onNativeSentenceChange("Hello")
+
+        assertNull(viewModel.uiState.duplicate)
+    }
+
+    @Test
+    fun aCardSavedWhileTypingIsFoundToo() = runTest {
+        viewModel.onNativeSentenceChange("Hello")
+        assertNull(viewModel.uiState.duplicate)
+
+        flashcards.addFlashcard(coastId = 1, nativeText = "Hello!", targetText = "¡Hola!", category = "Greetings")
+
+        assertEquals("¡Hola!", viewModel.uiState.duplicate?.card?.targetText)
+    }
 }

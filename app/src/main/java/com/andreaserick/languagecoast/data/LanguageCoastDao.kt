@@ -123,6 +123,23 @@ interface LanguageCoastDao {
     )
     fun getRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>>
 
+    /** Every card with its island and coast, by coast (oldest first), then island name, then the order cards were added. */
+    @Query(
+        """
+        SELECT flashcards.*, language_islands.name AS islandName, language_islands.emoji AS islandEmoji,
+            coasts.coastId AS coastId, coasts.language AS language
+        FROM flashcards
+            INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
+            INNER JOIN coasts ON language_islands.coastId = coasts.coastId
+        ORDER BY coasts.creationDate, language_islands.name, flashcards.cardId
+        """
+    )
+    fun getAllPlacedCards(): Flow<List<PlacedCard>>
+
+    /** Every island on every coast, newest first. */
+    @Query("SELECT * FROM language_islands ORDER BY creationDate DESC")
+    fun getAllIslands(): Flow<List<LanguageIsland>>
+
     /** Number of cards on island [islandId]. */
     @Query("SELECT COUNT(*) FROM flashcards WHERE islandId = :islandId")
     suspend fun countCardsInIsland(islandId: Int): Int

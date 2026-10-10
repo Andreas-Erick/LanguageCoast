@@ -84,6 +84,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Grade
+import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.ui.components.CardOptionsMenu
 import com.andreaserick.languagecoast.ui.components.EditCardSheet
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
@@ -732,15 +733,7 @@ internal fun isCorrectAnswer(typed: String, card: Flashcard): Boolean =
  * Whether a typed answer matches the card's translation, ignoring case, punctuation and extra spaces
  * ("wo ist der Strand" matches "Wo ist der Strand?"). Accents and other letters must match exactly.
  */
-internal fun answerMatches(typed: String, expected: String): Boolean {
-    // The lowercase words of [text], with punctuation and extra spaces removed.
-    fun normalize(text: String) = text.lowercase()
-        .map { if (it.isLetterOrDigit()) it else ' ' }
-        .joinToString("")
-        .split(' ')
-        .filter { it.isNotEmpty() }
-    return normalize(typed) == normalize(expected)
-}
+internal fun answerMatches(typed: String, expected: String): Boolean = isSameSentence(typed, expected)
 
 /**
  * Shown when the island has cards but none are due: when the next ones are, and a way to practice anyway.

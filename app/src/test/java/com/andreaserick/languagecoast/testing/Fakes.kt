@@ -10,6 +10,7 @@ import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.LanguageIsland
+import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
@@ -195,6 +196,19 @@ class FakeFlashcardRepository : FlashcardRepository {
                 RecentCard(card, island.name, island.emoji)
             }
         }
+
+    override fun observeAllCards(): Flow<List<PlacedCard>> =
+        combine(coasts, islands, cards) { coasts, islands, cards ->
+            val islandsById = islands.associateBy { it.islandId }
+            val coastsById = coasts.associateBy { it.coastId }
+            cards.mapNotNull { card ->
+                val island = islandsById[card.islandId] ?: return@mapNotNull null
+                val coast = coastsById[island.coastId] ?: return@mapNotNull null
+                PlacedCard(card, island.name, island.emoji, coast.coastId, coast.language)
+            }.sortedWith(compareBy({ it.coastId }, { it.islandName }, { it.card.cardId }))
+        }
+
+    override fun observeAllIslands(): Flow<List<LanguageIsland>> = islands
 
     /** Adds a coast with an explicit ID. */
     fun seedCoast(coastId: Int, language: String): Coast =
