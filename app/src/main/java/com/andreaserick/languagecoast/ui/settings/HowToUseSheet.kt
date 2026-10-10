@@ -79,7 +79,8 @@ private val GUIDE = listOf(
         "🔥", "Streaks and reminders",
         listOf(
             "Finish an island each day to keep your streak going.",
-            "Turn on the daily reminder here in Settings, at a fixed time or a surprise time."
+            "Turn on the daily reminder here in Settings, at a fixed time or a surprise time.",
+            "Add the Language Coast widget to your home screen to see your streak and the cards due today."
         )
     ),
     GuideSection(

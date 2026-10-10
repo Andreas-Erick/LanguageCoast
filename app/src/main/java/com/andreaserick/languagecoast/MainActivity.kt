@@ -72,6 +72,7 @@ import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.LanguageCoastTheme
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.SandMuted
+import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -98,6 +99,12 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /** Refreshes the home-screen widget, since studying or adding cards may have changed its counts. */
+    override fun onStop() {
+        super.onStop()
+        StudyWidgetProvider.requestUpdate(this)
     }
 }
 
