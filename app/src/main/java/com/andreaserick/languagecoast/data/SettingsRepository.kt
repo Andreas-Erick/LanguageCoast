@@ -105,6 +105,12 @@ interface SettingsRepository {
 
     /** Resets the streak if more than a full day has passed since the last session. */
     suspend fun refreshStreak()
+
+    /** Everything stored here except the API keys, for a [Backup]. */
+    suspend fun backupSettings(): BackupSettings
+
+    /** Replaces everything stored here with [backup], except the API keys, which are kept. */
+    suspend fun restoreSettings(backup: BackupSettings)
 }
 
 /** [SettingsRepository] backed by Preferences DataStore. */
@@ -195,6 +201,44 @@ class DataStoreSettingsRepository @Inject constructor(
             if (isStreakBroken(lastStudy, LocalDate.now(clock))) {
                 preferences[STREAK_COUNT] = 0
             }
+        }
+    }
+
+    override suspend fun backupSettings(): BackupSettings {
+        val preferences = dataStore.data.first()
+        return BackupSettings(
+            nativeLanguage = preferences[NATIVE_LANG] ?: SettingsDefaults.NATIVE_LANGUAGE,
+            activeCoastId = preferences[ACTIVE_COAST_ID],
+            translationProvider = preferences[TRANSLATION_PROVIDER],
+            geminiModel = preferences[GEMINI_MODEL],
+            openRouterModel = preferences[OPENROUTER_MODEL],
+            streakCount = preferences[STREAK_COUNT] ?: 0,
+            lastStudyDate = preferences[LAST_STUDY_DATE],
+            studyDays = preferences[STUDY_DAYS].orEmpty().sorted(),
+            reminderEnabled = preferences[REMINDER_ENABLED] ?: true,
+            reminderMinuteOfDay = preferences[REMINDER_MINUTE_OF_DAY],
+            studyReversed = preferences[STUDY_REVERSED] ?: false
+        )
+    }
+
+    override suspend fun restoreSettings(backup: BackupSettings) {
+        dataStore.edit { preferences ->
+            // Sets [key] to [value], or removes it so its default applies.
+            fun <T> put(key: Preferences.Key<T>, value: T?) {
+                if (value == null) preferences.remove(key) else preferences[key] = value
+            }
+            put(NATIVE_LANG, backup.nativeLanguage)
+            put(ACTIVE_COAST_ID, backup.activeCoastId)
+            // A provider this version doesn't know falls back to the default.
+            put(TRANSLATION_PROVIDER, backup.translationProvider?.takeIf { name -> TranslationProvider.entries.any { it.name == name } })
+            put(GEMINI_MODEL, backup.geminiModel)
+            put(OPENROUTER_MODEL, backup.openRouterModel)
+            put(STREAK_COUNT, backup.streakCount)
+            put(LAST_STUDY_DATE, backup.lastStudyDate)
+            put(STUDY_DAYS, backup.studyDays.toSet())
+            put(REMINDER_ENABLED, backup.reminderEnabled)
+            put(REMINDER_MINUTE_OF_DAY, backup.reminderMinuteOfDay)
+            put(STUDY_REVERSED, backup.studyReversed)
         }
     }
 

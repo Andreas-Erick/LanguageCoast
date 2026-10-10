@@ -301,17 +301,17 @@ private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     }
 }
 
-/** Reads a text file, or returns null if it can't be read or is too large to be a card file. */
-private fun readText(resolver: ContentResolver, uri: Uri): String? = try {
+/** Reads a text file, or returns null if it can't be read or is longer than [maxChars]. */
+internal fun readText(resolver: ContentResolver, uri: Uri, maxChars: Int = MAX_IMPORT_CHARS): String? = try {
     resolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
         val text = StringBuilder()
         val chunk = CharArray(8 * 1024)
-        while (text.length <= MAX_IMPORT_CHARS) {
+        while (text.length <= maxChars) {
             val read = reader.read(chunk)
             if (read == -1) break
             text.appendRange(chunk, 0, read)
         }
-        text.takeIf { it.length <= MAX_IMPORT_CHARS }?.toString()
+        text.takeIf { it.length <= maxChars }?.toString()
     }
 } catch (e: IOException) {
     null
@@ -320,7 +320,7 @@ private fun readText(resolver: ContentResolver, uri: Uri): String? = try {
 }
 
 /** Writes [text] to [uri], replacing what was there. Returns whether it worked. */
-private fun writeText(resolver: ContentResolver, uri: Uri, text: String): Boolean = try {
+internal fun writeText(resolver: ContentResolver, uri: Uri, text: String): Boolean = try {
     resolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { it.write(text) } != null
 } catch (e: IOException) {
     false

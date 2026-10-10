@@ -109,6 +109,9 @@ interface FlashcardRepository {
 
     /** Every island on every coast, newest first. */
     fun observeAllIslands(): Flow<List<LanguageIsland>>
+
+    /** Replaces every coast, island and card with these, keeping their IDs (for restoring a backup). */
+    suspend fun replaceAll(coasts: List<Coast>, islands: List<LanguageIsland>, cards: List<Flashcard>)
 }
 
 /** [FlashcardRepository] backed by the Room database. */
@@ -212,4 +215,7 @@ class OfflineFlashcardRepository @Inject constructor(
     override fun observeAllCards(): Flow<List<PlacedCard>> = dao.getAllPlacedCards()
 
     override fun observeAllIslands(): Flow<List<LanguageIsland>> = dao.getAllIslands()
+
+    override suspend fun replaceAll(coasts: List<Coast>, islands: List<LanguageIsland>, cards: List<Flashcard>) =
+        dao.replaceAll(coasts, islands, cards)
 }
