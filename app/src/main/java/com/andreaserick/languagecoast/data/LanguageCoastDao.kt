@@ -191,6 +191,19 @@ interface LanguageCoastDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFlashcards(cards: List<Flashcard>)
 
+    /** Deletes every coast, island and card. */
+    @Query("DELETE FROM coasts")
+    suspend fun deleteAllCoasts()
+
+    /** Replaces everything with [coasts], [islands] and [cards], keeping their IDs; all or nothing. */
+    @Transaction
+    suspend fun replaceAll(coasts: List<Coast>, islands: List<LanguageIsland>, cards: List<Flashcard>) {
+        deleteAllCoasts() // Cascades to islands and cards.
+        insertCoasts(coasts)
+        insertIslands(islands)
+        insertFlashcards(cards)
+    }
+
     /** Puts back everything in [content] with its original IDs, parents before children. */
     @Transaction
     suspend fun restore(content: DeletedContent) {

@@ -78,6 +78,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Export to Anki**: save one coast or all of them as a text file that Anki imports with *File › Import*. Each island becomes a subdeck (e.g. *German Coast::Greetings*), and alternatives and notes go on the back of the card. Review progress isn't exported, so cards start fresh in Anki.
 - **Export to Markdown**: one table per island, to read, print or keep in your notes app.
 - **Import from CSV or tab-separated files**, e.g. a spreadsheet or an Anki notes export. A third column (or Anki's deck column) picks the island, a header row is detected, and cards the coast already has are skipped. Imports can be undone.
+- **Full backup and restore**: one JSON file with every coast, island and card including review progress, plus the streak, study days and settings, for moving to a new phone. API keys are left out. Restoring replaces everything after a confirmation, and can be undone.
 - Files are saved and opened with the system file picker, so they can go to Downloads, Google Drive and so on. The app needs no storage permission.
 
 ### ❓ Built-in guide

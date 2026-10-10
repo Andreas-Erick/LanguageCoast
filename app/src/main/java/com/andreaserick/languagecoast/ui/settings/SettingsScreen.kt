@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
@@ -132,6 +133,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
 
             SettingsCard(title = "Your cards", icon = Icons.Default.SwapVert) {
                 CardTransferSection()
+            }
+
+            SettingsCard(title = "Backup", icon = Icons.Default.Backup) {
+                BackupSection()
             }
 
             SettingsCard(title = "Help", icon = Icons.AutoMirrored.Filled.HelpOutline) {
