@@ -91,6 +91,10 @@ interface LanguageCoastDao {
     @Query("SELECT * FROM language_islands WHERE islandId = :islandId")
     suspend fun getIsland(islandId: Int): LanguageIsland?
 
+    /** The island with ID [islandId], or null once it is deleted. */
+    @Query("SELECT * FROM language_islands WHERE islandId = :islandId")
+    fun observeIsland(islandId: Int): Flow<LanguageIsland?>
+
     /** Sets when a study session on island [islandId] was last completed. */
     @Query("UPDATE language_islands SET lastStudied = :time WHERE islandId = :islandId")
     suspend fun setIslandLastStudied(islandId: Int, time: Long)
@@ -119,6 +123,23 @@ interface LanguageCoastDao {
     )
     fun getRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>>
 
+    /** Every card with its island and coast, by coast (oldest first), then island name, then the order cards were added. */
+    @Query(
+        """
+        SELECT flashcards.*, language_islands.name AS islandName, language_islands.emoji AS islandEmoji,
+            coasts.coastId AS coastId, coasts.language AS language
+        FROM flashcards
+            INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
+            INNER JOIN coasts ON language_islands.coastId = coasts.coastId
+        ORDER BY coasts.creationDate, language_islands.name, flashcards.cardId
+        """
+    )
+    fun getAllPlacedCards(): Flow<List<PlacedCard>>
+
+    /** Every island on every coast, newest first. */
+    @Query("SELECT * FROM language_islands ORDER BY creationDate DESC")
+    fun getAllIslands(): Flow<List<LanguageIsland>>
+
     /** Number of cards on island [islandId]. */
     @Query("SELECT COUNT(*) FROM flashcards WHERE islandId = :islandId")
     suspend fun countCardsInIsland(islandId: Int): Int
@@ -130,6 +151,16 @@ interface LanguageCoastDao {
     /** Replaces the translation and alternatives of card [cardId], leaving its other fields as they are. */
     @Query("UPDATE flashcards SET targetText = :targetText, alternatives = :alternatives WHERE cardId = :cardId")
     suspend fun setTranslation(cardId: Int, targetText: String, alternatives: List<String>)
+
+    /** Replaces the user-editable fields of card [cardId], leaving its review progress as it is. */
+    @Query(
+        """
+        UPDATE flashcards SET nativeText = :nativeText, targetText = :targetText, alternatives = :alternatives,
+            note = :note, islandId = :islandId
+        WHERE cardId = :cardId
+        """
+    )
+    suspend fun editCard(cardId: Int, nativeText: String, targetText: String, alternatives: List<String>, note: String?, islandId: Int)
 
     /** Number of cards on all coasts that are due at [now]. */
     @Query("SELECT COUNT(*) FROM flashcards WHERE $DUE")

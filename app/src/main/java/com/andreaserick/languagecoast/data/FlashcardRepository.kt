@@ -17,6 +17,18 @@ data class AddedCard(
     val createdIsland: LanguageIsland?
 )
 
+/**
+ * The parts of a card the user can change with Edit card. [islandId] moves the card to another
+ * island on the same coast. [note] describes [alternatives], so it should be null when there are none.
+ */
+data class CardEdit(
+    val nativeText: String,
+    val targetText: String,
+    val alternatives: List<String>,
+    val note: String?,
+    val islandId: Int
+)
+
 /** Source of truth for coasts, islands and flashcards. */
 interface FlashcardRepository {
     /**
@@ -41,6 +53,8 @@ interface FlashcardRepository {
     fun observeIslands(coastId: Int): Flow<List<LanguageIsland>>
     /** @param now The time due cards are counted at. */
     fun observeIslandSummaries(coastId: Int, now: Long): Flow<List<IslandSummary>>
+    /** The island with ID [islandId], or null once it is deleted. */
+    fun observeIsland(islandId: Int): Flow<LanguageIsland?>
     /** The cards on island [islandId]. */
     fun observeCards(islandId: Int): Flow<List<Flashcard>>
 
@@ -72,6 +86,9 @@ interface FlashcardRepository {
     /** Replaces the translation of card [cardId] with [targetText], and its alternatives with [alternatives]. */
     suspend fun updateTranslation(cardId: Int, targetText: String, alternatives: List<String>)
 
+    /** Saves [edit] to card [cardId], keeping its review progress. */
+    suspend fun editCard(cardId: Int, edit: CardEdit)
+
     /** Number of cards on all coasts that are due at [now]. */
     suspend fun countDueCards(now: Long): Int
 
@@ -86,6 +103,12 @@ interface FlashcardRepository {
 
     /** The [limit] cards most recently added to coast [coastId], newest first. */
     fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>>
+
+    /** Every card with its island and coast, by coast (oldest first), then island name. */
+    fun observeAllCards(): Flow<List<PlacedCard>>
+
+    /** Every island on every coast, newest first. */
+    fun observeAllIslands(): Flow<List<LanguageIsland>>
 }
 
 /** [FlashcardRepository] backed by the Room database. */
@@ -117,6 +140,8 @@ class OfflineFlashcardRepository @Inject constructor(
 
     override fun observeIslandSummaries(coastId: Int, now: Long): Flow<List<IslandSummary>> =
         dao.getIslandSummaries(coastId, now)
+
+    override fun observeIsland(islandId: Int): Flow<LanguageIsland?> = dao.observeIsland(islandId)
 
     override fun observeCards(islandId: Int): Flow<List<Flashcard>> = dao.getCardsForIsland(islandId)
 
@@ -167,6 +192,9 @@ class OfflineFlashcardRepository @Inject constructor(
     override suspend fun updateTranslation(cardId: Int, targetText: String, alternatives: List<String>) =
         dao.setTranslation(cardId, targetText, alternatives)
 
+    override suspend fun editCard(cardId: Int, edit: CardEdit) =
+        dao.editCard(cardId, edit.nativeText, edit.targetText, edit.alternatives, edit.note, edit.islandId)
+
     override suspend fun countDueCards(now: Long): Int = dao.countDueCards(now)
 
     override suspend fun restore(content: DeletedContent) = dao.restore(content)
@@ -180,4 +208,8 @@ class OfflineFlashcardRepository @Inject constructor(
         }
 
     override fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>> = dao.getRecentCards(coastId, limit)
+
+    override fun observeAllCards(): Flow<List<PlacedCard>> = dao.getAllPlacedCards()
+
+    override fun observeAllIslands(): Flow<List<LanguageIsland>> = dao.getAllIslands()
 }

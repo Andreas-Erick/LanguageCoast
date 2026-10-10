@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.testing
 
 import com.andreaserick.languagecoast.data.AddedCard
+import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.CoastContent
 import com.andreaserick.languagecoast.data.CoastSummary
@@ -9,6 +10,7 @@ import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.LanguageIsland
+import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
@@ -93,6 +95,9 @@ class FakeFlashcardRepository : FlashcardRepository {
             }
         }
 
+    override fun observeIsland(islandId: Int): Flow<LanguageIsland?> =
+        islands.map { all -> all.firstOrNull { it.islandId == islandId } }
+
     override fun observeCards(islandId: Int): Flow<List<Flashcard>> =
         cards.map { all -> all.filter { it.islandId == islandId } }
 
@@ -150,6 +155,21 @@ class FakeFlashcardRepository : FlashcardRepository {
         cards.update { all -> all.map { if (it.cardId == cardId) it.copy(targetText = targetText, alternatives = alternatives) else it } }
     }
 
+    override suspend fun editCard(cardId: Int, edit: CardEdit) {
+        cards.update { all ->
+            all.map {
+                if (it.cardId != cardId) it
+                else it.copy(
+                    nativeText = edit.nativeText,
+                    targetText = edit.targetText,
+                    alternatives = edit.alternatives,
+                    note = edit.note,
+                    islandId = edit.islandId
+                )
+            }
+        }
+    }
+
     override suspend fun countDueCards(now: Long): Int = cards.value.count { isDue(it, now) }
 
     override suspend fun restore(content: DeletedContent) {
@@ -176,6 +196,19 @@ class FakeFlashcardRepository : FlashcardRepository {
                 RecentCard(card, island.name, island.emoji)
             }
         }
+
+    override fun observeAllCards(): Flow<List<PlacedCard>> =
+        combine(coasts, islands, cards) { coasts, islands, cards ->
+            val islandsById = islands.associateBy { it.islandId }
+            val coastsById = coasts.associateBy { it.coastId }
+            cards.mapNotNull { card ->
+                val island = islandsById[card.islandId] ?: return@mapNotNull null
+                val coast = coastsById[island.coastId] ?: return@mapNotNull null
+                PlacedCard(card, island.name, island.emoji, coast.coastId, coast.language)
+            }.sortedWith(compareBy({ it.coastId }, { it.islandName }, { it.card.cardId }))
+        }
+
+    override fun observeAllIslands(): Flow<List<LanguageIsland>> = islands
 
     /** Adds a coast with an explicit ID. */
     fun seedCoast(coastId: Int, language: String): Coast =
@@ -211,6 +244,7 @@ class FakeSettingsRepository : SettingsRepository {
     override val streakCount = MutableStateFlow(0)
     override val studyDays = MutableStateFlow<Set<LocalDate>>(emptySet())
     override val reminderSettings = MutableStateFlow(ReminderSettings())
+    override val studyReversed = MutableStateFlow(false)
 
     var studySessionsRecorded = 0
         private set
@@ -225,6 +259,7 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setOpenRouterKey(key: String) { openRouterKey.value = key }
     override suspend fun setOpenRouterModel(model: String) { openRouterModel.value = model }
     override suspend fun setReminderSettings(reminder: ReminderSettings) { reminderSettings.value = reminder }
+    override suspend fun setStudyReversed(reversed: Boolean) { studyReversed.value = reversed }
 
     override suspend fun recordStudySession() {
         studySessionsRecorded++

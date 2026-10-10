@@ -53,6 +53,10 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **One coast per language**: study several languages side by side, each with its own islands. Pick which coast new cards go to right on the Create screen.
 - **Language Islands**: on each coast, your vocabulary is grouped into islands by category, each with its emoji, card count and when you last studied it.
 - **Progress at a glance**: coasts show how many islands you explored this week.
+- **Island card list**: *See cards* in an island's ⋮ menu (or the list icon while studying) shows every card with its translation, alternatives and when it is due next.
+- **Search**: the search icon on My Coasts finds cards on every coast by their native text, translation or alternatives, and shows which coast and island each is on.
+- **Duplicate hint**: while you type a new card, Create tells you if the coast already has that sentence and on which island.
+- **Edit cards**: fix a card's native text, translation or alternatives, or move it to another island, without losing its review progress.
 - **Daily streaks**: a streak counter and a dot for each day of the week track your study days.
 - **Undo instead of "Are you sure?"**: deleted coasts, islands and cards can be restored from the snackbar.
 - **Offline-first storage**: cards are stored locally with **Room**, and preferences with **Jetpack DataStore**.
@@ -62,11 +66,13 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Flip Cards**: classic flashcards with an animated flip. Grade each card *Again*, *Hard*, *Good* or *Easy* (each button shows when the card comes back), or swipe left for *Again* and right for *Good*. *Again* also moves the card to the end of the session.
 - **Active Type**: test your recall by typing the translation. Capitalization, punctuation and extra spaces don't count against you, accents do. A correct answer is graded like a flipped card; a wrong one counts as *Again* and the card comes back later in the session.
 - **Read aloud**: a speaker button reads the translation in the coast's language, using the voices installed on your phone (free and offline). It only appears when the phone has a voice for that language.
+- **Study the other way round**: swap the direction under the study tabs to see the translation first and answer in your native language, training recognition instead of recall. Works with Flip Cards and Active Type, and is remembered for later sessions.
 - **Session summary**: finishing an island shows a short celebration with your stats and streak.
 - **Built-in dictionary**: tap any word on the back of a card to look it up on **dict.cc**. It uses your language pair when dict.cc has it (dict.cc pairs every language with English or German) and falls back to the English dictionary otherwise.
 
 ### 🔔 Study reminders
 - A daily reminder, scheduled with **WorkManager**: at a surprise time between 9:00 and 21:00, or at a fixed time you pick in Settings. It can also be turned off.
+- **Home-screen widget**: the cards due today and your streak, a gentler nudge than a notification. It refreshes every hour and whenever you leave the app, and tapping it opens the app.
 
 ### 📤 Export & import
 - **Export to Anki**: save one coast or all of them as a text file that Anki imports with *File › Import*. Each island becomes a subdeck (e.g. *German Coast::Greetings*), and alternatives and notes go on the back of the card. Review progress isn't exported, so cards start fresh in Anki.

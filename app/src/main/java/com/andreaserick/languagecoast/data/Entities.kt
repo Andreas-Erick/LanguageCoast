@@ -84,6 +84,18 @@ data class RecentCard(
     val emoji: String get() = islandEmoji ?: emojiForCategory(islandName)
 }
 
+/** A [Flashcard] with the island and coast it is on, for searching across all coasts. */
+data class PlacedCard(
+    @Embedded val card: Flashcard,
+    val islandName: String,
+    val islandEmoji: String?,
+    val coastId: Int,
+    val language: String
+) {
+    /** The island's emoji, or the one guessed from its name (as [islandEmoji] does for islands). */
+    val emoji: String get() = islandEmoji ?: emojiForCategory(islandName)
+}
+
 /** A [LanguageIsland] with its number of cards, and how many of them are due (see [isDue]). */
 data class IslandSummary(
     @Embedded val island: LanguageIsland,

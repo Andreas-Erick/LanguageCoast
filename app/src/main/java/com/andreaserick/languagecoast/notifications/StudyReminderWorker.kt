@@ -10,6 +10,7 @@ import androidx.work.WorkerParameters
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -132,6 +133,8 @@ class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
         val entryPoint = EntryPointAccessors.fromApplication(applicationContext, SchedulerEntryPoint::class.java)
         val dueCount = entryPoint.flashcardRepository().countDueCards(entryPoint.clock().millis())
         NotificationHelper.showStudyNotification(applicationContext, dueCount)
+        // The widget should show the same count as the reminder.
+        StudyWidgetProvider.requestUpdate(applicationContext)
         entryPoint.reminderScheduler().scheduleNext()
         return Result.success()
     }

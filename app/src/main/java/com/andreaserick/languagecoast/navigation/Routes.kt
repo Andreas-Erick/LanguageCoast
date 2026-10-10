@@ -12,6 +12,10 @@ object MyCoastScreenRoute
 @Serializable
 object SettingsScreenRoute
 
+// Search across all coasts, opened from My Coasts
+@Serializable
+object SearchScreenRoute
+
 // The islands of a single coast, opened from My Coasts
 @Serializable
 data class CoastScreenRoute(
@@ -22,6 +26,12 @@ data class CoastScreenRoute(
 // Study session for a single island, opened from a coast
 @Serializable
 data class StudyScreenRoute(
+    val islandId: Int,
+    val islandName: String
+)
+// The cards of a single island, opened from a coast or a study session
+@Serializable
+data class IslandScreenRoute(
     val islandId: Int,
     val islandName: String
 )
