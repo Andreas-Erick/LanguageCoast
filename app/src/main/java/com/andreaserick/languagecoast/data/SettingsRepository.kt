@@ -78,6 +78,8 @@ interface SettingsRepository {
     val studyDays: Flow<Set<LocalDate>>
     /** Whether and when the daily study reminder is shown. */
     val reminderSettings: Flow<ReminderSettings>
+    /** Whether cards are studied the other way round: from the coast's language to the native language. */
+    val studyReversed: Flow<Boolean>
 
     /** Stores [language] as the user's native language. */
     suspend fun setNativeLanguage(language: String)
@@ -95,6 +97,8 @@ interface SettingsRepository {
     suspend fun setOpenRouterModel(model: String)
     /** Stores whether and when the daily study reminder is shown. */
     suspend fun setReminderSettings(reminder: ReminderSettings)
+    /** Stores whether cards are studied the other way round. */
+    suspend fun setStudyReversed(reversed: Boolean)
 
     /** Records a completed study session for today and updates the streak. */
     suspend fun recordStudySession()
@@ -152,7 +156,10 @@ class DataStoreSettingsRepository @Inject constructor(
         )
     }
 
+    override val studyReversed: Flow<Boolean> = dataStore.data.map { it[STUDY_REVERSED] ?: false }
+
     override suspend fun setNativeLanguage(language: String) = set(NATIVE_LANG, language)
+    override suspend fun setStudyReversed(reversed: Boolean) = set(STUDY_REVERSED, reversed)
     override suspend fun setActiveCoastId(coastId: Int) = set(ACTIVE_COAST_ID, coastId)
     override suspend fun setTranslationProvider(provider: TranslationProvider) = set(TRANSLATION_PROVIDER, provider.name)
     override suspend fun setApiKey(key: String) = set(API_KEY, key)
@@ -209,6 +216,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val STUDY_DAYS = stringSetPreferencesKey("study_days")
         val REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val REMINDER_MINUTE_OF_DAY = intPreferencesKey("reminder_minute_of_day")
+        val STUDY_REVERSED = booleanPreferencesKey("study_reversed")
         const val STUDY_DAYS_KEPT = 28L
         val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
     }

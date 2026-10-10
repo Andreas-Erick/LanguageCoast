@@ -244,6 +244,7 @@ class FakeSettingsRepository : SettingsRepository {
     override val streakCount = MutableStateFlow(0)
     override val studyDays = MutableStateFlow<Set<LocalDate>>(emptySet())
     override val reminderSettings = MutableStateFlow(ReminderSettings())
+    override val studyReversed = MutableStateFlow(false)
 
     var studySessionsRecorded = 0
         private set
@@ -258,6 +259,7 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setOpenRouterKey(key: String) { openRouterKey.value = key }
     override suspend fun setOpenRouterModel(model: String) { openRouterModel.value = model }
     override suspend fun setReminderSettings(reminder: ReminderSettings) { reminderSettings.value = reminder }
+    override suspend fun setStudyReversed(reversed: Boolean) { studyReversed.value = reversed }
 
     override suspend fun recordStudySession() {
         studySessionsRecorded++
