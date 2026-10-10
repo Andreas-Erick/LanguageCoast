@@ -74,6 +74,9 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Import from CSV or tab-separated files**, e.g. a spreadsheet or an Anki notes export. A third column (or Anki's deck column) picks the island, a header row is detected, and cards the coast already has are skipped. Imports can be undone.
 - Files are saved and opened with the system file picker, so they can go to Downloads, Google Drive and so on. The app needs no storage permission.
 
+### ❓ Built-in guide
+- **How to use**: a button in Settings opens a short guide to coasts and islands, creating cards, translation, studying, streaks and reminders, and exporting and importing.
+
 **Supported languages:** all 28 dict.cc languages (Albanian, Bosnian, Bulgarian, Croatian, Czech, Danish, Dutch, English, Esperanto, Finnish, French, German, Greek, Hungarian, Icelandic, Italian, Latin, Norwegian, Polish, Portuguese, Romanian, Russian, Serbian, Slovak, Spanish, Swedish, Turkish, Ukrainian), plus Japanese and Korean without dictionary lookup. The language picker can be searched by English or native name (e.g. *Deutsch*, *Suomi*).
 
 ## 🛠️ Tech stack
