@@ -8,5 +8,8 @@
     <color name="abyss_blue">#FF0E2F44</color>
     <color name="sand_beige">#FFC2B280</color>
     <color name="mist_white">#BFFFFFFF</color>
-    <color name="widget_divider">#2EC2B280</color>
+    <!-- SandBeige at 18%, like the wave under the app's headers -->
+    <color name="widget_wave">#2EC2B280</color>
+    <!-- DeepOceanBlue at 85%, for secondary text on the light tiles -->
+    <color name="deep_ocean_blue_secondary">#D9133C55</color>
 </resources>
