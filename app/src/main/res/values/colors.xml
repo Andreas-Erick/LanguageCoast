@@ -4,4 +4,9 @@
     <color name="white">#FFFFFFFF</color>
     <!-- Matches DeepOceanBlue in ui/theme/Color.kt -->
     <color name="deep_ocean_blue">#FF133C55</color>
+    <!-- Widget colours, matching AbyssBlue, SandBeige and MistWhite in ui/theme/Color.kt -->
+    <color name="abyss_blue">#FF0E2F44</color>
+    <color name="sand_beige">#FFC2B280</color>
+    <color name="mist_white">#BFFFFFFF</color>
+    <color name="widget_divider">#2EC2B280</color>
 </resources>

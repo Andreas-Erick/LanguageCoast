@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">Language Coast</string>
+    <string name="widget_description">Cards due today and your study streak</string>
+    <string name="widget_streak_label">day streak</string>
+    <!-- Shown in the widget picker and until the widget first loads its numbers. -->
+    <string name="widget_preview_streak">🔥 5</string>
+    <string name="widget_preview_due">12</string>
+    <string name="widget_preview_due_label">cards due</string>
+    <string name="widget_preview_footer">Study today to keep your streak</string>
 </resources>
