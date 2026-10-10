@@ -34,6 +34,7 @@ interface ReminderScheduler {
     suspend fun reschedule()
 }
 
+/** [ReminderScheduler] that queues the reminder as one-time WorkManager work, replaced each time it runs. */
 @Singleton
 class WorkManagerReminderScheduler @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -52,6 +53,10 @@ class WorkManagerReminderScheduler @Inject constructor(
         schedule(ExistingWorkPolicy.APPEND_OR_REPLACE, allowToday = false)
     }
 
+    /**
+     * Enqueues the next reminder under [WORK_NAME] using [policy], or cancels it if reminders are off.
+     * With [allowToday] it may fire later today; see [delayUntilNextReminder].
+     */
     private suspend fun schedule(policy: ExistingWorkPolicy, allowToday: Boolean) {
         val reminder = settings.reminderSettings.first()
         val workManager = WorkManager.getInstance(context)
@@ -105,12 +110,14 @@ internal fun delayUntilNextReminder(
     return Duration.between(now, target).coerceAtLeast(Duration.ZERO)
 }
 
+/** This duration, or [min] if it is shorter. */
 private fun Duration.coerceAtLeast(min: Duration): Duration = if (this < min) min else this
 
 /** Shows the study reminder, then schedules the next one. */
 class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
 
+    /** Gives the worker, which Hilt doesn't construct, access to the singletons it needs. */
     @EntryPoint
     @InstallIn(SingletonComponent::class)
     interface SchedulerEntryPoint {
@@ -119,6 +126,7 @@ class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
         fun clock(): Clock
     }
 
+    /** Shows the reminder with the number of due cards, then queues the next one. */
     override suspend fun doWork(): Result {
         Log.d("StudyReminderWorker", "Showing study reminder")
         val entryPoint = EntryPointAccessors.fromApplication(applicationContext, SchedulerEntryPoint::class.java)

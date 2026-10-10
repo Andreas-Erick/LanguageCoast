@@ -49,6 +49,7 @@ private fun ankiExport(contents: List<CoastContent>): String = buildString {
     }
 }
 
+/** A Markdown document: one heading per coast, and per island a table of native text and translation. */
 private fun markdownExport(contents: List<CoastContent>, nativeLanguage: String): String = buildString {
     contents.forEachIndexed { index, content ->
         if (index > 0) appendLine()
@@ -101,6 +102,7 @@ private fun CoastContent.islandsWithCards(): List<Pair<LanguageIsland, List<Flas
 private fun tsvField(text: String): String =
     if (text.any { it == '\t' || it == '\n' || it == '\r' || it == '"' }) "\"${text.replace("\"", "\"\"")}\"" else text
 
+/** Escapes pipes and turns line breaks into `<br>`, so [text] fits in one Markdown table cell. */
 private fun markdownCell(text: String): String =
     text.replace("|", "\\|").replace("\r\n", "<br>").replace("\n", "<br>")
 
@@ -121,10 +123,12 @@ fun parseCardFile(text: String): List<ImportedCard> {
 
     val separator = headers["separator"]?.let(::separatorFromHeader) ?: detectSeparator(body)
     val isHtml = headers["html"].equals("true", ignoreCase = true)
+    // The 0-based index of the column an Anki header like `#deck column:3` names, if present.
     fun column(key: String) = headers["$key column"]?.toIntOrNull()?.minus(1)
     val deckColumn = column("deck")
     val metadataColumns = listOfNotNull(deckColumn, column("notetype"), column("tags"), column("guid")).toSet()
 
+    // The plain text of a field, without HTML if the file says its fields hold HTML.
     fun clean(field: String) = if (isHtml) htmlToText(field) else field.trim()
 
     return splitRecords(body, separator).mapNotNull { record ->
@@ -150,6 +154,7 @@ fun parseCardFile(text: String): List<ImportedCard> {
     }
 }
 
+/** The separator an Anki `#separator:` header names, either by name (`tab`, `comma`, …) or as the character itself. */
 private fun separatorFromHeader(value: String): Char? = when (value.lowercase()) {
     "tab" -> '\t'
     "comma" -> ','
@@ -184,10 +189,12 @@ private fun splitRecords(text: String, separator: Char): List<List<String>> {
     val field = StringBuilder()
     var inQuotes = false
     var i = 0
+    // Finishes the current field and starts the next one.
     fun endField() {
         fields += field.toString()
         field.clear()
     }
+    // Finishes the current record; records with only blank fields are dropped.
     fun endRecord() {
         endField()
         if (fields.any { it.isNotBlank() }) records += fields

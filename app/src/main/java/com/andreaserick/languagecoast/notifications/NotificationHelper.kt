@@ -11,10 +11,12 @@ import androidx.core.app.NotificationCompat
 import com.andreaserick.languagecoast.MainActivity
 import com.andreaserick.languagecoast.R
 
+/** Creates the notification channel and shows the daily study reminder. */
 object NotificationHelper {
     private const val CHANNEL_ID = "study_reminder_channel"
     private const val NOTIFICATION_ID = 1001
 
+    /** Creates the channel study reminders are posted to (Android 8 and later); creating it again changes nothing. */
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "Study Reminders"

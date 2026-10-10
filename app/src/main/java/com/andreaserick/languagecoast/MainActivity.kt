@@ -71,11 +71,13 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** The app's only activity: shows the splash screen, then the Compose UI. */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var reminderScheduler: ReminderScheduler
 
+    /** Sets up the splash screen and edge-to-edge drawing, then shows the app. */
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         // The app is always dark, so use light system bar icons over a transparent background.

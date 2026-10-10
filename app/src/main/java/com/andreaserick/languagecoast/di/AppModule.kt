@@ -23,6 +23,7 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
+    /** The Room database, with every migration from earlier schema versions. */
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context, dataStore: DataStore<Preferences>): AppDatabase =
@@ -37,14 +38,17 @@ object AppModule {
             )
             .build()
 
+    /** The DAO of the app's database. */
     @Provides
     fun provideDao(database: AppDatabase): LanguageCoastDao = database.languageCoastDao()
 
+    /** The DataStore holding the user's settings. */
     @Provides
     @Singleton
     fun provideDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
         PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("settings") }
 
+    /** The clock used for due dates, streaks and reminders; tests replace it with a fixed one. */
     @Provides
     fun provideClock(): Clock = Clock.systemDefaultZone()
 }

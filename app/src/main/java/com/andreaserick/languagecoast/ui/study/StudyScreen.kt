@@ -238,6 +238,7 @@ private fun CardMenu(onDelete: () -> Unit) {
     }
 }
 
+/** Tabs to switch between flipping cards to reveal the answer and typing the answer ("Active Type"). */
 @Composable
 private fun StudyModeTabs(isTypingMode: Boolean, onModeChange: (Boolean) -> Unit) {
     PrimaryTabRow(
@@ -730,6 +731,7 @@ internal fun isCorrectAnswer(typed: String, card: Flashcard): Boolean =
  * ("wo ist der Strand" matches "Wo ist der Strand?"). Accents and other letters must match exactly.
  */
 internal fun answerMatches(typed: String, expected: String): Boolean {
+    // The lowercase words of [text], with punctuation and extra spaces removed.
     fun normalize(text: String) = text.lowercase()
         .map { if (it.isLetterOrDigit()) it else ' ' }
         .joinToString("")
@@ -865,6 +867,7 @@ private fun SessionEndButtons(onPracticeAll: () -> Unit, onBack: () -> Unit) {
     }
 }
 
+/** A large [value] with a short [label] below it, for the session summary. */
 @Composable
 private fun StatTile(value: String, label: String, modifier: Modifier = Modifier) {
     Card(
@@ -949,6 +952,7 @@ fun ClickableWordSentence(sentence: String, onWordClick: ((String) -> Unit)?) {
     }
 }
 
+/** A word or punctuation of a card's sentence, at the size cards are shown in. */
 @Composable
 private fun WordText(text: String, modifier: Modifier = Modifier) {
     Text(text = text, fontSize = 24.sp, fontWeight = FontWeight.Medium, modifier = modifier)
@@ -962,6 +966,7 @@ internal fun splitPunctuation(token: String): Triple<String, String, String> {
     return Triple(token.substring(0, first), token.substring(first, last + 1), token.substring(last + 1))
 }
 
+/** Draws a dotted line under the content, marking a word that can be looked up. */
 private fun Modifier.dottedUnderline(color: Color) = drawBehind {
     val y = size.height - 2.dp.toPx()
     drawLine(

@@ -104,14 +104,19 @@ class CardTransferViewModel @Inject constructor(
         }
     }
 
+    /** Tells the user the picked file couldn't be read. */
     fun onImportFileUnreadable() = showMessage("That file couldn't be read.")
 
+    /** Imports the previewed cards into coast [coastId]. */
     fun setImportCoast(coastId: Int) = updatePreview { it.copy(coastId = coastId) }
 
+    /** Whether the file's first column is the translation rather than the native text. */
     fun setSwapColumns(swap: Boolean) = updatePreview { it.copy(swapColumns = swap) }
 
+    /** Whether the file's first row is left out, e.g. because it names the columns. */
     fun setSkipFirstRow(skip: Boolean) = updatePreview { it.copy(skipFirstRow = skip) }
 
+    /** Closes the import preview without adding any cards. */
     fun cancelImport() = state.update { it.copy(importPreview = null) }
 
     /**
@@ -151,10 +156,13 @@ class CardTransferViewModel @Inject constructor(
         result.added.asReversed().forEach { flashcards.undoAdd(it) }
     }
 
+    /** Clears the message once it has been shown. */
     fun messageShown() = state.update { it.copy(message = null) }
 
+    /** Shows [message] to the user once. */
     private fun showMessage(message: String) = state.update { it.copy(message = message) }
 
+    /** Applies [transform] to the import preview, if one is open. */
     private fun updatePreview(transform: (ImportPreview) -> ImportPreview) =
         state.update { s -> s.copy(importPreview = s.importPreview?.let(transform)) }
 
@@ -165,6 +173,7 @@ class CardTransferViewModel @Inject constructor(
         return first.nativeText.lowercase() in names && first.targetText.lowercase() in names
     }
 
+    /** Cards with the same texts, ignoring case and surrounding spaces, count as duplicates. */
     private fun duplicateKey(nativeText: String, targetText: String) =
         nativeText.trim().lowercase() to targetText.trim().lowercase()
 }

@@ -58,6 +58,7 @@ data class ReminderSettings(
 
 /** User preferences: native language, active coast, translation provider, reminders and the study streak. */
 interface SettingsRepository {
+    /** The language the user's cards are translated from. */
     val nativeLanguage: Flow<String>
     /** The coast new cards are added to, or null if none was picked yet. */
     val activeCoastId: Flow<Int?>
@@ -65,21 +66,34 @@ interface SettingsRepository {
     val translationProvider: Flow<TranslationProvider>
     /** The Gemini API key. */
     val apiKey: Flow<String>
+    /** The Gemini model used for translations. */
     val geminiModel: Flow<String>
+    /** The OpenRouter API key. */
     val openRouterKey: Flow<String>
+    /** The OpenRouter model used for translations. */
     val openRouterModel: Flow<String>
+    /** Consecutive days with a completed study session; [refreshStreak] resets it once a day is missed. */
     val streakCount: Flow<Int>
     /** Days with a completed study session; at least the current streak's days, plus recent days recorded since. */
     val studyDays: Flow<Set<LocalDate>>
+    /** Whether and when the daily study reminder is shown. */
     val reminderSettings: Flow<ReminderSettings>
 
+    /** Stores [language] as the user's native language. */
     suspend fun setNativeLanguage(language: String)
+    /** Makes coast [coastId] the one new cards are added to. */
     suspend fun setActiveCoastId(coastId: Int)
+    /** Stores where translations come from. */
     suspend fun setTranslationProvider(provider: TranslationProvider)
+    /** Stores the Gemini API key. */
     suspend fun setApiKey(key: String)
+    /** Stores the Gemini model used for translations. */
     suspend fun setGeminiModel(model: String)
+    /** Stores the OpenRouter API key. */
     suspend fun setOpenRouterKey(key: String)
+    /** Stores the OpenRouter model used for translations. */
     suspend fun setOpenRouterModel(model: String)
+    /** Stores whether and when the daily study reminder is shown. */
     suspend fun setReminderSettings(reminder: ReminderSettings)
 
     /** Records a completed study session for today and updates the streak. */
@@ -89,6 +103,7 @@ interface SettingsRepository {
     suspend fun refreshStreak()
 }
 
+/** [SettingsRepository] backed by Preferences DataStore. */
 class DataStoreSettingsRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>,
     private val clock: Clock
@@ -176,6 +191,7 @@ class DataStoreSettingsRepository @Inject constructor(
         }
     }
 
+    /** Stores [value] under [key]. */
     private suspend fun <T> set(key: Preferences.Key<T>, value: T) {
         dataStore.edit { it[key] = value }
     }

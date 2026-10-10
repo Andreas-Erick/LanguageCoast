@@ -73,8 +73,10 @@ fun CardTransferSection(viewModel: CardTransferViewModel = hiltViewModel()) {
     var exportCoastId by rememberSaveable { mutableStateOf<Int?>(null) }
     var exportFormat by rememberSaveable { mutableStateOf(ExportFormat.Anki) }
 
+    // Shows [text] briefly at the bottom of the screen.
     fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
 
+    // Writes the export chosen in the dialog to the file picked in the system "save as" screen, if any.
     fun writeExport(uri: Uri?) {
         uri ?: return
         scope.launch {
@@ -171,6 +173,7 @@ fun CardTransferSection(viewModel: CardTransferViewModel = hiltViewModel()) {
     }
 }
 
+/** Asks which coast (or all of them) to export and in which format. */
 @Composable
 private fun ExportDialog(
     coasts: List<Coast>,
@@ -225,6 +228,10 @@ private fun ExportDialog(
 
 private data class CoastOption(val coastId: Int?, val label: String)
 
+/**
+ * Shows the first cards of the file being imported and lets the user pick the coast, swap the sides
+ * or leave out a header row before importing.
+ */
 @Composable
 private fun ImportDialog(
     preview: ImportPreview,
@@ -285,6 +292,7 @@ private fun ImportDialog(
     )
 }
 
+/** A label with a switch at the end of the row. */
 @Composable
 private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

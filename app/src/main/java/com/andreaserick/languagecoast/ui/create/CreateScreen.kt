@@ -115,6 +115,10 @@ fun CreateScreen(
     )
 }
 
+/**
+ * The home screen's content: a prompt to start a coast if there is none, otherwise today's reviews,
+ * the new card form, the result of the last save and the most recently added cards.
+ */
 @Composable
 private fun CreateContent(
     uiState: CreateUiState,
@@ -284,6 +288,10 @@ private fun TodayCard(dueCount: Int, dueCoastCount: Int, onStartReview: () -> Un
     }
 }
 
+/**
+ * The form for a new card on [selectedCoast]: the sentence, and either a translation typed by hand
+ * or an optional category for the automatic translation.
+ */
 @Composable
 private fun NewCardForm(
     uiState: CreateUiState,
@@ -537,6 +545,7 @@ private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit) {
     }
 }
 
+/** Shows why a card couldn't be saved. */
 @Composable
 private fun ErrorCard(message: String) {
     Card(

@@ -21,20 +21,25 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 abstract class DataModule {
 
+    /** Cards are stored in the Room database. */
     @Binds
     @Singleton
     abstract fun bindFlashcardRepository(impl: OfflineFlashcardRepository): FlashcardRepository
 
+    /** Settings are stored in Preferences DataStore. */
     @Binds
     @Singleton
     abstract fun bindSettingsRepository(impl: DataStoreSettingsRepository): SettingsRepository
 
+    /** Translations go to the provider picked in each request. */
     @Binds
     abstract fun bindTranslator(impl: RoutingTranslator): Translator
 
+    /** Reminders are scheduled with WorkManager. */
     @Binds
     abstract fun bindReminderScheduler(impl: WorkManagerReminderScheduler): ReminderScheduler
 
+    /** Text is read aloud with Android's text-to-speech engine. */
     @Binds
     abstract fun bindSpeaker(impl: AndroidSpeaker): Speaker
 }

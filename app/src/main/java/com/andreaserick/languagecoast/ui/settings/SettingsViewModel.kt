@@ -81,6 +81,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Changes where translations come from. */
     fun setTranslationProvider(provider: TranslationProvider) {
         viewModelScope.launch { settings.setTranslationProvider(provider) }
     }
@@ -90,6 +91,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settings.setOpenRouterModel(model) }
     }
 
+    /** Saves the OpenRouter API key and shows the "saved" confirmation. */
     fun saveOpenRouterKey(key: String) {
         viewModelScope.launch {
             settings.setOpenRouterKey(key.trim())
@@ -102,10 +104,12 @@ class SettingsViewModel @Inject constructor(
         openRouterSaved.value = false
     }
 
+    /** Changes the Gemini model used for translations. */
     fun setGeminiModel(model: String) {
         viewModelScope.launch { settings.setGeminiModel(model) }
     }
 
+    /** Saves the Gemini API key and shows the "saved" confirmation. */
     fun saveApiKey(key: String) {
         viewModelScope.launch {
             settings.setApiKey(key.trim())
@@ -118,11 +122,13 @@ class SettingsViewModel @Inject constructor(
         apiKeySaved.value = false
     }
 
+    /** Turns the daily study reminder on or off. */
     fun setRemindersEnabled(enabled: Boolean) = updateReminder { it.copy(enabled = enabled) }
 
     /** Sets a fixed reminder time, or null for a random time during the day. */
     fun setReminderTime(time: LocalTime?) = updateReminder { it.copy(time = time) }
 
+    /** Saves the reminder settings changed by [transform] and reschedules the reminder to match. */
     private fun updateReminder(transform: (ReminderSettings) -> ReminderSettings) {
         viewModelScope.launch {
             settings.setReminderSettings(transform(settings.reminderSettings.first()))

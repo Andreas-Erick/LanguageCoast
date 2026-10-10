@@ -24,8 +24,11 @@ interface FlashcardRepository {
      * @param now The time due cards are counted at.
      */
     fun observeCoastSummaries(studiedSince: Long, now: Long): Flow<List<CoastSummary>>
+    /** Every coast, oldest first. */
     fun observeCoasts(): Flow<List<Coast>>
+    /** The coast with ID [coastId], or null once it is deleted. */
     fun observeCoast(coastId: Int): Flow<Coast?>
+    /** The coast that island [islandId] belongs to. */
     fun observeCoastForIsland(islandId: Int): Flow<Coast?>
 
     /** Creates the coast for [language], or returns the existing one's ID. */
@@ -34,9 +37,11 @@ interface FlashcardRepository {
     /** Deletes [coast] with its islands and cards, returning them for [restore]. */
     suspend fun deleteCoast(coast: Coast): DeletedContent
 
+    /** The islands on coast [coastId], newest first. */
     fun observeIslands(coastId: Int): Flow<List<LanguageIsland>>
     /** @param now The time due cards are counted at. */
     fun observeIslandSummaries(coastId: Int, now: Long): Flow<List<IslandSummary>>
+    /** The cards on island [islandId]. */
     fun observeCards(islandId: Int): Flow<List<Flashcard>>
 
     /**
@@ -58,6 +63,7 @@ interface FlashcardRepository {
 
     /** Deletes [island] with its cards, returning them for [restore]. */
     suspend fun deleteIsland(island: LanguageIsland): DeletedContent
+    /** Deletes [card], returning it for [restore]. */
     suspend fun deleteFlashcard(card: Flashcard): DeletedContent
 
     /** Saves [card]'s new scheduling fields after it was graded. */
@@ -82,6 +88,7 @@ interface FlashcardRepository {
     fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>>
 }
 
+/** [FlashcardRepository] backed by the Room database. */
 class OfflineFlashcardRepository @Inject constructor(
     private val dao: LanguageCoastDao
 ) : FlashcardRepository {
