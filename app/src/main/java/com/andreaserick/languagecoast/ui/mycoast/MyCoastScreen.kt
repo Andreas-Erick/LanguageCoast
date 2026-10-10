@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -69,10 +70,12 @@ import java.util.Locale
  * The "My Coasts" screen. Shows the study streak and one card per coast (language being studied).
  *
  * @param onCoastClick Called with the coast ID and display name when a coast is tapped.
+ * @param onSearchClick Called when the search icon is tapped.
  */
 @Composable
 fun MyCoastScreen(
     onCoastClick: (Int, String) -> Unit,
+    onSearchClick: () -> Unit,
     viewModel: MyCoastViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -94,7 +97,16 @@ fun MyCoastScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        ScreenHeader(title = "My Coasts")
+        ScreenHeader(
+            title = "My Coasts",
+            actions = {
+                if (uiState.coasts.any { it.cardCount > 0 }) {
+                    IconButton(onClick = onSearchClick) {
+                        Icon(Icons.Default.Search, contentDescription = "Search cards", tint = SandBeige)
+                    }
+                }
+            }
+        )
 
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(16.dp),

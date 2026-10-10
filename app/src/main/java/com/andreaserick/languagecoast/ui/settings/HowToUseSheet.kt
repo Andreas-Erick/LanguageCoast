@@ -43,6 +43,7 @@ private val GUIDE = listOf(
             "Tap the coast name to pick which coast the card goes to.",
             "Choose \"I'll type it\" to enter the translation yourself instead.",
             "Type a category to choose the island yourself. Leave it empty and Gemini or OpenRouter pick one for you.",
+            "If the coast already has that sentence, a line under the text box says which island it is on.",
             "Made a mistake? Tap \"Undo\" right after saving."
         )
     ),
@@ -62,6 +63,7 @@ private val GUIDE = listOf(
             "Flip Cards: tap \"Show answer\", then grade yourself with Again, Hard, Good or Easy. " +
                 "You can also swipe left for Again and right for Good.",
             "Active Type: type the translation and tap \"Check answer\". Capitals and punctuation don't matter, accents do.",
+            "Tap the languages under the tabs (e.g. \"English → German\") to study the other way round: you see the translation and answer in your own language.",
             "Nothing due? You can still practice all cards of the island."
         )
     ),
@@ -77,12 +79,16 @@ private val GUIDE = listOf(
         "🔥", "Streaks and reminders",
         listOf(
             "Finish an island each day to keep your streak going.",
-            "Turn on the daily reminder here in Settings, at a fixed time or a surprise time."
+            "Turn on the daily reminder here in Settings, at a fixed time or a surprise time.",
+            "Add the Language Coast widget to your home screen to see your streak and the cards due today."
         )
     ),
     GuideSection(
         "📤", "Your cards",
         listOf(
+            "Tap the search icon on My Coasts to find a card on any coast by its native text, translation or alternatives.",
+            "Tap ⋮ on an island and \"See cards\" to list its cards with when each is due next.",
+            "Tap a card there, or \"Edit card\" in the ⋮ menu while studying, to fix its translation and alternatives or move it to another island.",
             "Export a coast to Anki or Markdown, or import cards from a CSV file, under \"Your cards\" in Settings.",
             "Deleted a coast, island or card by accident? Tap \"Undo\" in the message at the bottom."
         )
