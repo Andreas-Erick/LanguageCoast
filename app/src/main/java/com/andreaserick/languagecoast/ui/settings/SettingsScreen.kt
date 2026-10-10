@@ -2,6 +2,7 @@ package com.andreaserick.languagecoast.ui.settings
 
 import android.content.Context
 import android.text.format.DateFormat
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
@@ -28,6 +31,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +40,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -83,11 +88,12 @@ import java.time.format.FormatStyle
 
 /**
  * The "Settings" screen, grouped into cards: languages, AI (Gemini model and API key),
- * study reminders, exporting / importing cards and app info.
+ * study reminders, exporting / importing cards, a how-to-use guide and app info.
  */
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showHowToUse by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "Settings")
@@ -128,6 +134,22 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 CardTransferSection()
             }
 
+            SettingsCard(title = "Help", icon = Icons.AutoMirrored.Filled.HelpOutline) {
+                OutlinedButton(
+                    onClick = { showHowToUse = true },
+                    border = BorderStroke(1.dp, SandBeige),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text("How to use", fontSize = 16.sp)
+                }
+                Hint("A short guide to coasts, creating cards and studying.")
+            }
+
             SettingsCard(title = "About", icon = Icons.Default.Info) {
                 val context = LocalContext.current
                 Text("Language Coast ${remember { appVersion(context) }}", color = Color.White)
@@ -135,6 +157,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             }
         }
     }
+
+    if (showHowToUse) HowToUseSheet(onDismiss = { showHowToUse = false })
 }
 
 /** A titled group of settings. */
