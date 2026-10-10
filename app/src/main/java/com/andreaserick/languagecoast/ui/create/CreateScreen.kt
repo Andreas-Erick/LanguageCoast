@@ -327,6 +327,15 @@ private fun NewCardForm(
             onValueChange = onNativeSentenceChange,
             label = { Text("What do you want to say?") },
             placeholder = { Text("e.g., Where is the train station?") },
+            // Only a hint: the user may want a second card, e.g. on another island.
+            supportingText = uiState.duplicate?.let { duplicate ->
+                {
+                    Text(
+                        "Already on ${duplicate.emoji} ${duplicate.islandName}: ${duplicate.card.targetText}",
+                        color = SandBeige
+                    )
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3
         )

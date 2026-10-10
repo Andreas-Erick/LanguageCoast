@@ -12,6 +12,10 @@ object MyCoastScreenRoute
 @Serializable
 object SettingsScreenRoute
 
+// Search across all coasts, opened from My Coasts
+@Serializable
+object SearchScreenRoute
+
 // The islands of a single coast, opened from My Coasts
 @Serializable
 data class CoastScreenRoute(

@@ -52,6 +52,7 @@ import com.andreaserick.languagecoast.navigation.CoastScreenRoute
 import com.andreaserick.languagecoast.navigation.CreateScreenRoute
 import com.andreaserick.languagecoast.navigation.IslandScreenRoute
 import com.andreaserick.languagecoast.navigation.MyCoastScreenRoute
+import com.andreaserick.languagecoast.navigation.SearchScreenRoute
 import com.andreaserick.languagecoast.navigation.SettingsScreenRoute
 import com.andreaserick.languagecoast.navigation.StudyScreenRoute
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
@@ -63,6 +64,7 @@ import com.andreaserick.languagecoast.ui.components.UndoMessenger
 import com.andreaserick.languagecoast.ui.create.CreateScreen
 import com.andreaserick.languagecoast.ui.island.IslandScreen
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastScreen
+import com.andreaserick.languagecoast.ui.search.SearchScreen
 import com.andreaserick.languagecoast.ui.settings.SettingsScreen
 import com.andreaserick.languagecoast.ui.study.StudyScreen
 import com.andreaserick.languagecoast.ui.theme.AbyssBlue
@@ -203,8 +205,15 @@ fun LanguageCoastApp(scheduleReminders: () -> Unit) {
                         MyCoastScreen(
                             onCoastClick = { id, name ->
                                 navController.navigate(CoastScreenRoute(coastId = id, coastName = name))
-                            }
+                            },
+                            onSearchClick = { navController.navigate(SearchScreenRoute) }
                         )
+                    }
+                    composable<SearchScreenRoute>(
+                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
+                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                    ) {
+                        SearchScreen(onNavigateBack = { navController.popBackStack() })
                     }
                     composable<CoastScreenRoute>(
                         enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },

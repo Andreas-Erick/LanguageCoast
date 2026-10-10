@@ -43,6 +43,7 @@ private val GUIDE = listOf(
             "Tap the coast name to pick which coast the card goes to.",
             "Choose \"I'll type it\" to enter the translation yourself instead.",
             "Type a category to choose the island yourself. Leave it empty and Gemini or OpenRouter pick one for you.",
+            "If the coast already has that sentence, a line under the text box says which island it is on.",
             "Made a mistake? Tap \"Undo\" right after saving."
         )
     ),
@@ -83,6 +84,7 @@ private val GUIDE = listOf(
     GuideSection(
         "📤", "Your cards",
         listOf(
+            "Tap the search icon on My Coasts to find a card on any coast by its native text, translation or alternatives.",
             "Tap ⋮ on an island and \"See cards\" to list its cards with when each is due next.",
             "Tap a card there, or \"Edit card\" in the ⋮ menu while studying, to fix its translation and alternatives or move it to another island.",
             "Export a coast to Anki or Markdown, or import cards from a CSV file, under \"Your cards\" in Settings.",

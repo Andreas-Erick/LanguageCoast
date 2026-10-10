@@ -10,6 +10,7 @@ import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
+import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
@@ -18,7 +19,9 @@ import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.availableCoastLanguages
+import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.data.islandEmoji
+import com.andreaserick.languagecoast.data.normalizedWords
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -65,7 +68,9 @@ data class CreateUiState(
     /** How many coasts have due cards. */
     val dueCoastCount: Int = 0,
     /** The cards most recently added to the selected coast, newest first. */
-    val recentCards: List<RecentCard> = emptyList()
+    val recentCards: List<RecentCard> = emptyList(),
+    /** A card on the selected coast with the same text as [nativeSentence] (see [findDuplicate]), if there is one. */
+    val duplicate: PlacedCard? = null
 ) {
     /** True when the selected coast is in the user's native language, so there's nothing to translate. */
     val isSameLanguage: Boolean get() = selectedCoast?.language == nativeLanguage
@@ -95,6 +100,9 @@ class CreateViewModel @Inject constructor(
         private set
 
     private var dismissJob: Job? = null
+
+    /** The cards of the selected coast, to warn about duplicates while typing. */
+    private var coastCards: List<PlacedCard> = emptyList()
 
     init {
         viewModelScope.launch {
@@ -134,6 +142,13 @@ class CreateViewModel @Inject constructor(
             selectedCoastId()
                 .flatMapLatest { coastId -> if (coastId == null) flowOf(emptyList()) else flashcards.observeRecentCards(coastId, RECENT_CARDS) }
                 .collect { uiState = uiState.copy(recentCards = it) }
+        }
+        viewModelScope.launch {
+            combine(selectedCoastId(), flashcards.observeAllCards()) { coastId, cards -> cards.filter { it.coastId == coastId } }
+                .collect { cards ->
+                    coastCards = cards
+                    uiState = uiState.copy(duplicate = findDuplicate(uiState.nativeSentence, cards))
+                }
         }
         viewModelScope.launch { settings.refreshStreak() }
     }
@@ -178,7 +193,7 @@ class CreateViewModel @Inject constructor(
 
     /** Updates the sentence typed in the native language. */
     fun onNativeSentenceChange(value: String) {
-        uiState = uiState.copy(nativeSentence = value)
+        uiState = uiState.copy(nativeSentence = value, duplicate = findDuplicate(value, coastCards))
     }
 
     /** Updates the translation typed in manual mode. */
@@ -303,6 +318,15 @@ class CreateViewModel @Inject constructor(
             ?: flashcards.observeIslands(coastId).first().first { it.islandId == added.card.islandId }
         return SaveResult.Saved(added, category, islandEmoji(island), manual)
     }
+}
+
+/**
+ * The first of [cards] whose native text is the same sentence as [text] (see [isSameSentence]),
+ * or null if there is none or [text] has no words yet.
+ */
+fun findDuplicate(text: String, cards: List<PlacedCard>): PlacedCard? {
+    if (normalizedWords(text).isEmpty()) return null
+    return cards.firstOrNull { isSameSentence(it.card.nativeText, text) }
 }
 
 /** Explains why cards can't be added when a coast's language is the user's native language. */

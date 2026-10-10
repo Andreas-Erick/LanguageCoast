@@ -103,6 +103,12 @@ interface FlashcardRepository {
 
     /** The [limit] cards most recently added to coast [coastId], newest first. */
     fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>>
+
+    /** Every card with its island and coast, by coast (oldest first), then island name. */
+    fun observeAllCards(): Flow<List<PlacedCard>>
+
+    /** Every island on every coast, newest first. */
+    fun observeAllIslands(): Flow<List<LanguageIsland>>
 }
 
 /** [FlashcardRepository] backed by the Room database. */
@@ -202,4 +208,8 @@ class OfflineFlashcardRepository @Inject constructor(
         }
 
     override fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>> = dao.getRecentCards(coastId, limit)
+
+    override fun observeAllCards(): Flow<List<PlacedCard>> = dao.getAllPlacedCards()
+
+    override fun observeAllIslands(): Flow<List<LanguageIsland>> = dao.getAllIslands()
 }
