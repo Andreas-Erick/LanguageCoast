@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.ui.study
 
 import androidx.lifecycle.SavedStateHandle
+import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
@@ -324,6 +325,31 @@ class StudyViewModelTest {
         viewModel.speak("a1")
 
         assertEquals(listOf("a1" to "Spanish"), speaker.spoken)
+    }
+
+    @Test
+    fun editingTheCurrentCardUpdatesItInPlace() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        val viewModel = createViewModel()
+
+        viewModel.editCard(viewModel.state.currentCard!!.cardId, CardEdit("hello", "hola", emptyList(), null, islandId = 1))
+
+        assertEquals("hola", viewModel.state.currentCard!!.targetText)
+        assertEquals(listOf("hello", "n2"), viewModel.state.sessionCards.map { it.nativeText })
+    }
+
+    @Test
+    fun movingTheCurrentCardToAnotherIslandTakesItOutOfTheSession() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        flashcards.seed(islandId = 2, cardCount = 1)
+        val viewModel = createViewModel()
+        assertEquals(listOf(1, 2), viewModel.state.coastIslands.map { it.islandId })
+
+        val card = viewModel.state.currentCard!!
+        viewModel.editCard(card.cardId, CardEdit(card.nativeText, card.targetText, emptyList(), null, islandId = 2))
+
+        assertEquals(listOf("n2"), viewModel.state.sessionCards.map { it.nativeText })
+        assertEquals(1, viewModel.state.totalCards)
     }
 
     private fun setDue(nativeText: String, due: Long) {

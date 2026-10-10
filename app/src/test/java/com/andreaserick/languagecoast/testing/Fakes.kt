@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.testing
 
 import com.andreaserick.languagecoast.data.AddedCard
+import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.CoastContent
 import com.andreaserick.languagecoast.data.CoastSummary
@@ -93,6 +94,9 @@ class FakeFlashcardRepository : FlashcardRepository {
             }
         }
 
+    override fun observeIsland(islandId: Int): Flow<LanguageIsland?> =
+        islands.map { all -> all.firstOrNull { it.islandId == islandId } }
+
     override fun observeCards(islandId: Int): Flow<List<Flashcard>> =
         cards.map { all -> all.filter { it.islandId == islandId } }
 
@@ -148,6 +152,21 @@ class FakeFlashcardRepository : FlashcardRepository {
 
     override suspend fun updateTranslation(cardId: Int, targetText: String, alternatives: List<String>) {
         cards.update { all -> all.map { if (it.cardId == cardId) it.copy(targetText = targetText, alternatives = alternatives) else it } }
+    }
+
+    override suspend fun editCard(cardId: Int, edit: CardEdit) {
+        cards.update { all ->
+            all.map {
+                if (it.cardId != cardId) it
+                else it.copy(
+                    nativeText = edit.nativeText,
+                    targetText = edit.targetText,
+                    alternatives = edit.alternatives,
+                    note = edit.note,
+                    islandId = edit.islandId
+                )
+            }
+        }
     }
 
     override suspend fun countDueCards(now: Long): Int = cards.value.count { isDue(it, now) }

@@ -25,3 +25,9 @@ data class StudyScreenRoute(
     val islandId: Int,
     val islandName: String
 )
+// The cards of a single island, opened from a coast or a study session
+@Serializable
+data class IslandScreenRoute(
+    val islandId: Int,
+    val islandName: String
+)

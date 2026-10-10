@@ -91,6 +91,10 @@ interface LanguageCoastDao {
     @Query("SELECT * FROM language_islands WHERE islandId = :islandId")
     suspend fun getIsland(islandId: Int): LanguageIsland?
 
+    /** The island with ID [islandId], or null once it is deleted. */
+    @Query("SELECT * FROM language_islands WHERE islandId = :islandId")
+    fun observeIsland(islandId: Int): Flow<LanguageIsland?>
+
     /** Sets when a study session on island [islandId] was last completed. */
     @Query("UPDATE language_islands SET lastStudied = :time WHERE islandId = :islandId")
     suspend fun setIslandLastStudied(islandId: Int, time: Long)
@@ -130,6 +134,16 @@ interface LanguageCoastDao {
     /** Replaces the translation and alternatives of card [cardId], leaving its other fields as they are. */
     @Query("UPDATE flashcards SET targetText = :targetText, alternatives = :alternatives WHERE cardId = :cardId")
     suspend fun setTranslation(cardId: Int, targetText: String, alternatives: List<String>)
+
+    /** Replaces the user-editable fields of card [cardId], leaving its review progress as it is. */
+    @Query(
+        """
+        UPDATE flashcards SET nativeText = :nativeText, targetText = :targetText, alternatives = :alternatives,
+            note = :note, islandId = :islandId
+        WHERE cardId = :cardId
+        """
+    )
+    suspend fun editCard(cardId: Int, nativeText: String, targetText: String, alternatives: List<String>, note: String?, islandId: Int)
 
     /** Number of cards on all coasts that are due at [now]. */
     @Query("SELECT COUNT(*) FROM flashcards WHERE $DUE")
