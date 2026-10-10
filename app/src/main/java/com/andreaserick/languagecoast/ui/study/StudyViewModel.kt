@@ -56,7 +56,9 @@ data class StudyUiState(
     /** Whether the phone has a voice to read [targetLanguage] aloud. */
     val canSpeak: Boolean = false,
     /** The islands on this island's coast, which a card can be moved to when editing it. */
-    val coastIslands: List<LanguageIsland> = emptyList()
+    val coastIslands: List<LanguageIsland> = emptyList(),
+    /** Cards are shown in [targetLanguage] and answered in [nativeLanguage], training recognition instead of recall. */
+    val isReversed: Boolean = false
 ) {
     val currentCard: Flashcard? get() = sessionCards.getOrNull(currentIndex)
     val canGoBack: Boolean get() = currentIndex > 0
@@ -111,8 +113,9 @@ class StudyViewModel @Inject constructor(
         session,
         settings.nativeLanguage,
         coastInfo,
-        settings.streakCount
-    ) { s, nativeLanguage, coast, streak ->
+        settings.streakCount,
+        settings.studyReversed
+    ) { s, nativeLanguage, coast, streak, reversed ->
         val now = clock.instant()
         StudyUiState(
             islandName = islandName,
@@ -133,7 +136,8 @@ class StudyViewModel @Inject constructor(
             nativeLanguage = nativeLanguage,
             targetLanguage = coast.language,
             canSpeak = coast.canSpeak,
-            coastIslands = coast.islands
+            coastIslands = coast.islands,
+            isReversed = reversed
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StudyUiState(islandName = islandName))
 
@@ -208,6 +212,14 @@ class StudyViewModel @Inject constructor(
 
     /** Starts a session with every card of the island, due or not. Grades still reschedule the cards. */
     fun practiceAll() = updateSession { it.copy(cards = it.allCards, total = it.allCards.size, index = 0, againCount = 0) }
+
+    /**
+     * Switches between studying from the native language (recall) and from the coast's language (recognition).
+     * Both directions share each card's schedule. Remembered for later sessions.
+     */
+    fun setReversed(reversed: Boolean) {
+        viewModelScope.launch { settings.setStudyReversed(reversed) }
+    }
 
     /** Switches between revealing the answer and typing it. */
     fun setTypingMode(enabled: Boolean) = updateSession { it.copy(isTypingMode = enabled) }

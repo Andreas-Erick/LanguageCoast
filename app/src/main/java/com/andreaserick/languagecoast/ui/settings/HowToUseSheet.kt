@@ -63,6 +63,7 @@ private val GUIDE = listOf(
             "Flip Cards: tap \"Show answer\", then grade yourself with Again, Hard, Good or Easy. " +
                 "You can also swipe left for Again and right for Good.",
             "Active Type: type the translation and tap \"Check answer\". Capitals and punctuation don't matter, accents do.",
+            "Tap the languages under the tabs (e.g. \"English → German\") to study the other way round: you see the translation and answer in your own language.",
             "Nothing due? You can still practice all cards of the island."
         )
     ),

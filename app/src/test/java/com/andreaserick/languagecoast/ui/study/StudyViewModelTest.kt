@@ -352,6 +352,20 @@ class StudyViewModelTest {
         assertEquals(1, viewModel.state.totalCards)
     }
 
+    @Test
+    fun studyDirectionIsRememberedAndKeepsTheSession() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        val viewModel = createViewModel()
+        assertFalse(viewModel.state.isReversed)
+        viewModel.next()
+
+        viewModel.setReversed(true)
+
+        assertTrue(viewModel.state.isReversed)
+        assertTrue(settings.studyReversed.value)
+        assertEquals("n2", viewModel.currentText)
+    }
+
     private fun setDue(nativeText: String, due: Long) {
         flashcards.cards.update { all -> all.map { if (it.nativeText == nativeText) it.copy(due = due) else it } }
     }

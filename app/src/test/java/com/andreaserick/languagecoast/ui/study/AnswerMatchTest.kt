@@ -33,4 +33,16 @@ class AnswerMatchTest {
         assertTrue(isCorrectAnswer("Möchtest du kommen", card))
         assertFalse(isCorrectAnswer("Kommst du?", card))
     }
+
+    @Test
+    fun reversedTheNativeTextIsTheAnswer() {
+        val card = Flashcard(
+            islandId = 1, nativeText = "Do you want to come?", targetText = "Möchtest du kommen?",
+            alternatives = listOf("Willst du kommen?")
+        )
+
+        assertTrue(isCorrectAnswer("do you want to come", card, reversed = true))
+        assertFalse(isCorrectAnswer("Möchtest du kommen?", card, reversed = true))
+        assertFalse(isCorrectAnswer("Willst du kommen?", card, reversed = true))
+    }
 }

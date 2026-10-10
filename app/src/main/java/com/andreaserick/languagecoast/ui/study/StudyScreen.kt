@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -74,6 +76,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -183,6 +187,12 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
             )
             currentCard != null -> {
                 StudyModeTabs(isTypingMode = uiState.isTypingMode, onModeChange = viewModel::setTypingMode)
+                DirectionToggle(
+                    nativeLanguage = uiState.nativeLanguage,
+                    targetLanguage = uiState.targetLanguage,
+                    isReversed = uiState.isReversed,
+                    onReversedChange = viewModel::setReversed
+                )
                 SessionProgress(uiState)
 
                 Column(
@@ -199,6 +209,8 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                         if (uiState.isTypingMode) {
                             TypeStudyView(
                                 currentCard = currentCard,
+                                nativeLang = uiState.nativeLanguage,
+                                isReversed = uiState.isReversed,
                                 intervals = uiState.gradeIntervals,
                                 onGrade = viewModel::onGrade,
                                 onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak }
@@ -208,6 +220,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                                 currentCard = currentCard,
                                 nativeLang = uiState.nativeLanguage,
                                 targetLang = uiState.targetLanguage,
+                                isReversed = uiState.isReversed,
                                 intervals = uiState.gradeIntervals,
                                 onGrade = viewModel::onGrade,
                                 onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak },
@@ -237,6 +250,30 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Shows which way cards are studied ("English → German") and swaps it when tapped: from the native
+ * language trains recall, from the coast's language trains recognition.
+ */
+@Composable
+private fun DirectionToggle(
+    nativeLanguage: String,
+    targetLanguage: String,
+    isReversed: Boolean,
+    onReversedChange: (Boolean) -> Unit
+) {
+    val (from, to) = if (isReversed) targetLanguage to nativeLanguage else nativeLanguage to targetLanguage
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+        TextButton(
+            onClick = { onReversedChange(!isReversed) },
+            colors = ButtonDefaults.textButtonColors(contentColor = SandMuted),
+            modifier = Modifier.semantics { contentDescription = "Studying $from to $to. Tap to swap." }
+        ) {
+            Text("$from → $to", fontSize = 14.sp)
+            Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.padding(start = 6.dp))
         }
     }
 }
@@ -317,6 +354,7 @@ fun FlipStudyView(
     targetLang: String,
     intervals: Map<Grade, Int>,
     onGrade: (Grade) -> Unit,
+    isReversed: Boolean = false,
     onSpeak: (() -> Unit)? = null,
     onSpeakText: ((String) -> Unit)? = null,
     onMakeMain: (String) -> Unit = {}
@@ -329,7 +367,8 @@ fun FlipStudyView(
     val scope = rememberCoroutineScope()
     val offsetX = remember(currentCard.cardId) { Animatable(0f) }
     val thresholdPx = with(LocalDensity.current) { SWIPE_THRESHOLD_DP.dp.toPx() }
-    val hasDictionary = dictCcSearchUrl("", nativeLang, targetLang) != null
+    // Reversed, the translation is the question, so looking its words up would give the answer away.
+    val hasDictionary = !isReversed && dictCcSearchUrl("", nativeLang, targetLang) != null
 
     // Again re-queues the card, so with one card left the same card comes back: reset it explicitly.
     fun grade(grade: Grade) {
@@ -401,7 +440,18 @@ fun FlipStudyView(
                             .graphicsLayer { rotationY = if (isFlipped) 180f else 0f },
                         contentAlignment = Alignment.Center
                     ) {
-                        if (isFlipped) {
+                        if (isReversed) {
+                            // The translation is the question: it can be heard before flipping.
+                            CardFaceText(if (isFlipped) currentCard.nativeText else currentCard.targetText)
+                            if (!isFlipped) {
+                                if (onSpeak != null) {
+                                    IconButton(onClick = onSpeak, modifier = Modifier.align(Alignment.TopEnd)) {
+                                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = DeepOceanBlue)
+                                    }
+                                }
+                                FlipHint()
+                            }
+                        } else if (isFlipped) {
                             ClickableWordSentence(
                                 sentence = currentCard.targetText,
                                 onWordClick = if (hasDictionary) { word ->
@@ -420,21 +470,8 @@ fun FlipStudyView(
                                 }
                             }
                         } else {
-                            Text(
-                                text = currentCard.nativeText,
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                            Text(
-                                text = "Tap to flip",
-                                fontSize = 13.sp,
-                                color = DeepOceanBlue.copy(alpha = 0.85f),
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 12.dp)
-                            )
+                            CardFaceText(currentCard.nativeText)
+                            FlipHint()
                         }
                     }
                 }
@@ -452,7 +489,8 @@ fun FlipStudyView(
             color = SandMuted,
             textAlign = TextAlign.Center
         )
-        if (isFlipped && currentCard.alternatives.isNotEmpty()) {
+        // Alternatives are other ways to say the translation, which only make sense when it is the answer.
+        if (isFlipped && !isReversed && currentCard.alternatives.isNotEmpty()) {
             TextButton(onClick = { showAlternatives = true }, colors = ButtonDefaults.textButtonColors(contentColor = SandBeige)) {
                 Text(plural(currentCard.alternatives.size, "alternative"), fontWeight = FontWeight.SemiBold)
                 Icon(Icons.Default.ExpandLess, contentDescription = null)
@@ -482,6 +520,31 @@ fun FlipStudyView(
             }
         }
     }
+}
+
+/** The sentence on a face of the flip card that has no tappable words. */
+@Composable
+private fun CardFaceText(text: String) {
+    Text(
+        text = text,
+        fontSize = 24.sp,
+        fontWeight = FontWeight.Medium,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(16.dp)
+    )
+}
+
+/** "Tap to flip" at the bottom of the front of the flip card. */
+@Composable
+private fun BoxScope.FlipHint() {
+    Text(
+        text = "Tap to flip",
+        fontSize = 13.sp,
+        color = DeepOceanBlue.copy(alpha = 0.85f),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 12.dp)
+    )
 }
 
 /** "Again" / "Good" while a card is dragged, fading in as the drag nears the threshold. */
@@ -540,25 +603,32 @@ internal fun intervalLabel(days: Int): String = when {
 }
 
 /**
- * A study view that requires the user to type the translation of the native text.
- * A correct answer is graded with the grade buttons like in Flip mode; a wrong one counts as "Again".
+ * A study view that requires the user to type the translation of the native text, or with [isReversed]
+ * the native text for the translation. A correct answer is graded with the grade buttons like in Flip mode;
+ * a wrong one counts as "Again".
  *
  * @param currentCard The [Flashcard] data to test against.
+ * @param nativeLang The user's native language, the one answers are typed in when [isReversed].
  * @param intervals Days until the card is due again after each grade, shown on the buttons.
  * @param onGrade Callback when the card is graded.
- * @param onSpeak Reads the translation aloud once checked; null hides the button (no voice for the language).
+ * @param onSpeak Reads the translation aloud (once checked, or anytime when it is the question);
+ *     null hides the button (no voice for the language).
  */
 @Composable
 fun TypeStudyView(
     currentCard: Flashcard,
     intervals: Map<Grade, Int>,
     onGrade: (Grade) -> Unit,
+    nativeLang: String = "",
+    isReversed: Boolean = false,
     onSpeak: (() -> Unit)? = null
 ) {
     var userInput by remember(currentCard) { mutableStateOf("") }
     var hasChecked by remember(currentCard) { mutableStateOf(false) }
     var isCorrect by remember(currentCard) { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
+    val question = if (isReversed) currentCard.targetText else currentCard.nativeText
+    val answer = if (isReversed) currentCard.nativeText else currentCard.targetText
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -566,13 +636,20 @@ fun TypeStudyView(
     ) {
         Text("Translate this:", color = SandMuted)
 
-        Text(
-            text = currentCard.nativeText,
-            style = MaterialTheme.typography.headlineSmall,
-            color = SandBeige,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)) {
+            Text(
+                text = question,
+                style = MaterialTheme.typography.headlineSmall,
+                color = SandBeige,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (isReversed && onSpeak != null) {
+                IconButton(onClick = onSpeak) {
+                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = SandBeige)
+                }
+            }
+        }
 
         OutlinedTextField(
             value = userInput,
@@ -580,7 +657,7 @@ fun TypeStudyView(
                 userInput = it
                 hasChecked = false // Hide feedback if they start typing again
             },
-            label = { Text("Type the translation...") },
+            label = { Text(if (isReversed && nativeLang.isNotEmpty()) "Type it in $nativeLang..." else "Type the translation...") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -589,7 +666,7 @@ fun TypeStudyView(
         if (!hasChecked) {
             Button(
                 onClick = {
-                    isCorrect = isCorrectAnswer(userInput, currentCard)
+                    isCorrect = isCorrectAnswer(userInput, currentCard, isReversed)
                     hasChecked = true
                     haptics.performHapticFeedback(if (isCorrect) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
                 },
@@ -623,7 +700,7 @@ fun TypeStudyView(
                     if (!isCorrect) {
                         Text("Correct answer:", modifier = Modifier.padding(top = 8.dp))
                         Text(
-                            currentCard.targetText,
+                            answer,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
@@ -635,7 +712,7 @@ fun TypeStudyView(
                     } else {
                         currentCard.alternatives
                     }
-                    if (currentCard.alternatives.isNotEmpty() && others.isNotEmpty()) {
+                    if (!isReversed && currentCard.alternatives.isNotEmpty() && others.isNotEmpty()) {
                         Text(
                             text = "Also correct: ${others.joinToString(" · ")}",
                             fontSize = 14.sp,
@@ -643,7 +720,8 @@ fun TypeStudyView(
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }
-                    if (onSpeak != null) {
+                    // Reversed, the translation was the question and has its own speaker button.
+                    if (!isReversed && onSpeak != null) {
                         TextButton(
                             onClick = onSpeak,
                             colors = ButtonDefaults.textButtonColors(contentColor = if (isCorrect) DeepOceanBlue else SandBeige)
@@ -725,9 +803,13 @@ private fun AlternativesSheet(
     }
 }
 
-/** Whether [typed] matches [card]'s translation or one of its alternatives (see [answerMatches]). */
-internal fun isCorrectAnswer(typed: String, card: Flashcard): Boolean =
-    (listOf(card.targetText) + card.alternatives).any { answerMatches(typed, it) }
+/**
+ * Whether [typed] matches [card]'s translation or one of its alternatives (see [answerMatches]),
+ * or its native text when studying [reversed].
+ */
+internal fun isCorrectAnswer(typed: String, card: Flashcard, reversed: Boolean = false): Boolean =
+    if (reversed) answerMatches(typed, card.nativeText)
+    else (listOf(card.targetText) + card.alternatives).any { answerMatches(typed, it) }
 
 /**
  * Whether a typed answer matches the card's translation, ignoring case, punctuation and extra spaces
