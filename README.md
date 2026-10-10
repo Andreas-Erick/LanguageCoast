@@ -25,10 +25,13 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
   <img src="docs/screenshots/create.png" alt="Home screen with today's due cards, the new card form and recently added cards" width="200" />
   <img src="docs/screenshots/my-coast.png" alt="My Coasts with the study streak and a German and an Icelandic coast, each showing its due cards" width="200" />
   <img src="docs/screenshots/coast.png" alt="German Coast with its Language Islands and how many cards on each are due" width="200" />
-  <img src="docs/screenshots/study.png" alt="Flipped flashcard with a read-aloud button and Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
+  <img src="docs/screenshots/island-cards.png" alt="The cards of the Small Talk island with their translations, alternatives and when each is due" width="200" />
+  <img src="docs/screenshots/study.png" alt="Flipped flashcard with the study direction, a read-aloud button and Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
   <img src="docs/screenshots/alternatives.png" alt="Sheet with other ways to say a sentence, a note on formal and informal forms, and read-aloud and Make main buttons" width="200" />
+  <img src="docs/screenshots/search.png" alt="Search results across all coasts, each showing its coast, island and when it is due" width="200" />
   <img src="docs/screenshots/settings.png" alt="Settings with the native language and the choice of on-device, Gemini or OpenRouter translation" width="200" />
   <img src="docs/screenshots/notification.png" alt="Daily study reminder saying how many cards are due" width="200" />
+  <img src="docs/screenshots/widget.png" alt="Home-screen widget with the study streak and the cards due today" width="200" />
 </p>
 
 ## ✨ Features
@@ -74,7 +77,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - A daily reminder, scheduled with **WorkManager**: at a surprise time between 9:00 and 21:00, or at a fixed time you pick in Settings. It can also be turned off.
 - **Home-screen widget**: the cards due today and your streak, a gentler nudge than a notification. It refreshes every hour and whenever you leave the app, and tapping it opens the app.
 
-### 📤 Export & import
+### 📤 Export, import & backup
 - **Export to Anki**: save one coast or all of them as a text file that Anki imports with *File › Import*. Each island becomes a subdeck (e.g. *German Coast::Greetings*), and alternatives and notes go on the back of the card. Review progress isn't exported, so cards start fresh in Anki.
 - **Export to Markdown**: one table per island, to read, print or keep in your notes app.
 - **Import from CSV or tab-separated files**, e.g. a spreadsheet or an Anki notes export. A third column (or Anki's deck column) picks the island, a header row is detected, and cards the coast already has are skipped. Imports can be undone.
@@ -82,7 +85,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - Files are saved and opened with the system file picker, so they can go to Downloads, Google Drive and so on. The app needs no storage permission.
 
 ### ❓ Built-in guide
-- **How to use**: a button in Settings opens a short guide to coasts and islands, creating cards, translation, studying, streaks and reminders, and exporting and importing.
+- **How to use**: a button in Settings opens a short guide to coasts and islands, creating cards, translation, studying, streaks, reminders and the widget, and exporting, importing and backing up.
 
 **Supported languages:** all 28 dict.cc languages (Albanian, Bosnian, Bulgarian, Croatian, Czech, Danish, Dutch, English, Esperanto, Finnish, French, German, Greek, Hungarian, Icelandic, Italian, Latin, Norwegian, Polish, Portuguese, Romanian, Russian, Serbian, Slovak, Spanish, Swedish, Turkish, Ukrainian), plus Japanese and Korean without dictionary lookup. The language picker can be searched by English or native name (e.g. *Deutsch*, *Suomi*).
 
@@ -100,6 +103,8 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 | Spaced repetition | [FSRS-5](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm) with its default parameters (implemented in `data/SpacedRepetition.kt`) |
 | Text-to-speech | Android [`TextToSpeech`](https://developer.android.com/reference/android/speech/tts/TextToSpeech) with the voices installed on the phone |
 | Background work | [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) |
+| Home-screen widget | [`AppWidgetProvider`](https://developer.android.com/develop/ui/views/appwidgets) with `RemoteViews` (no extra library) |
+| Backups | [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) JSON |
 | Testing | JUnit 4, kotlinx-coroutines-test, hand-written fakes |
 | CI/CD | GitHub Actions (tests on every push, signed APK on every release tag) |
 
@@ -132,13 +137,16 @@ app/src/main/java/com/andreaserick/languagecoast/
 ├── speech/                  # Reading cards aloud (text-to-speech)
 ├── ui/
 │   ├── coast/               # Each feature has a Screen + ViewModel
-│   ├── components/          # Shared composables (screen header, language picker, dropdown, undo snackbar)
+│   ├── components/          # Shared composables (screen header, card row, edit card sheet, language picker, undo snackbar)
 │   ├── create/
+│   ├── island/              # An island's card list
 │   ├── mycoast/
-│   ├── settings/
+│   ├── search/
+│   ├── settings/            # Also export, import and backup
 │   ├── study/
 │   └── theme/               # Colors, typography and Material theme
-└── util/                    # dict.cc lookup helpers
+├── util/                    # dict.cc lookup helpers
+└── widget/                  # Home-screen widget (streak and cards due)
 ```
 
 ## 🚀 Getting started
@@ -164,11 +172,11 @@ app/src/main/java/com/andreaserick/languagecoast/
 ```bash
 ./gradlew testDebugUnitTest
 ```
-The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing (Gemini and OpenRouter), export and import, and answer checking in Active Type. They run on every push via GitHub Actions. Database migrations are tested on a device or emulator with `./gradlew connectedDebugAndroidTest`.
+The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing (Gemini and OpenRouter), editing and searching cards, export, import, backup and restore, answer checking in Active Type (both directions) and the widget's texts. They run on every push via GitHub Actions. Database migrations are tested on a device or emulator with `./gradlew connectedDebugAndroidTest`.
 
 ## 📦 Releases
 
-Signed APKs are published on the [Releases](https://github.com/Andreas-Erick/LanguageCoast/releases) page. Download the APK on an Android device to install it. You may need to allow installs from unknown sources. Installing a new version over an old one keeps your cards and progress.
+Signed APKs are published on the [Releases](https://github.com/Andreas-Erick/LanguageCoast/releases) page. Download the APK on an Android device to install it. You may need to allow installs from unknown sources. Installing a new version over an old one keeps your cards and progress. To move to a new phone, use *Back up* in Settings and *Restore* the file on the new phone.
 
 The released APK is built for ARM phones (practically every Android phone) to keep it small. To run the app on an x86 emulator, build it from Android Studio instead.
 
