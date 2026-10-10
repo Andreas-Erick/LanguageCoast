@@ -58,6 +58,7 @@ object Languages {
 
     private val byName = ALL.associateBy { it.name }
 
+    /** The language with English name [name], or null if it isn't offered. */
     fun byName(name: String): Language? = byName[name]
 }
 
@@ -74,5 +75,6 @@ fun List<Language>.search(query: String): List<Language> {
     return prefixMatches + otherMatches
 }
 
+/** Lowercase and without accents or surrounding spaces, for comparing names in [search]. */
 private fun String.normalizedForSearch(): String =
     Normalizer.normalize(trim().lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")

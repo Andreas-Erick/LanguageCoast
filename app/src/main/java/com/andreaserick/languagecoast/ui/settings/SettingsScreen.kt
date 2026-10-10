@@ -156,16 +156,19 @@ private fun SettingsCard(title: String, icon: ImageVector, content: @Composable 
     }
 }
 
+/** A small label above a settings field. */
 @Composable
 internal fun FieldLabel(text: String) {
     Text(text, color = MistWhite, fontSize = 14.sp, modifier = Modifier.padding(bottom = 6.dp))
 }
 
+/** A short explanation below a settings field. */
 @Composable
 internal fun Hint(text: String) {
     Text(text, color = MistWhite, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
 }
 
+/** Switch colors matching the app's sand and ocean theme. */
 @Composable
 internal fun coastSwitchColors() = SwitchDefaults.colors(
     checkedThumbColor = DeepOceanBlue,
@@ -175,6 +178,7 @@ internal fun coastSwitchColors() = SwitchDefaults.colors(
     uncheckedBorderColor = SandMuted
 )
 
+/** Filter chip colors matching the app's sand and ocean theme. */
 @Composable
 internal fun coastChipColors() = FilterChipDefaults.filterChipColors(
     containerColor = Color.Transparent,
@@ -339,6 +343,7 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
     }
 }
 
+/** Turns the daily reminder on or off, and picks a random time ("Surprise me") or a fixed one. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReminderSection(
@@ -430,10 +435,12 @@ private fun ReminderSection(
     }
 }
 
+/** [time] as the phone shows times: 24-hour or with AM/PM, as the user prefers. */
 private fun formatTime(context: Context, time: LocalTime): String =
     if (DateFormat.is24HourFormat(context)) time.format(DateTimeFormatter.ofPattern("HH:mm"))
     else time.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
 
+/** The installed version name, like "v1.2", or an empty string if it can't be read. */
 private fun appVersion(context: Context): String =
     runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
         ?.let { "v$it" } ?: ""

@@ -203,6 +203,7 @@ fun LanguageField(
     }
 }
 
+/** One language in the list: its English name, its native name and whether dict.cc covers it, checked if selected. */
 @Composable
 private fun LanguageRow(language: Language, isSelected: Boolean, onClick: () -> Unit) {
     Row(

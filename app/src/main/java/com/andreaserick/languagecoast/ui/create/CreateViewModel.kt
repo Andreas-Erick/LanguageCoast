@@ -163,6 +163,7 @@ class CreateViewModel @Inject constructor(
         }
     }
 
+    /** Makes [coast] the one new cards are added to. */
     fun onCoastSelected(coast: Coast) {
         viewModelScope.launch { settings.setActiveCoastId(coast.coastId) }
     }
@@ -175,22 +176,30 @@ class CreateViewModel @Inject constructor(
         }
     }
 
+    /** Updates the sentence typed in the native language. */
     fun onNativeSentenceChange(value: String) {
         uiState = uiState.copy(nativeSentence = value)
     }
 
+    /** Updates the translation typed in manual mode. */
     fun onTargetSentenceChange(value: String) {
         uiState = uiState.copy(targetSentence = value)
     }
 
+    /** Updates the category (island) typed for the card. */
     fun onCategoryChange(value: String) {
         uiState = uiState.copy(category = value)
     }
 
+    /** Switches between translating automatically and typing the translation by hand. */
     fun onManualModeChange(manual: Boolean) {
         uiState = uiState.copy(isManualMode = manual)
     }
 
+    /**
+     * Translates the typed sentence (unless in manual mode) and saves it as a card, then shows the result.
+     * The form is cleared only if the card was saved. Does nothing while a save is running.
+     */
     fun save() {
         val state = uiState
         if (state.nativeSentence.isBlank() || state.isSaving) return
@@ -232,6 +241,10 @@ class CreateViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Saves a card for [state], translating it first unless in manual mode. Missing input, a missing API key
+     * or a failed translation are returned as [SaveResult.Error] rather than thrown.
+     */
     private suspend fun createCard(state: CreateUiState): SaveResult {
         val nativeText = state.nativeSentence.trim()
         val coast = state.selectedCoast ?: return SaveResult.Error("Start a coast first!")
@@ -283,6 +296,7 @@ class CreateViewModel @Inject constructor(
         return saved(added, coast.coastId, translation.finalCategory, manual = false)
     }
 
+    /** The feedback for a saved card, with the emoji of the island it went into. */
     private suspend fun saved(added: AddedCard, coastId: Int, category: String, manual: Boolean): SaveResult.Saved {
         // An existing island keeps its own emoji; look it up so the feedback card matches the island.
         val island = added.createdIsland

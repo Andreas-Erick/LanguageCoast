@@ -184,6 +184,7 @@ internal fun parseTranslationResponse(responseText: String): TranslationResult {
 
     val emoji = if (text.contains("EMOJI:")) text.substringAfter("EMOJI:").trim().lineSequence().first().trim() else ""
 
+    // The rest of the line after [label], or an empty string if the response has no such line.
     fun line(label: String) = if (text.contains(label)) text.substringAfter(label).trim().lineSequence().first().trim() else ""
     val alternatives = line("ALTERNATIVES:").split("||")
         .map { it.trim() }

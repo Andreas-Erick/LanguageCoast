@@ -7,6 +7,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+/** The app's Room database: coasts, their islands, and the islands' flashcards. */
 @Database(
     entities = [Coast::class, LanguageIsland::class, Flashcard::class],
     version = 6,
@@ -15,6 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
+    /** The single DAO for all tables. */
     abstract fun languageCoastDao(): LanguageCoastDao
 
     companion object {
@@ -100,9 +102,11 @@ abstract class AppDatabase : RoomDatabase() {
 
 /** Stores [Flashcard.alternatives] as one line per alternative; an alternative never spans lines. */
 class Converters {
+    /** Joins [alternatives] into one newline-separated column value. */
     @TypeConverter
     fun alternativesToText(alternatives: List<String>): String = alternatives.joinToString("\n")
 
+    /** Splits a stored column value back into alternatives, ignoring empty lines. */
     @TypeConverter
     fun textToAlternatives(text: String): List<String> = text.split("\n").filter { it.isNotBlank() }
 }

@@ -106,8 +106,10 @@ internal object Fsrs {
     fun retrievability(elapsedDays: Double, stability: Double): Double =
         (1 + FACTOR * elapsedDays / stability).pow(DECAY)
 
+    /** Difficulty of a new card after its first grade ([grade] from 1 to 4). */
     private fun initialDifficulty(grade: Int): Double = w[4] - exp(w[5] * (grade - 1)) + 1
 
+    /** Difficulty after a review graded [grade]: lower grades make the card harder, changing less as it nears 10. */
     private fun nextDifficulty(difficulty: Double, grade: Grade): Double {
         val delta = -w[6] * (grade.value - 3)
         val damped = difficulty + delta * (10 - difficulty) / 9
@@ -115,14 +117,17 @@ internal object Fsrs {
         return (w[7] * initialDifficulty(4) + (1 - w[7]) * damped).clampDifficulty()
     }
 
+    /** Stability after a successful review ([grade] Hard or better), given stability [s], difficulty [d] and recall probability [r]. */
     private fun recallStability(s: Double, d: Double, r: Double, grade: Grade): Double {
         val hardPenalty = if (grade == Grade.Hard) w[15] else 1.0
         val easyBonus = if (grade == Grade.Easy) w[16] else 1.0
         return s * (exp(w[8]) * (11 - d) * s.pow(-w[9]) * (exp(w[10] * (1 - r)) - 1) * hardPenalty * easyBonus + 1)
     }
 
+    /** Stability after a lapse (graded Again), given stability [s], difficulty [d] and recall probability [r]. */
     private fun forgetStability(s: Double, d: Double, r: Double): Double =
         w[11] * d.pow(-w[12]) * ((s + 1).pow(w[13]) - 1) * exp(w[14] * (1 - r))
 
+    /** Keeps a difficulty within FSRS's range of 1 to 10. */
     private fun Double.clampDifficulty() = coerceIn(1.0, 10.0)
 }

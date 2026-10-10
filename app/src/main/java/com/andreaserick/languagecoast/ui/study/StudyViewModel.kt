@@ -132,6 +132,7 @@ class StudyViewModel @Inject constructor(
         }
     }
 
+    /** Starts the session with the due cards once they first load; later updates only refresh or drop cards already in it. */
     private fun onCardsChanged(cards: List<Flashcard>) = updateSession { s ->
         if (!s.isStarted && cards.isNotEmpty()) {
             val due = dueInStudyOrder(cards, clock.millis())
@@ -180,13 +181,16 @@ class StudyViewModel @Inject constructor(
         viewModelScope.launch { flashcards.saveReview(reviewed) }
     }
 
+    /** Moves to the next card without grading the current one. */
     fun next() = updateSession { it.copy(index = it.index + 1) }
 
+    /** Moves back to the previous card. */
     fun previous() = updateSession { it.copy(index = it.index - 1) }
 
     /** Starts a session with every card of the island, due or not. Grades still reschedule the cards. */
     fun practiceAll() = updateSession { it.copy(cards = it.allCards, total = it.allCards.size, index = 0, againCount = 0) }
 
+    /** Switches between revealing the answer and typing it. */
     fun setTypingMode(enabled: Boolean) = updateSession { it.copy(isTypingMode = enabled) }
 
     /** Deletes the current card; [onDeleted] receives it so the delete can be undone. */
@@ -199,6 +203,10 @@ class StudyViewModel @Inject constructor(
     /** Puts back a deleted card. Not tied to this ViewModel's scope, so undo works after leaving the screen. */
     suspend fun restore(content: DeletedContent) = flashcards.restore(content)
 
+    /**
+     * Applies [transform] to the session, keeping the index in range.
+     * When the last card of a session is graded, records the study session and marks the island studied.
+     */
     private fun updateSession(transform: (Session) -> Session) {
         val before = session.value
         val after = transform(before).let { it.copy(index = it.index.coerceIn(0, maxOf(0, it.cards.lastIndex))) }
@@ -213,10 +221,12 @@ class StudyViewModel @Inject constructor(
         }
     }
 
+    /** Stops reading aloud when the screen is left. */
     override fun onCleared() {
         speaker.stop()
     }
 
+    /** Days from [now] until the earliest card that isn't due yet becomes due, or null if there is none. */
     private fun daysUntilNextDue(cards: List<Flashcard>, now: Instant): Int? {
         val nextDue = cards.mapNotNull { it.due }.filter { it > now.toEpochMilli() }.minOrNull() ?: return null
         val today = now.atZone(clock.zone).toLocalDate()
