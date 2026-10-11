@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.LocalTime
+import kotlinx.datetime.LocalTime
 
 data class SettingsUiState(
     val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
@@ -38,7 +38,7 @@ data class SettingsUiState(
 )
 
 /** Time suggested when switching reminders from "any time" to a fixed time. */
-val DEFAULT_REMINDER_TIME: LocalTime = LocalTime.of(18, 0)
+val DEFAULT_REMINDER_TIME = LocalTime(18, 0)
 
 class SettingsViewModel(
     private val settings: SettingsRepository,

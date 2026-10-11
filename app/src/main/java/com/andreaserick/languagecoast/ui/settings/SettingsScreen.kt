@@ -82,10 +82,11 @@ import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.SandMuted
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
-import java.time.LocalTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.toJavaLocalTime
+import org.koin.androidx.compose.koinViewModel
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import org.koin.androidx.compose.koinViewModel
 
 /**
  * The "Settings" screen, grouped into cards: languages, AI (Gemini model and API key),
@@ -382,6 +383,7 @@ private fun ReminderSection(
 ) {
     val context = LocalContext.current
     var showTimePicker by remember { mutableStateOf(false) }
+    val time = reminder.time
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
@@ -389,8 +391,8 @@ private fun ReminderSection(
             Text(
                 text = when {
                     !reminder.enabled -> "Off"
-                    reminder.time == null -> "At a surprise time between $RANDOM_WINDOW_START_HOUR:00 and ${RANDOM_WINDOW_END_HOUR + 1}:00"
-                    else -> "Every day at ${formatTime(context, reminder.time)}"
+                    time == null -> "At a surprise time between $RANDOM_WINDOW_START_HOUR:00 and ${RANDOM_WINDOW_END_HOUR + 1}:00"
+                    else -> "Every day at ${formatTime(context, time)}"
                 },
                 color = MistWhite,
                 fontSize = 13.sp
@@ -453,7 +455,7 @@ private fun ReminderSection(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    onTimeChange(LocalTime.of(state.hour, state.minute))
+                    onTimeChange(LocalTime(state.hour, state.minute))
                     showTimePicker = false
                 }) { Text("Set", color = SandBeige) }
             },
@@ -466,8 +468,8 @@ private fun ReminderSection(
 
 /** [time] as the phone shows times: 24-hour or with AM/PM, as the user prefers. */
 private fun formatTime(context: Context, time: LocalTime): String =
-    if (DateFormat.is24HourFormat(context)) time.format(DateTimeFormatter.ofPattern("HH:mm"))
-    else time.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
+    if (DateFormat.is24HourFormat(context)) time.toJavaLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
+    else time.toJavaLocalTime().format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
 
 /** The installed version name, like "v1.2", or an empty string if it can't be read. */
 private fun appVersion(context: Context): String =

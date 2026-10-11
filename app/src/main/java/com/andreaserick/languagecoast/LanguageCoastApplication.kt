@@ -3,6 +3,8 @@ package com.andreaserick.languagecoast
 import android.app.Application
 import com.andreaserick.languagecoast.di.appModule
 import com.andreaserick.languagecoast.di.dataModule
+import com.andreaserick.languagecoast.di.platformModule
+import com.andreaserick.languagecoast.di.sharedModule
 import com.andreaserick.languagecoast.di.viewModelModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
@@ -14,7 +16,7 @@ class LanguageCoastApplication : Application() {
         super.onCreate()
         startKoin {
             androidContext(this@LanguageCoastApplication)
-            modules(appModule, dataModule, viewModelModule)
+            modules(sharedModule, platformModule, appModule, dataModule, viewModelModule)
         }
     }
 }

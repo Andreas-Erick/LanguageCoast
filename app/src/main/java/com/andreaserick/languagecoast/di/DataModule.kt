@@ -1,14 +1,10 @@
 package com.andreaserick.languagecoast.di
 
 import com.andreaserick.languagecoast.data.BackupManager
-import com.andreaserick.languagecoast.data.DataStoreSettingsRepository
-import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.GeminiTranslator
-import com.andreaserick.languagecoast.data.OfflineFlashcardRepository
 import com.andreaserick.languagecoast.data.OnDeviceTranslator
 import com.andreaserick.languagecoast.data.OpenRouterTranslator
 import com.andreaserick.languagecoast.data.RoutingTranslator
-import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import com.andreaserick.languagecoast.notifications.WorkManagerReminderScheduler
@@ -19,14 +15,8 @@ import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
-/** Binds the data-layer interfaces to their production implementations. */
+/** Binds the Android-only parts of the data layer to their implementations; the rest is in [sharedModule]. */
 val dataModule = module {
-
-    /** Cards are stored in the Room database. */
-    singleOf(::OfflineFlashcardRepository) { bind<FlashcardRepository>() }
-
-    /** Settings are stored in Preferences DataStore. */
-    singleOf(::DataStoreSettingsRepository) { bind<SettingsRepository>() }
 
     /** Translations go to the provider picked in each request. */
     factoryOf(::RoutingTranslator) { bind<Translator>() }

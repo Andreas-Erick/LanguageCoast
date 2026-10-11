@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.datetime.toKotlinLocalDate
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.Clock
@@ -71,7 +72,7 @@ class StudyWidgetProvider : AppWidgetProvider(), KoinComponent {
                 val content = widgetContent(
                     dueCount = flashcards.countDueCards(clock.millis()),
                     streak = settings.streakCount.first(),
-                    studiedToday = LocalDate.now(clock) in settings.studyDays.first()
+                    studiedToday = LocalDate.now(clock).toKotlinLocalDate() in settings.studyDays.first()
                 )
                 val views = remoteViews(context, content)
                 appWidgetIds.forEach { appWidgetManager.updateAppWidget(it, views) }
