@@ -564,7 +564,8 @@ private fun SwipeLabel(offset: Float, thresholdPx: Float) {
 }
 
 /**
- * The four grading buttons shared by both study modes, each showing when the card would come back.
+ * The four grading buttons shared by both study modes, each showing when the card would come back
+ * ("Soon" for Again, which repeats it later in the session).
  * "Good" is the usual choice, so it gets the strongest color.
  */
 @Composable
@@ -588,7 +589,9 @@ private fun GradeButtons(intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) {
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(grade.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    intervals[grade]?.let { Text(intervalLabel(it), fontSize = 12.sp, maxLines = 1) }
+                    // Again re-queues the card in this session; its saved interval only applies if the session is left.
+                    val label = if (grade == Grade.Again) "Soon" else intervals[grade]?.let(::intervalLabel)
+                    label?.let { Text(it, fontSize = 12.sp, maxLines = 1) }
                 }
             }
         }
@@ -907,7 +910,8 @@ fun SessionCompleteView(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 StatTile(value = "$reviewedCount", label = if (reviewedCount == 1) "card" else "cards", modifier = Modifier.weight(1f))
                 StatTile(value = "$againCount", label = "needed again", modifier = Modifier.weight(1f))
-                StatTile(value = "🔥 $streakCount", label = if (streakCount == 1) "day streak" else "days streak", modifier = Modifier.weight(1f))
+                // The 🔥 sits with the label so a long streak (1000) still fits the tile on one line.
+                StatTile(value = "$streakCount", label = "🔥 day streak", modifier = Modifier.weight(1f))
             }
 
             Spacer(modifier = Modifier.height(32.dp))

@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,8 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -136,26 +137,20 @@ fun IslandCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
         colors = CardDefaults.cardColors(containerColor = cardTint(island.islandId), contentColor = DeepOceanBlue)
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            IslandMenu(
-                islandName = island.name,
-                tint = onCardSecondary,
-                onShowCards = onShowCards,
-                onDelete = onDeleteClick,
-                modifier = Modifier.align(Alignment.TopEnd)
-            )
-
+        Box {
+            // The last-studied line is part of the column, so a two-line name pushes it down instead of overlapping it.
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth()
+                    .atLeastSquare()
+                    .padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 10.dp)
             ) {
+                Spacer(modifier = Modifier.weight(1f))
                 Text(text = islandEmoji(island), fontSize = 36.sp)
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
@@ -163,23 +158,37 @@ fun IslandCard(
                     style = MaterialTheme.typography.titleMedium,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 4.dp)
                 )
                 Text(text = cardCountLabel(summary.cardCount, summary.dueCount), fontSize = 13.sp, color = onCardSecondary)
+                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = lastStudiedLabel(island.lastStudied, today),
+                    fontSize = 11.sp,
+                    color = onCardSecondary,
+                    textAlign = TextAlign.Center
+                )
             }
 
-            Text(
-                text = lastStudiedLabel(island.lastStudied, today),
-                fontSize = 11.sp,
-                color = onCardSecondary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(bottom = 10.dp, start = 8.dp, end = 8.dp)
+            IslandMenu(
+                islandName = island.name,
+                tint = onCardSecondary,
+                onShowCards = onShowCards,
+                onDelete = onDeleteClick,
+                modifier = Modifier.align(Alignment.TopEnd)
             )
         }
     }
+}
+
+/** At least as tall as it is wide, growing taller only when the content needs it (e.g. a two-line name at a large font size). */
+private fun Modifier.atLeastSquare() = layout { measurable, constraints ->
+    val width = constraints.maxWidth
+    val height = maxOf(width, measurable.minIntrinsicHeight(width)).coerceIn(constraints.minHeight, constraints.maxHeight)
+    val placeable = measurable.measure(Constraints.fixed(width, height))
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
 }
 
 /** The ⋮ menu of an island card: See cards and Delete island. */
