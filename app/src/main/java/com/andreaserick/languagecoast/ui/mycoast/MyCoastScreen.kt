@@ -59,12 +59,15 @@ import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.SandMuted
 import com.andreaserick.languagecoast.ui.theme.cardTint
-import java.time.DayOfWeek
-import java.time.LocalDate
-import java.time.format.TextStyle
-import java.time.temporal.TemporalAdjusters
-import java.util.Locale
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import kotlinx.datetime.toJavaLocalDate
 import org.koin.androidx.compose.koinViewModel
+import java.time.format.TextStyle
+import java.util.Locale
 
 /**
  * The "My Coasts" screen. Shows the study streak and one card per coast (language being studied).
@@ -151,7 +154,7 @@ fun MyCoastScreen(
                     items(uiState.coasts, key = { it.coast.coastId }) { summary ->
                         CoastCard(
                             summary = summary,
-                            today = uiState.today,
+                            today = uiState.today ?: return@items,
                             onClick = { onCoastClick(summary.coast.coastId, summary.coast.displayName) },
                             onDeleteClick = {
                                 viewModel.deleteCoast(summary.coast) { deleted ->
@@ -188,7 +191,7 @@ fun MyCoastScreen(
  * @param studyDays Days with a completed study session.
  */
 @Composable
-fun StreakCard(streakCount: Int, studyDays: Set<LocalDate>, today: LocalDate, modifier: Modifier = Modifier) {
+fun StreakCard(streakCount: Int, studyDays: Set<LocalDate>, today: LocalDate?, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = CardWash, contentColor = SandBeige),
@@ -218,7 +221,7 @@ fun StreakCard(streakCount: Int, studyDays: Set<LocalDate>, today: LocalDate, mo
                     )
                 }
             }
-            if (today != LocalDate.MIN) {
+            if (today != null) {
                 Spacer(modifier = Modifier.height(16.dp))
                 WeekDots(studyDays = studyDays, today = today)
             }
@@ -229,11 +232,12 @@ fun StreakCard(streakCount: Int, studyDays: Set<LocalDate>, today: LocalDate, mo
 /** A dot for each day from Monday to Sunday of the current week: filled if studied, outlined for today. */
 @Composable
 private fun WeekDots(studyDays: Set<LocalDate>, today: LocalDate) {
-    val monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    val monday = today.minus(today.dayOfWeek.isoDayNumber - 1, DateTimeUnit.DAY)
     Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-        (0L until 7L).map { monday.plusDays(it) }.forEach { day ->
+        (0 until 7).map { monday.plus(it, DateTimeUnit.DAY) }.forEach { day ->
             val studied = day in studyDays
-            val dayName = day.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+            val dayOfWeek = day.toJavaLocalDate().dayOfWeek
+            val dayName = dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.semantics {
@@ -241,7 +245,7 @@ private fun WeekDots(studyDays: Set<LocalDate>, today: LocalDate) {
                 }
             ) {
                 Text(
-                    text = day.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
+                    text = dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
                     fontSize = 12.sp,
                     fontWeight = if (day == today) FontWeight.Bold else FontWeight.Normal,
                     color = if (day == today) SandBeige else MistWhite

@@ -22,7 +22,10 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_11)
         }
         // Runs commonTest on the JVM, so ./gradlew :shared:testAndroidHostTest works without a device.
-        withHostTest {}
+        withHostTest {
+            // android.util.Log does nothing in tests instead of throwing.
+            isReturnDefaultValues = true
+        }
     }
 
     iosArm64()
@@ -34,15 +37,23 @@ kotlin {
             api(libs.androidx.datastore.preferences)
             api(project.dependencies.platform(libs.koin.bom))
             api(libs.koin.core)
+            api(libs.koin.core.viewmodel)
+            api(libs.androidx.lifecycle.viewmodel)
+            api(libs.androidx.lifecycle.viewmodel.savedstate)
+            api(libs.compose.runtime) // CreateViewModel keeps its state as Compose state for the text fields
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.ktor.client.core)
             api(libs.kotlinx.datetime) // In reviewOutcomes's signature
         }
         androidMain.dependencies {
             implementation(libs.koin.android)
             implementation(libs.androidx.sqlite.framework)
+            implementation(libs.ktor.client.android)
+            implementation(libs.mlkit.translate)
         }
         iosMain.dependencies {
             implementation(libs.androidx.sqlite.bundled)
+            implementation(libs.ktor.client.darwin)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

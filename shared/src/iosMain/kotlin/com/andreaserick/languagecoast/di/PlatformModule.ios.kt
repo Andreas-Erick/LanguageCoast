@@ -5,7 +5,11 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.andreaserick.languagecoast.data.AppDatabase
 import com.andreaserick.languagecoast.data.buildAppDatabase
 import com.andreaserick.languagecoast.data.createSettingsDataStore
+import com.andreaserick.languagecoast.speech.IosSpeaker
+import com.andreaserick.languagecoast.speech.Speaker
 import kotlinx.cinterop.ExperimentalForeignApi
+import org.koin.core.module.dsl.bind
+import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
@@ -20,6 +24,9 @@ actual val platformModule = module {
     }
 
     single { createSettingsDataStore("${documentsPath()}/settings.preferences_pb") }
+
+    /** Text is read aloud with iOS's speech synthesizer. */
+    singleOf(::IosSpeaker) { bind<Speaker>() }
 }
 
 /** The app's Documents folder, which iOS keeps across updates and includes in backups. */

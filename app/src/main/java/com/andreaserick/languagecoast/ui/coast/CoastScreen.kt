@@ -51,7 +51,7 @@ import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
 import com.andreaserick.languagecoast.ui.theme.cardTint
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 import org.koin.androidx.compose.koinViewModel
 
 /**
@@ -102,7 +102,7 @@ fun CoastScreen(
                 items(uiState.islands, key = { it.island.islandId }) { summary ->
                     IslandCard(
                         summary = summary,
-                        today = uiState.today,
+                        today = uiState.today ?: return@items,
                         onClick = { onIslandClick(summary.island.islandId, summary.island.name) },
                         onShowCards = { onShowCards(summary.island.islandId, summary.island.name) },
                         onDeleteClick = {

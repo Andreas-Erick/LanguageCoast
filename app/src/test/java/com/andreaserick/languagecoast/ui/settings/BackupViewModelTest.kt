@@ -9,6 +9,7 @@ import com.andreaserick.languagecoast.testing.FakeReminderScheduler
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
+import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -16,14 +17,12 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.toKotlinTimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import kotlin.time.toKotlinInstant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BackupViewModelTest {
@@ -39,7 +38,7 @@ class BackupViewModelTest {
     private val reminders = FakeReminderScheduler()
 
     private fun TestScope.createViewModel(cards: FakeFlashcardRepository, settings: FakeSettingsRepository): BackupViewModel {
-        val viewModel = BackupViewModel(BackupManager(cards, settings, TEST_CLOCK), cards, reminders, TEST_CLOCK)
+        val viewModel = BackupViewModel(BackupManager(cards, settings, TEST_CLOCK), cards, reminders, TEST_CLOCK, TEST_TIME_ZONE)
         // uiState is only computed while collected (WhileSubscribed).
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
         return viewModel
@@ -50,9 +49,9 @@ class BackupViewModelTest {
         oldCards.seed(islandId = 1, cardCount = 2, coastId = 1)
         oldCards.seedCoast(coastId = 2, language = "German")
         oldCards.addFlashcard(coastId = 2, nativeText = "Hello", targetText = "Hallo", category = "Greetings", alternatives = listOf("Servus"))
-        val reviewed = reviewOutcomes(oldCards.cards.value.first(), TEST_CLOCK.instant().toKotlinInstant(), TEST_CLOCK.zone.toKotlinTimeZone()).getValue(Grade.Good).card
+        val reviewed = reviewOutcomes(oldCards.cards.value.first(), TEST_CLOCK.now(), TEST_TIME_ZONE).getValue(Grade.Good).card
         oldCards.saveReview(reviewed)
-        oldCards.markIslandStudied(1, TEST_CLOCK.millis())
+        oldCards.markIslandStudied(1, TEST_CLOCK.now().toEpochMilliseconds())
         oldSettings.nativeLanguage.value = "Dutch"
         oldSettings.activeCoastId.value = 2
         oldSettings.streakCount.value = 6

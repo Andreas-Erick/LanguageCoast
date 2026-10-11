@@ -14,10 +14,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.datetime.toJavaLocalDate
-import java.time.Clock
-import java.time.Duration
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 
 data class MyCoastUiState(
     val coasts: List<CoastSummary> = emptyList(),
@@ -26,24 +28,26 @@ data class MyCoastUiState(
     val streakCount: Int = 0,
     /** Days with a completed study session, for the week overview. */
     val studyDays: Set<LocalDate> = emptySet(),
-    val today: LocalDate = LocalDate.MIN,
+    /** Null until loaded. */
+    val today: LocalDate? = null,
     /** Current time in epoch millis, for "last studied" labels. */
     val now: Long = 0L,
     val isLoading: Boolean = true
 )
 
 /** How far back an island's last session counts towards a coast's weekly progress. */
-val RECENT_STUDY_WINDOW: Duration = Duration.ofDays(7)
+val RECENT_STUDY_WINDOW: Duration = 7.days
 
 /** The overview of all coasts (one per language being studied) and the study streak. */
 class MyCoastViewModel(
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
-    private val clock: Clock
+    private val clock: Clock,
+    private val timeZone: TimeZone
 ) : ViewModel() {
 
     val uiState: StateFlow<MyCoastUiState> = combine(
-        flashcards.observeCoastSummaries(studiedSince = clock.millis() - RECENT_STUDY_WINDOW.toMillis(), now = clock.millis()),
+        flashcards.observeCoastSummaries(studiedSince = clock.now().toEpochMilliseconds() - RECENT_STUDY_WINDOW.inWholeMilliseconds, now = clock.now().toEpochMilliseconds()),
         settings.nativeLanguage,
         settings.streakCount,
         settings.studyDays
@@ -52,9 +56,9 @@ class MyCoastViewModel(
             coasts = coasts,
             availableLanguages = availableCoastLanguages(coasts.map { it.coast }, nativeLanguage),
             streakCount = streak,
-            studyDays = studyDays.mapTo(HashSet()) { it.toJavaLocalDate() },
-            today = LocalDate.now(clock),
-            now = clock.millis(),
+            studyDays = studyDays,
+            today = clock.todayIn(timeZone),
+            now = clock.now().toEpochMilliseconds(),
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MyCoastUiState())
