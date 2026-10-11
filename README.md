@@ -235,6 +235,10 @@ Language Coast uses a deep-sea color palette:
 
 Text colors are checked against the WCAG contrast guidelines (at least 4.5:1 for normal text). Headings use [Nunito](https://github.com/googlefonts/nunito), licensed under the [SIL Open Font License](docs/licenses/Nunito-OFL.txt).
 
+## 📄 License
+
+Copyright © 2026 Andreas Erick. All rights reserved. The source code is public for reference only; see [LICENSE](LICENSE). Third-party assets keep their own licenses (see [docs/licenses](docs/licenses/)).
+
 ---
 
 <p align="center"><i>"Build your coast, one word at a time."</i> 🌊⚓</p>
