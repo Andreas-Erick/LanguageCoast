@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization) // Backups
     alias(libs.plugins.ksp) // Room annotation processing
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.multiplatform) // Shared UI and its resources (font, logo)
 }
 
 kotlin {
@@ -22,6 +24,10 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_11)
         }
         // Runs commonTest on the JVM, so ./gradlew :shared:testAndroidHostTest works without a device.
+        // Compose resources (font, logo) are packaged as Android resources.
+        androidResources {
+            enable = true
+        }
         withHostTest {
             // android.util.Log does nothing in tests instead of throwing.
             isReturnDefaultValues = true
@@ -40,7 +46,15 @@ kotlin {
             api(libs.koin.core.viewmodel)
             api(libs.androidx.lifecycle.viewmodel)
             api(libs.androidx.lifecycle.viewmodel.savedstate)
-            api(libs.compose.runtime) // CreateViewModel keeps its state as Compose state for the text fields
+            api(libs.compose.runtime)
+            implementation(libs.compose.foundation)
+            implementation(libs.compose.ui)
+            implementation(libs.compose.material3)
+            implementation(libs.compose.material.icons.extended)
+            implementation(libs.compose.components.resources)
+            implementation(libs.jetbrains.navigation.compose)
+            implementation(libs.jetbrains.lifecycle.runtime.compose)
+            implementation(libs.koin.compose.viewmodel)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
             api(libs.kotlinx.datetime) // In reviewOutcomes's signature
@@ -60,6 +74,11 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
         }
     }
+}
+
+// Generated accessors for composeResources (Res.font.nunito, Res.drawable.…).
+compose.resources {
+    packageOfResClass = "com.andreaserick.languagecoast.resources"
 }
 
 // Room generates the database code once per platform.
