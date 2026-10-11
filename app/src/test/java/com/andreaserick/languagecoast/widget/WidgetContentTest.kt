@@ -9,7 +9,7 @@ class WidgetContentTest {
     fun dueCardsAndAStreakToKeep() {
         val content = widgetContent(dueCount = 12, streak = 5, studiedToday = false)
 
-        assertEquals("🔥 5", content.streak)
+        assertEquals("🔥\u00A05", content.streak)
         assertEquals("12", content.due)
         assertEquals("cards due", content.dueLabel)
         assertEquals("Study today to keep your streak", content.footer)
@@ -26,7 +26,7 @@ class WidgetContentTest {
     @Test
     fun nothingDueAndNoStreak() {
         val caughtUp = widgetContent(dueCount = 0, streak = 0, studiedToday = false)
-        assertEquals("⚓ 0", caughtUp.streak)
+        assertEquals("⚓\u00A00", caughtUp.streak)
         assertEquals("✓", caughtUp.due)
         assertEquals("all caught up", caughtUp.dueLabel)
         assertEquals("Add cards to start studying", caughtUp.footer)

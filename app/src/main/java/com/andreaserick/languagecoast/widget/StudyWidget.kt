@@ -34,7 +34,8 @@ data class WidgetContent(
  * [studiedToday] says whether today already counts towards the streak.
  */
 fun widgetContent(dueCount: Int, streak: Int, studiedToday: Boolean): WidgetContent = WidgetContent(
-    streak = if (streak > 0) "🔥 $streak" else "⚓ 0",
+    // A non-breaking space keeps the emoji and the number on one line in the tile.
+    streak = if (streak > 0) "🔥\u00A0$streak" else "⚓\u00A00",
     due = if (dueCount > 0) dueCount.toString() else "✓",
     dueLabel = when (dueCount) {
         0 -> "all caught up"
