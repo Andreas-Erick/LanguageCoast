@@ -10,6 +10,7 @@ import com.andreaserick.languagecoast.testing.FakeReminderScheduler
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
+import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import com.andreaserick.languagecoast.ui.coast.CoastViewModel
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastViewModel
 import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
@@ -17,14 +18,14 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import java.time.Duration
-import java.time.LocalDate
+import kotlin.time.Duration.Companion.days
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsAndMyCoastViewModelTest {
@@ -112,7 +113,7 @@ class SettingsAndMyCoastViewModelTest {
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         settings.streakCount.value = 3
 
-        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK)
+        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         val state = viewModel.uiState.value
@@ -130,23 +131,23 @@ class SettingsAndMyCoastViewModelTest {
         flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
         flashcards.seed(islandId = 2, cardCount = 1, coastId = 1)
         flashcards.seed(islandId = 3, cardCount = 1, coastId = 1)
-        flashcards.markIslandStudied(1, TEST_CLOCK.millis())
-        flashcards.markIslandStudied(2, TEST_CLOCK.millis() - Duration.ofDays(10).toMillis())
+        flashcards.markIslandStudied(1, TEST_CLOCK.now().toEpochMilliseconds())
+        flashcards.markIslandStudied(2, (TEST_CLOCK.now() - 10.days).toEpochMilliseconds())
 
-        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK)
+        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         val summary = viewModel.uiState.value.coasts.single()
         assertEquals(1, summary.islandsStudiedRecently)
-        assertEquals(TEST_CLOCK.millis(), summary.lastStudied)
-        assertEquals(LocalDate.of(2026, 10, 9), viewModel.uiState.value.today)
+        assertEquals(TEST_CLOCK.now().toEpochMilliseconds(), summary.lastStudied)
+        assertEquals(LocalDate(2026, 10, 9), viewModel.uiState.value.today)
     }
 
     @Test
     fun deletedCoastCanBeRestoredWithItsIslandsAndCards() = runTest {
         flashcards.seedCoast(coastId = 1, language = "German")
         flashcards.seed(islandId = 1, cardCount = 2, coastId = 1)
-        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK)
+        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
         var deleted: DeletedContent? = null
 
         viewModel.deleteCoast(flashcards.coasts.value.single()) { deleted = it }
@@ -174,7 +175,7 @@ class SettingsAndMyCoastViewModelTest {
     @Test
     fun newCoastLanguagesExcludeNativeLanguageAndExistingCoasts() = runTest {
         flashcards.seedCoast(coastId = 1, language = "German")
-        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK)
+        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         val available = viewModel.uiState.value.availableLanguages.map { it.name }
@@ -185,7 +186,7 @@ class SettingsAndMyCoastViewModelTest {
 
     @Test
     fun addingCoastMakesItActive() = runTest {
-        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK)
+        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
 
         viewModel.addCoast("Norwegian")
 
@@ -200,7 +201,7 @@ class SettingsAndMyCoastViewModelTest {
         flashcards.seed(islandId = 1, cardCount = 2, coastId = 1)
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
-        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK)
+        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
 
         viewModel.deleteCoast(flashcards.coasts.value.first()) {}
 
@@ -216,7 +217,7 @@ class SettingsAndMyCoastViewModelTest {
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
 
-        val viewModel = CoastViewModel(SavedStateHandle(mapOf("coastId" to 2, "coastName" to "")), flashcards, settings, TEST_CLOCK)
+        val viewModel = CoastViewModel(SavedStateHandle(mapOf("coastId" to 2, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         assertEquals("Icelandic Coast", viewModel.uiState.value.coastName)
@@ -227,7 +228,7 @@ class SettingsAndMyCoastViewModelTest {
     @Test
     fun deletingIslandRemovesItAndItsCards() = runTest {
         flashcards.seed(islandId = 1, cardCount = 2)
-        val viewModel = CoastViewModel(SavedStateHandle(mapOf("coastId" to 1, "coastName" to "")), flashcards, settings, TEST_CLOCK)
+        val viewModel = CoastViewModel(SavedStateHandle(mapOf("coastId" to 1, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
 
         viewModel.deleteIsland(flashcards.islands.value.single()) {}
 

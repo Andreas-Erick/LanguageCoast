@@ -17,7 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.Clock
+import kotlinx.datetime.TimeZone
+import kotlin.time.Clock
 
 data class SearchUiState(
     /** Whether something was typed to search for. */
@@ -38,7 +39,8 @@ data class SearchUiState(
 class SearchViewModel(
     private val flashcards: FlashcardRepository,
     settings: SettingsRepository,
-    private val clock: Clock
+    private val clock: Clock,
+    private val timeZone: TimeZone
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -55,7 +57,7 @@ class SearchViewModel(
             hasCards = cards.isNotEmpty(),
             islandsByCoast = islands.groupBy { it.coastId },
             nativeLanguage = nativeLanguage,
-            now = clock.millis(),
+            now = clock.now().toEpochMilliseconds(),
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SearchUiState())

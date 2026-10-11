@@ -33,7 +33,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
-import java.time.Clock
+import kotlinx.datetime.TimeZone
+import kotlin.time.Clock
 
 /** Category used for manual cards when the user leaves the category blank. */
 const val DEFAULT_MANUAL_CATEGORY = DEFAULT_CATEGORY
@@ -89,7 +90,8 @@ class CreateViewModel(
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
     private val translator: Translator,
-    private val clock: Clock
+    private val clock: Clock,
+    private val timeZone: TimeZone
 ) : ViewModel() {
 
     // Compose state rather than StateFlow so text fields update synchronously while typing.
@@ -123,7 +125,7 @@ class CreateViewModel(
         viewModelScope.launch {
             // Counted at the time the screen opens; reviewing changes the cards and with them the counts.
             combine(
-                flashcards.observeCoastSummaries(studiedSince = 0, now = clock.millis()),
+                flashcards.observeCoastSummaries(studiedSince = 0, now = clock.now().toEpochMilliseconds()),
                 settings.streakCount
             ) { coasts, streak -> coasts to streak }
                 .collect { (coasts, streak) ->
@@ -162,7 +164,7 @@ class CreateViewModel(
      */
     fun startReview(onOpen: (islandId: Int, islandName: String) -> Unit) {
         viewModelScope.launch {
-            val now = clock.millis()
+            val now = clock.now().toEpochMilliseconds()
             val coasts = flashcards.observeCoastSummaries(studiedSince = 0, now = now).first().filter { it.dueCount > 0 }
             val coast = coasts.firstOrNull { it.coast.coastId == uiState.selectedCoast?.coastId }
                 ?: coasts.maxByOrNull { it.dueCount }

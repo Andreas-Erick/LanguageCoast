@@ -14,15 +14,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.Clock
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
+import kotlin.time.Clock
 
 data class CoastUiState(
     val coastName: String = "",
     /** The coast language's name for itself (e.g. "Íslenska"), if it differs from the English name. */
     val nativeName: String? = null,
     val islands: List<IslandSummary> = emptyList(),
-    val today: LocalDate = LocalDate.MIN,
+    /** Null until loaded. */
+    val today: LocalDate? = null,
     val isLoading: Boolean = true
 )
 
@@ -31,7 +34,8 @@ class CoastViewModel(
     savedStateHandle: SavedStateHandle,
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
-    private val clock: Clock
+    private val clock: Clock,
+    private val timeZone: TimeZone
 ) : ViewModel() {
 
     // Populated by Navigation from the CoastScreenRoute properties.
@@ -39,12 +43,12 @@ class CoastViewModel(
     private val coastName: String = savedStateHandle["coastName"] ?: ""
 
     val uiState: StateFlow<CoastUiState> =
-        combine(flashcards.observeCoast(coastId), flashcards.observeIslandSummaries(coastId, now = clock.millis())) { coast, islands ->
+        combine(flashcards.observeCoast(coastId), flashcards.observeIslandSummaries(coastId, now = clock.now().toEpochMilliseconds())) { coast, islands ->
             CoastUiState(
                 coastName = coast?.displayName ?: coastName,
                 nativeName = coast?.let { Languages.byName(it.language) }?.nativeName?.takeIf { it != coast?.language },
                 islands = islands,
-                today = LocalDate.now(clock),
+                today = clock.todayIn(timeZone),
                 isLoading = false
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoastUiState(coastName = coastName))

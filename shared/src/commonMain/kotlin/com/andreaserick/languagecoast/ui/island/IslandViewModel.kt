@@ -20,7 +20,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.Clock
+import kotlinx.datetime.TimeZone
+import kotlin.time.Clock
 
 data class IslandUiState(
     val islandName: String = "",
@@ -43,7 +44,8 @@ class IslandViewModel(
     savedStateHandle: SavedStateHandle,
     private val flashcards: FlashcardRepository,
     settings: SettingsRepository,
-    private val clock: Clock
+    private val clock: Clock,
+    private val timeZone: TimeZone
 ) : ViewModel() {
 
     // Populated by Navigation from the IslandScreenRoute properties.
@@ -64,7 +66,7 @@ class IslandViewModel(
         coastIslands,
         settings.nativeLanguage
     ) { island, cards, coast, islands, nativeLanguage ->
-        val now = clock.millis()
+        val now = clock.now().toEpochMilliseconds()
         IslandUiState(
             islandName = island?.name ?: islandName,
             emoji = island?.let(::islandEmoji).orEmpty(),

@@ -2,6 +2,8 @@ package com.andreaserick.languagecoast.di
 
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
+import io.ktor.client.HttpClientConfig
+import io.ktor.client.engine.HttpClientEngine
 import org.junit.Test
 import org.koin.core.annotation.KoinExperimentalAPI
 import org.koin.dsl.module
@@ -15,6 +17,7 @@ class KoinModulesTest {
     fun everyDependencyIsDefined() {
         module { includes(sharedModule, platformModule, appModule, dataModule, viewModelModule) }
             // Provided by Android: the context by startKoin, the SavedStateHandle by the navigation entry.
-            .verify(extraTypes = listOf(Context::class, SavedStateHandle::class))
+            // The HttpClient is made by Ktor's builder, which picks the engine and config itself.
+            .verify(extraTypes = listOf(Context::class, SavedStateHandle::class, HttpClientEngine::class, HttpClientConfig::class))
     }
 }

@@ -1,6 +1,6 @@
 package com.andreaserick.languagecoast.data
 
-import java.time.Clock
+import kotlin.time.Clock
 
 /** Makes backups of everything in the app and restores them. */
 class BackupManager(
@@ -12,7 +12,7 @@ class BackupManager(
     suspend fun createBackup(): Backup {
         val contents = flashcards.getAllContent()
         return Backup(
-            createdAt = clock.millis(),
+            createdAt = clock.now().toEpochMilliseconds(),
             settings = settings.backupSettings(),
             coasts = contents.map { it.coast.toBackup() },
             islands = contents.flatMap { it.islands }.map { it.toBackup() },

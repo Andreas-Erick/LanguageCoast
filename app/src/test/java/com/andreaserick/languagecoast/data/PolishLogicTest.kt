@@ -5,6 +5,8 @@ import com.andreaserick.languagecoast.notifications.RANDOM_WINDOW_START_HOUR
 import com.andreaserick.languagecoast.notifications.delayUntilNextReminder
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.study.splitPunctuation
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toKotlinLocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -70,10 +72,10 @@ class PolishLogicTest {
         val today = LocalDate.of(2026, 10, 9)
         fun at(date: LocalDate) = date.atTime(15, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
 
-        assertEquals("Not studied yet", lastStudiedLabel(null, today, ZoneOffset.UTC))
-        assertEquals("Studied today", lastStudiedLabel(at(today), today, ZoneOffset.UTC))
-        assertEquals("Studied yesterday", lastStudiedLabel(at(today.minusDays(1)), today, ZoneOffset.UTC))
-        assertEquals("Last studied 5 days ago", lastStudiedLabel(at(today.minusDays(5)), today, ZoneOffset.UTC))
+        assertEquals("Not studied yet", lastStudiedLabel(null, today.toKotlinLocalDate(), TimeZone.UTC))
+        assertEquals("Studied today", lastStudiedLabel(at(today), today.toKotlinLocalDate(), TimeZone.UTC))
+        assertEquals("Studied yesterday", lastStudiedLabel(at(today.minusDays(1)), today.toKotlinLocalDate(), TimeZone.UTC))
+        assertEquals("Last studied 5 days ago", lastStudiedLabel(at(today.minusDays(5)), today.toKotlinLocalDate(), TimeZone.UTC))
     }
 
     // --- Reminder timing ---

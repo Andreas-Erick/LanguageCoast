@@ -8,7 +8,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.andreaserick.languagecoast.data.FlashcardRepository
-import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import kotlinx.coroutines.flow.first
@@ -21,15 +20,6 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
-
-/** Schedules the daily study reminder according to the user's [ReminderSettings]. */
-interface ReminderScheduler {
-    /** Called on app launch: schedules a reminder unless one is already pending, or cancels if reminders are off. */
-    suspend fun ensureScheduled()
-
-    /** Called after the reminder settings change: replaces any pending reminder. */
-    suspend fun reschedule()
-}
 
 /** [ReminderScheduler] that queues the reminder as one-time WorkManager work, replaced each time it runs. */
 class WorkManagerReminderScheduler(
