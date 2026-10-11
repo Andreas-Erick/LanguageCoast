@@ -9,8 +9,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** The ML Kit language for [language] (an English language name), or null if on-device translation doesn't cover it. */
-fun onDeviceLanguage(language: String): String? =
+actual val onDeviceTranslationAvailable = true
+
+/** The ML Kit language for [language]. */
+actual fun onDeviceLanguage(language: String): String? =
     Languages.byName(language)?.code?.let(TranslateLanguage::fromLanguageTag)
 
 /**
@@ -20,7 +22,7 @@ fun onDeviceLanguage(language: String): String? =
  */
 actual class OnDeviceTranslator actual constructor() : Translator {
 
-    override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
+    actual override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
         val source = onDeviceLanguage(request.nativeLanguage)
         val target = onDeviceLanguage(request.targetLanguage)
         if (source == null || target == null) {
