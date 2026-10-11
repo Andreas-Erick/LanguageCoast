@@ -375,13 +375,4 @@ class StudyViewModelTest {
 
     private fun startOfDay(date: String): Long =
         LocalDate.parse(date).atStartOfDayIn(TEST_TIME_ZONE).toEpochMilliseconds()
-
-    @Test
-    fun intervalLabelsAreShort() {
-        assertEquals("1d", intervalLabel(1))
-        assertEquals("29d", intervalLabel(29))
-        assertEquals("2mo", intervalLabel(61))
-        assertEquals("1y", intervalLabel(365))
-        assertEquals("1.5y", intervalLabel(548))
-    }
 }

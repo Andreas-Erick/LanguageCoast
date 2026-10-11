@@ -67,10 +67,6 @@ class WorkManagerReminderScheduler(
     }
 }
 
-/** Random reminders are sent between these hours (the end hour may include its minutes). */
-internal const val RANDOM_WINDOW_START_HOUR = 9
-internal const val RANDOM_WINDOW_END_HOUR = 20
-
 /** A random reminder can still fire on the same day if the app is opened before this hour. */
 internal const val RANDOM_SAME_DAY_CUTOFF_HOUR = 18
 

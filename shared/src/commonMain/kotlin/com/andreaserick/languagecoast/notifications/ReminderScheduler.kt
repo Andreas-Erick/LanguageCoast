@@ -10,3 +10,7 @@ interface ReminderScheduler {
     /** Called after the reminder settings change: replaces any pending reminder. */
     suspend fun reschedule()
 }
+
+/** Random reminders are sent between these hours (the end hour may include its minutes). */
+const val RANDOM_WINDOW_START_HOUR = 9
+const val RANDOM_WINDOW_END_HOUR = 20
