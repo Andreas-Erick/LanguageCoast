@@ -5,11 +5,9 @@ import com.google.genai.Client
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /** The production [Translator]: hands each request to the translator for its [TranslationRequest.engine]. */
-class RoutingTranslator @Inject constructor(
+class RoutingTranslator(
     private val onDevice: OnDeviceTranslator,
     private val gemini: GeminiTranslator,
     private val openRouter: OpenRouterTranslator
@@ -22,8 +20,7 @@ class RoutingTranslator @Inject constructor(
 }
 
 /** [Translator] backed by Google Gemini; expects a [TranslationEngine.Gemini] request. */
-@Singleton
-class GeminiTranslator @Inject constructor() : Translator {
+class GeminiTranslator() : Translator {
 
     private var client: Client? = null
     private var clientApiKey: String? = null

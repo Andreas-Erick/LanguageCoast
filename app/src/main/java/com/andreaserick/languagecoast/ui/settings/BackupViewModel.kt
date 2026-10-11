@@ -11,7 +11,6 @@ import com.andreaserick.languagecoast.data.decodeBackup
 import com.andreaserick.languagecoast.data.encodeBackup
 import com.andreaserick.languagecoast.data.summary
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +20,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Clock
 import java.time.LocalDate
-import javax.inject.Inject
 
 data class BackupUiState(
     /** Whether there is anything to back up. */
@@ -42,8 +40,7 @@ data class BackupFile(val text: String, val cardCount: Int)
  * Backs up everything in the app to one file and restores it, e.g. on a new phone. Restoring replaces
  * everything, so what was there before is kept until the user can no longer undo.
  */
-@HiltViewModel
-class BackupViewModel @Inject constructor(
+class BackupViewModel(
     private val backups: BackupManager,
     flashcards: FlashcardRepository,
     private val reminderScheduler: ReminderScheduler,

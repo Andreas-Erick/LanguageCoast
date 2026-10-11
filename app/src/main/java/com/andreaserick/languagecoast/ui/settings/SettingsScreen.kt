@@ -64,7 +64,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.Languages
@@ -86,13 +85,14 @@ import com.andreaserick.languagecoast.ui.theme.WaveTeal
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * The "Settings" screen, grouped into cards: languages, AI (Gemini model and API key),
  * study reminders, exporting / importing cards, a how-to-use guide and app info.
  */
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showHowToUse by remember { mutableStateOf(false) }
 

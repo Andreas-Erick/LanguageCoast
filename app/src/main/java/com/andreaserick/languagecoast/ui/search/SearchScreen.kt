@@ -31,7 +31,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.ui.components.CardListRow
@@ -41,6 +40,7 @@ import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * Search across every coast. Results show where each card is; tapping one edits it, like in an island's card list.
@@ -48,7 +48,7 @@ import com.andreaserick.languagecoast.ui.theme.SandBeige
  * @param onNavigateBack Called when the back arrow is tapped.
  */
 @Composable
-fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = hiltViewModel()) {
+fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current
     // Kept here rather than in the ViewModel so typing never waits for the results.
