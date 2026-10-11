@@ -2,24 +2,11 @@ package com.andreaserick.languagecoast.speech
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
-import com.andreaserick.languagecoast.data.Languages
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import java.util.Locale
-
-/** Reads text aloud in a given language. */
-interface Speaker {
-    /** Whether [language] (an English language name) can be read aloud; emits again once the speech engine is ready. */
-    fun canSpeak(language: String): Flow<Boolean>
-
-    /** Reads [text] aloud in [language], interrupting anything still being read. Does nothing if that isn't possible. */
-    fun speak(text: String, language: String)
-
-    /** Stops reading. */
-    fun stop()
-}
 
 /**
  * [Speaker] using Android's text-to-speech engine and the voices installed on the phone: free and offline.
@@ -56,6 +43,4 @@ class AndroidSpeaker(private val context: Context) : Speaker {
 }
 
 /** The locale voices use for [language], or null for a language the app doesn't know. */
-internal fun speechLocale(language: String): Locale? =
-    // Voices are installed for Norwegian Bokmål ("nb"); "no" usually finds none.
-    Languages.byName(language)?.code?.let { code -> Locale.forLanguageTag(if (code == "no") "nb" else code) }
+internal fun speechLocale(language: String): Locale? = speechLanguageCode(language)?.let(Locale::forLanguageTag)
