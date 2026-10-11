@@ -6,6 +6,7 @@ import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
+import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -27,7 +28,7 @@ class SearchViewModelTest {
     private val settings = FakeSettingsRepository()
 
     private fun TestScope.createViewModel(): SearchViewModel {
-        val viewModel = SearchViewModel(flashcards, settings, TEST_CLOCK)
+        val viewModel = SearchViewModel(flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
         // uiState is only computed while collected (WhileSubscribed).
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
         return viewModel

@@ -1,10 +1,8 @@
 package com.andreaserick.languagecoast.di
 
-import com.andreaserick.languagecoast.data.BackupManager
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import com.andreaserick.languagecoast.notifications.WorkManagerReminderScheduler
 import org.koin.core.module.dsl.bind
-import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
@@ -13,6 +11,4 @@ val dataModule = module {
 
     /** Reminders are scheduled with WorkManager; the worker asks for the concrete class to queue the next one. */
     singleOf(::WorkManagerReminderScheduler) { bind<ReminderScheduler>() }
-
-    factoryOf(::BackupManager)
 }

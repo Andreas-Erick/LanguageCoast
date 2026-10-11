@@ -94,15 +94,15 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 | Area | Library |
 | --- | --- |
 | Architecture | MVVM: ViewModels + repositories, unidirectional data flow with `StateFlow` |
-| Code sharing | [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html): data layer and app logic in a `shared` module, ready for an iOS app |
+| Code sharing | [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html): ViewModels, data layer and translation in a `shared` module, ready for an iOS app |
 | Dependency injection | [Koin](https://insert-koin.io/) |
 | UI | [Jetpack Compose](https://developer.android.com/compose) + Material 3 (100% Kotlin) |
-| Translation | [Google Gen AI Java SDK](https://github.com/googleapis/java-genai) (Gemini), [OpenRouter](https://openrouter.ai/docs) API, [ML Kit Translation](https://developers.google.com/ml-kit/language/translation) (on-device) |
+| Translation | [Gemini API](https://ai.google.dev/api/generate-content) and [OpenRouter API](https://openrouter.ai/docs) over [Ktor](https://ktor.io/), [ML Kit Translation](https://developers.google.com/ml-kit/language/translation) (on-device, Android) |
 | Database | [Room](https://developer.android.com/kotlin/multiplatform/room) (Kotlin Multiplatform) |
 | Preferences | [Jetpack DataStore](https://developer.android.com/kotlin/multiplatform/datastore) (Kotlin Multiplatform) |
 | Navigation | [Navigation Compose](https://developer.android.com/jetpack/compose/navigation) with type-safe routes |
 | Spaced repetition | [FSRS-5](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm) with its default parameters (implemented in `shared/.../data/SpacedRepetition.kt`) |
-| Text-to-speech | Android [`TextToSpeech`](https://developer.android.com/reference/android/speech/tts/TextToSpeech) with the voices installed on the phone |
+| Text-to-speech | Android [`TextToSpeech`](https://developer.android.com/reference/android/speech/tts/TextToSpeech) / iOS `AVSpeechSynthesizer`, with the voices installed on the phone |
 | Background work | [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) |
 | Home-screen widget | [`AppWidgetProvider`](https://developer.android.com/develop/ui/views/appwidgets) with `RemoteViews` (no extra library) |
 | Backups | [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) JSON |
@@ -130,21 +130,19 @@ flowchart LR
 
 ```
 shared/src/                  # Kotlin Multiplatform code for Android and iOS
-├── commonMain/              # Room database, repositories, DataStore settings, spaced repetition,
-│                            # search, import/export, backups, translation prompt and parser
-├── androidMain/             # Android implementations (database and settings files, accent removal)
+├── commonMain/              # ViewModels, Room database, repositories, DataStore settings, translators
+│                            # (Gemini, OpenRouter), spaced repetition, search, import/export, backups
+├── androidMain/             # Android implementations: database and settings files, ML Kit, text-to-speech
 ├── iosMain/                 # iOS implementations of the same
 └── commonTest/              # Tests that run on every platform
 
 app/src/main/java/com/andreaserick/languagecoast/
 ├── MainActivity.kt          # Entry point, bottom navigation and NavHost
-├── data/                    # Translators (Gemini, OpenRouter, ML Kit) and backup manager
-├── di/                      # Koin modules
+├── di/                      # Koin modules for Android-only parts
 ├── navigation/              # Type-safe route definitions
 ├── notifications/           # Daily study reminder (WorkManager + notification)
-├── speech/                  # Reading cards aloud (text-to-speech)
 ├── ui/
-│   ├── coast/               # Each feature has a Screen + ViewModel
+│   ├── coast/               # Each feature's Screen; its ViewModel is in the shared module
 │   ├── components/          # Shared composables (screen header, card row, edit card sheet, language picker, undo snackbar)
 │   ├── create/
 │   ├── island/              # An island's card list
@@ -153,7 +151,6 @@ app/src/main/java/com/andreaserick/languagecoast/
 │   ├── settings/            # Also export, import and backup
 │   ├── study/
 │   └── theme/               # Colors, typography and Material theme
-├── util/                    # dict.cc lookup helpers
 └── widget/                  # Home-screen widget (streak and cards due)
 ```
 

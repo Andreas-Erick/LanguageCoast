@@ -18,8 +18,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.Clock
-import java.time.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
+import kotlin.time.Clock
 
 data class BackupUiState(
     /** Whether there is anything to back up. */
@@ -44,7 +45,8 @@ class BackupViewModel(
     private val backups: BackupManager,
     flashcards: FlashcardRepository,
     private val reminderScheduler: ReminderScheduler,
-    private val clock: Clock
+    private val clock: Clock,
+    private val timeZone: TimeZone
 ) : ViewModel() {
 
     private val state = MutableStateFlow(BackupUiState())
@@ -60,7 +62,7 @@ class BackupViewModel(
     }
 
     /** A file name with today's date, like "language-coast-backup-2026-10-11.json". */
-    fun backupFileName(): String = "language-coast-backup-${LocalDate.now(clock)}.json"
+    fun backupFileName(): String = "language-coast-backup-${clock.todayIn(timeZone)}.json"
 
     /** Reads the backup in [text] and asks to confirm restoring it, or explains why it can't be restored. */
     fun onRestoreFileRead(text: String) {

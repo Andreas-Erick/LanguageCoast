@@ -1,10 +1,10 @@
 package com.andreaserick.languagecoast.ui.components
 
 import com.andreaserick.languagecoast.data.Flashcard
+import kotlinx.datetime.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.Instant
-import java.time.ZoneOffset
 
 class DueLabelTest {
 
@@ -12,7 +12,7 @@ class DueLabelTest {
 
     private fun label(due: String?): String {
         val card = Flashcard(islandId = 1, nativeText = "n", targetText = "t", due = due?.let { Instant.parse(it).toEpochMilli() })
-        return dueLabel(card, now, ZoneOffset.UTC)
+        return dueLabel(card, now, TimeZone.UTC)
     }
 
     @Test

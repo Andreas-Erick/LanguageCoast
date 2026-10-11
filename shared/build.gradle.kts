@@ -37,6 +37,10 @@ kotlin {
             api(libs.androidx.datastore.preferences)
             api(project.dependencies.platform(libs.koin.bom))
             api(libs.koin.core)
+            api(libs.koin.core.viewmodel)
+            api(libs.androidx.lifecycle.viewmodel)
+            api(libs.androidx.lifecycle.viewmodel.savedstate)
+            api(libs.compose.runtime) // CreateViewModel keeps its state as Compose state for the text fields
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
             api(libs.kotlinx.datetime) // In reviewOutcomes's signature

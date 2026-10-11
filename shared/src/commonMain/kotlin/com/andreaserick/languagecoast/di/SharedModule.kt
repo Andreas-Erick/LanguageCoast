@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.di
 
 import com.andreaserick.languagecoast.data.AppDatabase
+import com.andreaserick.languagecoast.data.BackupManager
 import com.andreaserick.languagecoast.data.DataStoreSettingsRepository
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.GeminiTranslator
@@ -29,8 +30,14 @@ val sharedModule = module {
     /** Cards are stored in the Room database. */
     singleOf(::OfflineFlashcardRepository) { bind<FlashcardRepository>() }
 
-    /** Settings are stored in Preferences DataStore; days are counted in the phone's time zone. */
-    single<SettingsRepository> { DataStoreSettingsRepository(get(), Clock.System, TimeZone.currentSystemDefault()) }
+    /** Settings are stored in Preferences DataStore. */
+    single<SettingsRepository> { DataStoreSettingsRepository(get(), get(), get()) }
+
+    factoryOf(::BackupManager)
+
+    /** The clock used for due dates, streaks and reminders, and the time zone days are counted in; tests fix both. */
+    single<Clock> { Clock.System }
+    factory { TimeZone.currentSystemDefault() }
 
     /** Translations go to the provider picked in each request. */
     factoryOf(::RoutingTranslator) { bind<Translator>() }

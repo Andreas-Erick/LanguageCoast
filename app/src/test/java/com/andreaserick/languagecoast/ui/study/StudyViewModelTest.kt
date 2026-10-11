@@ -7,20 +7,22 @@ import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.FakeSpeaker
-import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
+import com.andreaserick.languagecoast.testing.TEST_CLOCK
+import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.atStartOfDayIn
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import java.time.LocalDate
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class StudyViewModelTest {
@@ -38,6 +40,7 @@ class StudyViewModelTest {
             flashcards,
             settings,
             TEST_CLOCK,
+            TEST_TIME_ZONE,
             speaker
         )
         // uiState is only computed while collected (WhileSubscribed).
@@ -107,7 +110,7 @@ class StudyViewModelTest {
         assertTrue(viewModel.state.isSessionComplete)
         assertEquals(2, viewModel.state.totalCards)
         assertEquals(1, viewModel.state.againCount)
-        assertEquals(TEST_CLOCK.millis(), flashcards.islands.value.single().lastStudied)
+        assertEquals(TEST_CLOCK.now().toEpochMilliseconds(), flashcards.islands.value.single().lastStudied)
     }
 
     @Test
@@ -210,7 +213,7 @@ class StudyViewModelTest {
         viewModel.onGrade(Grade.Good)
 
         val card = flashcards.cards.value.first()
-        assertEquals(TEST_CLOCK.millis(), card.lastReviewed)
+        assertEquals(TEST_CLOCK.now().toEpochMilliseconds(), card.lastReviewed)
         // A new card graded "Good" comes back in 3 days, at the start of that day.
         assertEquals(startOfDay("2026-10-12"), card.due)
         assertEquals(null, flashcards.cards.value.last().due)
@@ -371,7 +374,7 @@ class StudyViewModelTest {
     }
 
     private fun startOfDay(date: String): Long =
-        LocalDate.parse(date).atStartOfDay(TEST_CLOCK.zone).toInstant().toEpochMilli()
+        LocalDate.parse(date).atStartOfDayIn(TEST_TIME_ZONE).toEpochMilliseconds()
 
     @Test
     fun intervalLabelsAreShort() {

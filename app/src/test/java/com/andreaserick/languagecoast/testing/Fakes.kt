@@ -31,12 +31,17 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.datetime.LocalDate
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
+import kotlinx.datetime.TimeZone
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /** A clock fixed at noon UTC on 2026-10-09 (a Friday). */
-val TEST_CLOCK: Clock = Clock.fixed(Instant.parse("2026-10-09T12:00:00Z"), ZoneOffset.UTC)
+val TEST_CLOCK: Clock = object : Clock {
+    override fun now() = Instant.parse("2026-10-09T12:00:00Z")
+}
+
+/** The time zone days are counted in for [TEST_CLOCK]. */
+val TEST_TIME_ZONE = TimeZone.UTC
 
 /** In-memory [FlashcardRepository]. */
 class FakeFlashcardRepository : FlashcardRepository {
