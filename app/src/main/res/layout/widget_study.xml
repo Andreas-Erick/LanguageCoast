@@ -2,6 +2,7 @@
 <!--
     The home-screen widget (see StudyWidgetProvider), styled like the app: the logo and title over the
     header wave, the streak and the cards due on tiles tinted like island cards, and a nudge below.
+    The numbers shrink to fit their tile, so a 1000 day streak still shows on a narrow widget.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -65,8 +66,13 @@
 
             <TextView
                 android:id="@+id/widget_streak"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:autoSizeMaxTextSize="26sp"
+                android:autoSizeMinTextSize="9sp"
+                android:autoSizeTextType="uniform"
+                android:gravity="center"
                 android:fontFamily="@font/nunito"
                 android:fontVariationSettings="'wght' 800"
                 android:maxLines="1"
@@ -100,8 +106,13 @@
 
             <TextView
                 android:id="@+id/widget_due"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:autoSizeMaxTextSize="26sp"
+                android:autoSizeMinTextSize="9sp"
+                android:autoSizeTextType="uniform"
+                android:gravity="center"
                 android:fontFamily="@font/nunito"
                 android:fontVariationSettings="'wght' 800"
                 android:maxLines="1"
