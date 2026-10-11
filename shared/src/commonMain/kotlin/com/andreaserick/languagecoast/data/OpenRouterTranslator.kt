@@ -1,56 +1,49 @@
 package com.andreaserick.languagecoast.data
 
-import android.util.Log
+import io.ktor.client.HttpClient
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.io.IOException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * [Translator] backed by OpenRouter (https://openrouter.ai), which gives one API key access to many
  * cloud models. Uses the same prompt and answer format as Gemini; expects a [TranslationEngine.OpenRouter] request.
  */
-class OpenRouterTranslator() : Translator {
+class OpenRouterTranslator(private val client: HttpClient) : Translator {
 
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
         val engine = request.engine as? TranslationEngine.OpenRouter ?: return TranslationResult.FAILURE
         val body = openRouterRequestBody(engine.model, buildTranslationPrompt(request))
         return try {
-            val (status, response) = withContext(Dispatchers.IO) { post(engine.apiKey, body) }
+            val (status, response) = post(engine.apiKey, body)
             parseOpenRouterResponse(status, response)
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
-            Log.e(TAG, "OpenRouter request failed", e)
+            logError(TAG, "OpenRouter request failed", e)
             TranslationResult.failure("Couldn't reach OpenRouter. Check your internet connection and try again.")
         }
     }
 
     /** Sends [body] to the chat completions endpoint and returns the status code and response body. */
-    private fun post(apiKey: String, body: String): Pair<Int, String> {
-        val connection = URL(ENDPOINT).openConnection() as HttpURLConnection
-        try {
-            connection.requestMethod = "POST"
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 60_000
-            connection.doOutput = true
-            connection.setRequestProperty("Authorization", "Bearer $apiKey")
-            connection.setRequestProperty("Content-Type", "application/json")
+    private suspend fun post(apiKey: String, body: String): Pair<Int, String> {
+        val response = client.post(ENDPOINT) {
+            header("Authorization", "Bearer $apiKey")
             // Optional attribution, shown on openrouter.ai.
-            connection.setRequestProperty("HTTP-Referer", "https://github.com/Andreas-Erick/LanguageCoast")
-            connection.setRequestProperty("X-Title", "Language Coast")
-            connection.outputStream.use { it.write(body.toByteArray()) }
-            val status = connection.responseCode
-            val stream = if (status >= 400) connection.errorStream else connection.inputStream
-            return status to (stream?.bufferedReader()?.use { it.readText() } ?: "")
-        } finally {
-            connection.disconnect()
+            header("HTTP-Referer", "https://github.com/Andreas-Erick/LanguageCoast")
+            header("X-Title", "Language Coast")
+            contentType(ContentType.Application.Json)
+            setBody(body)
         }
+        return response.status.value to response.bodyAsText()
     }
 
     private companion object {
