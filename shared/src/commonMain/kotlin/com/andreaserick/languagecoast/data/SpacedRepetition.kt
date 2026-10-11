@@ -1,13 +1,17 @@
 package com.andreaserick.languagecoast.data
 
-import java.time.Instant
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
+import kotlinx.datetime.toLocalDateTime
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Instant
 
 /** How well the user remembered a card. */
 enum class Grade(val value: Int) { Again(1), Hard(2), Good(3), Easy(4) }
@@ -27,15 +31,15 @@ fun isDue(card: Flashcard, now: Long): Boolean = card.due == null || card.due <=
  * (https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm) with its default parameters.
  * Cards are scheduled to the start of a day in [zone], so they become due when that day begins.
  */
-fun reviewOutcomes(card: Flashcard, now: Instant, zone: ZoneId): Map<Grade, ReviewOutcome> {
-    val today = now.atZone(zone).toLocalDate()
-    val previous = card.lastReviewed?.let { Instant.ofEpochMilli(it) }
+fun reviewOutcomes(card: Flashcard, now: Instant, zone: TimeZone): Map<Grade, ReviewOutcome> {
+    val today = now.toLocalDateTime(zone).date
+    val previous = card.lastReviewed?.let { Instant.fromEpochMilliseconds(it) }
     val memories = Grade.entries.associateWith { grade ->
         when {
             card.stability == null || card.difficulty == null || previous == null -> Fsrs.initial(grade)
-            previous.atZone(zone).toLocalDate() == today -> Fsrs.sameDay(card.stability, card.difficulty, grade)
+            previous.toLocalDateTime(zone).date == today -> Fsrs.sameDay(card.stability, card.difficulty, grade)
             else -> {
-                val elapsedDays = max(0.0, (now.toEpochMilli() - previous.toEpochMilli()) / MILLIS_PER_DAY)
+                val elapsedDays = max(0.0, (now - previous) / 1.days)
                 Fsrs.review(card.stability, card.difficulty, elapsedDays, grade)
             }
         }
@@ -50,12 +54,12 @@ fun reviewOutcomes(card: Flashcard, now: Instant, zone: ZoneId): Map<Grade, Revi
 
     return memories.mapValues { (grade, memory) ->
         val interval = intervals.getValue(grade)
-        val due = today.plusDays(interval.toLong()).atStartOfDay(zone).toInstant().toEpochMilli()
+        val due = today.plus(interval, DateTimeUnit.DAY).atStartOfDayIn(zone).toEpochMilliseconds()
         ReviewOutcome(
             card = card.copy(
                 stability = memory.stability,
                 difficulty = memory.difficulty,
-                lastReviewed = now.toEpochMilli(),
+                lastReviewed = now.toEpochMilliseconds(),
                 due = due
             ),
             intervalDays = interval
@@ -67,7 +71,6 @@ fun reviewOutcomes(card: Flashcard, now: Instant, zone: ZoneId): Map<Grade, Revi
 private fun intervalFor(stability: Double): Int = stability.roundToInt().coerceIn(1, MAX_INTERVAL_DAYS)
 
 private const val MAX_INTERVAL_DAYS = 36_500
-private val MILLIS_PER_DAY = ChronoUnit.DAYS.duration.toMillis().toDouble()
 
 /** Stability (days until recall drops to 90%) and difficulty (1–10) of a card's memory. */
 internal data class Memory(val stability: Double, val difficulty: Double)
