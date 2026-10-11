@@ -49,5 +49,5 @@ val sharedModule = module {
     }
 }
 
-/** Where each platform keeps the files: the [AppDatabase] and the settings' DataStore. */
+/** What each platform does its own way: where the [AppDatabase] and settings are stored, and reading aloud. */
 expect val platformModule: Module
