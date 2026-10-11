@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization) // Backups
+    alias(libs.plugins.ksp) // Room annotation processing
 }
 
 kotlin {
@@ -29,13 +30,28 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            // Entities keep their Room annotations; the database itself is still in the app.
-            implementation(libs.androidx.room.runtime)
+            api(libs.androidx.room.runtime)
+            api(libs.androidx.datastore.preferences)
+            api(project.dependencies.platform(libs.koin.bom))
+            api(libs.koin.core)
             implementation(libs.kotlinx.serialization.json)
             api(libs.kotlinx.datetime) // In reviewOutcomes's signature
         }
+        androidMain.dependencies {
+            implementation(libs.koin.android)
+            implementation(libs.androidx.sqlite.framework)
+        }
+        iosMain.dependencies {
+            implementation(libs.androidx.sqlite.bundled)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
+}
+
+// Room generates the database code once per platform.
+dependencies {
+    listOf("kspAndroid", "kspIosArm64", "kspIosSimulatorArm64").forEach { add(it, libs.androidx.room.compiler) }
 }

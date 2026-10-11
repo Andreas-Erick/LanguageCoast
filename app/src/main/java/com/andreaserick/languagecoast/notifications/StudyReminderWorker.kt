@@ -12,6 +12,7 @@ import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import kotlinx.coroutines.flow.first
+import kotlinx.datetime.toJavaLocalTime
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.Clock
@@ -61,7 +62,7 @@ class WorkManagerReminderScheduler(
             return
         }
 
-        val delay = delayUntilNextReminder(reminder.time, LocalDateTime.now(clock), allowToday)
+        val delay = delayUntilNextReminder(reminder.time?.toJavaLocalTime(), LocalDateTime.now(clock), allowToday)
         val request = OneTimeWorkRequestBuilder<StudyReminderWorker>()
             .setInitialDelay(delay.toMillis(), TimeUnit.MILLISECONDS)
             .addTag(TAG)

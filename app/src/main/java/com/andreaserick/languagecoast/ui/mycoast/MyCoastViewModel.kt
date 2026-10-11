@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.toJavaLocalDate
 import java.time.Clock
 import java.time.Duration
 import java.time.LocalDate
@@ -51,7 +52,7 @@ class MyCoastViewModel(
             coasts = coasts,
             availableLanguages = availableCoastLanguages(coasts.map { it.coast }, nativeLanguage),
             streakCount = streak,
-            studyDays = studyDays,
+            studyDays = studyDays.mapTo(HashSet()) { it.toJavaLocalDate() },
             today = LocalDate.now(clock),
             now = clock.millis(),
             isLoading = false
