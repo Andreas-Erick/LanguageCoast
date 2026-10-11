@@ -36,7 +36,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.ExportFormat
@@ -46,10 +45,11 @@ import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
+import org.koin.androidx.compose.koinViewModel
 
 /** Import files larger than this are refused; a card file of this size would hold well over 50,000 cards. */
 private const val MAX_IMPORT_CHARS = 5_000_000
@@ -62,7 +62,7 @@ private val IMPORT_MIME_TYPES = arrayOf("text/*", "application/csv", "applicatio
  * Files are saved and opened with the system file picker, so they can go to Downloads, Google Drive and so on.
  */
 @Composable
-fun CardTransferSection(viewModel: CardTransferViewModel = hiltViewModel()) {
+fun CardTransferSection(viewModel: CardTransferViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

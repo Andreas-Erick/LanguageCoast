@@ -44,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.CoastSummary
 import com.andreaserick.languagecoast.data.Languages
@@ -65,6 +64,7 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * The "My Coasts" screen. Shows the study streak and one card per coast (language being studied).
@@ -76,7 +76,7 @@ import java.util.Locale
 fun MyCoastScreen(
     onCoastClick: (Int, String) -> Unit,
     onSearchClick: () -> Unit,
-    viewModel: MyCoastViewModel = hiltViewModel()
+    viewModel: MyCoastViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current

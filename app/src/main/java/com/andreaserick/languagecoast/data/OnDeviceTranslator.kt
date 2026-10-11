@@ -7,8 +7,6 @@ import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -21,8 +19,7 @@ fun onDeviceLanguage(language: String): String? =
  * (about 30 MB per language) is downloaded on first use. It only translates, so cards go into the
  * category the user typed, or [DEFAULT_CATEGORY].
  */
-@Singleton
-class OnDeviceTranslator @Inject constructor() : Translator {
+class OnDeviceTranslator() : Translator {
 
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
         val source = onDeviceLanguage(request.nativeLanguage)

@@ -12,7 +12,6 @@ import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.data.islandEmoji
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +21,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Clock
-import javax.inject.Inject
 
 data class IslandUiState(
     val islandName: String = "",
@@ -41,8 +39,7 @@ data class IslandUiState(
 )
 
 /** Lists the cards of one island, where they can be edited, moved to another island or deleted. */
-@HiltViewModel
-class IslandViewModel @Inject constructor(
+class IslandViewModel(
     savedStateHandle: SavedStateHandle,
     private val flashcards: FlashcardRepository,
     settings: SettingsRepository,

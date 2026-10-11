@@ -3,14 +3,11 @@ package com.andreaserick.languagecoast.speech
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import com.andreaserick.languagecoast.data.Languages
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import java.util.Locale
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /** Reads text aloud in a given language. */
 interface Speaker {
@@ -28,8 +25,7 @@ interface Speaker {
  * [Speaker] using Android's text-to-speech engine and the voices installed on the phone: free and offline.
  * The engine is started on first use and kept for the life of the app.
  */
-@Singleton
-class AndroidSpeaker @Inject constructor(@ApplicationContext private val context: Context) : Speaker {
+class AndroidSpeaker(private val context: Context) : Speaker {
 
     private val ready = MutableStateFlow(false)
 

@@ -94,18 +94,19 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 | Area | Library |
 | --- | --- |
 | Architecture | MVVM: ViewModels + repositories, unidirectional data flow with `StateFlow` |
-| Dependency injection | [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) |
+| Code sharing | [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html): data layer and app logic in a `shared` module, ready for an iOS app |
+| Dependency injection | [Koin](https://insert-koin.io/) |
 | UI | [Jetpack Compose](https://developer.android.com/compose) + Material 3 (100% Kotlin) |
 | Translation | [Google Gen AI Java SDK](https://github.com/googleapis/java-genai) (Gemini), [OpenRouter](https://openrouter.ai/docs) API, [ML Kit Translation](https://developers.google.com/ml-kit/language/translation) (on-device) |
-| Database | [Room](https://developer.android.com/training/data-storage/room) |
-| Preferences | [Jetpack DataStore](https://developer.android.com/topic/libraries/architecture/datastore) |
+| Database | [Room](https://developer.android.com/kotlin/multiplatform/room) (Kotlin Multiplatform) |
+| Preferences | [Jetpack DataStore](https://developer.android.com/kotlin/multiplatform/datastore) (Kotlin Multiplatform) |
 | Navigation | [Navigation Compose](https://developer.android.com/jetpack/compose/navigation) with type-safe routes |
-| Spaced repetition | [FSRS-5](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm) with its default parameters (implemented in `data/SpacedRepetition.kt`) |
+| Spaced repetition | [FSRS-5](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm) with its default parameters (implemented in `shared/.../data/SpacedRepetition.kt`) |
 | Text-to-speech | Android [`TextToSpeech`](https://developer.android.com/reference/android/speech/tts/TextToSpeech) with the voices installed on the phone |
 | Background work | [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) |
 | Home-screen widget | [`AppWidgetProvider`](https://developer.android.com/develop/ui/views/appwidgets) with `RemoteViews` (no extra library) |
 | Backups | [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) JSON |
-| Testing | JUnit 4, kotlinx-coroutines-test, hand-written fakes |
+| Testing | kotlin.test (shared module), JUnit 4, kotlinx-coroutines-test, hand-written fakes |
 | CI/CD | GitHub Actions (tests on every push, signed APK on every release tag) |
 
 ## 🏗️ Architecture
@@ -123,15 +124,22 @@ flowchart LR
 
 - **Screens** are stateless: they render a UI state and forward user events to their ViewModel.
 - **ViewModels** hold the screen logic, e.g. `StudyViewModel` runs the study session (every grade reschedules the card, *Again* re-queues it, completing a session updates the streak).
-- **Repositories** are interfaces with one production implementation each, provided by Hilt. Tests swap them for in-memory fakes, so all ViewModel logic is tested without a device.
+- **Repositories** are interfaces with one production implementation each, provided by Koin. Tests swap them for in-memory fakes, so all ViewModel logic is tested without a device.
 
 ## 📁 Project structure
 
 ```
+shared/src/                  # Kotlin Multiplatform code for Android and iOS
+├── commonMain/              # Room database, repositories, DataStore settings, spaced repetition,
+│                            # search, import/export, backups, translation prompt and parser
+├── androidMain/             # Android implementations (database and settings files, accent removal)
+├── iosMain/                 # iOS implementations of the same
+└── commonTest/              # Tests that run on every platform
+
 app/src/main/java/com/andreaserick/languagecoast/
 ├── MainActivity.kt          # Entry point, bottom navigation and NavHost
-├── data/                    # Repositories, Room entities/DAO, DataStore settings, translators
-├── di/                      # Hilt modules
+├── data/                    # Translators (Gemini, OpenRouter, ML Kit) and backup manager
+├── di/                      # Koin modules
 ├── navigation/              # Type-safe route definitions
 ├── notifications/           # Daily study reminder (WorkManager + notification)
 ├── speech/                  # Reading cards aloud (text-to-speech)
@@ -170,7 +178,7 @@ app/src/main/java/com/andreaserick/languagecoast/
 
 ### Running tests
 ```bash
-./gradlew testDebugUnitTest
+./gradlew testDebugUnitTest :shared:testAndroidHostTest
 ```
 The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing (Gemini and OpenRouter), editing and searching cards, export, import, backup and restore, answer checking in Active Type (both directions) and the widget's texts. They run on every push via GitHub Actions. Database migrations are tested on a device or emulator with `./gradlew connectedDebugAndroidTest`.
 

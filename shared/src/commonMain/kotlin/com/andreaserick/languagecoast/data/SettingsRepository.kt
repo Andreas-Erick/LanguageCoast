@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.data
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -10,11 +11,14 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import java.time.Clock
-import java.time.LocalDate
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
-import javax.inject.Inject
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.todayIn
+import okio.Path.Companion.toPath
+import kotlin.time.Clock
 
 /** Languages a new coast can be started for: not the native language and without a coast yet. */
 fun availableCoastLanguages(coasts: List<Coast>, nativeLanguage: String): List<Language> =
@@ -97,10 +101,11 @@ interface SettingsRepository {
     suspend fun restoreSettings(backup: BackupSettings)
 }
 
-/** [SettingsRepository] backed by Preferences DataStore. */
-class DataStoreSettingsRepository @Inject constructor(
+/** [SettingsRepository] backed by Preferences DataStore; days are counted in [timeZone]. */
+class DataStoreSettingsRepository(
     private val dataStore: DataStore<Preferences>,
-    private val clock: Clock
+    private val clock: Clock,
+    private val timeZone: TimeZone
 ) : SettingsRepository {
 
     override val nativeLanguage: Flow<String> =
@@ -131,18 +136,18 @@ class DataStoreSettingsRepository @Inject constructor(
         dataStore.data.map { it[STREAK_COUNT] ?: 0 }
 
     override val studyDays: Flow<Set<LocalDate>> = dataStore.data.map { preferences ->
-        val recorded = preferences[STUDY_DAYS].orEmpty().mapTo(HashSet()) { LocalDate.parse(it, DATE_FORMATTER) }
+        val recorded = preferences[STUDY_DAYS].orEmpty().mapTo(HashSet()) { LocalDate.parse(it) }
         // Older versions only stored the streak, so its days count as studied too.
-        val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it, DATE_FORMATTER) }
+        val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) }
         val streak = preferences[STREAK_COUNT] ?: 0
-        if (lastStudy != null) (0 until streak).forEach { recorded += lastStudy.minusDays(it.toLong()) }
+        if (lastStudy != null) (0 until streak).forEach { recorded += lastStudy.minus(it, DateTimeUnit.DAY) }
         recorded
     }
 
     override val reminderSettings: Flow<ReminderSettings> = dataStore.data.map { preferences ->
         ReminderSettings(
             enabled = preferences[REMINDER_ENABLED] ?: true,
-            time = preferences[REMINDER_MINUTE_OF_DAY]?.let { LocalTime.ofSecondOfDay(it * 60L) }
+            time = preferences[REMINDER_MINUTE_OF_DAY]?.let { LocalTime.fromSecondOfDay(it * 60) }
         )
     }
 
@@ -168,21 +173,21 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override suspend fun recordStudySession() {
         dataStore.edit { preferences ->
-            val today = LocalDate.now(clock)
-            val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it, DATE_FORMATTER) }
+            val today = clock.todayIn(timeZone)
+            val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) }
             preferences[STREAK_COUNT] = nextStreak(lastStudy, preferences[STREAK_COUNT] ?: 0, today)
-            preferences[LAST_STUDY_DATE] = today.format(DATE_FORMATTER)
+            preferences[LAST_STUDY_DATE] = today.toString()
             // Keep a few weeks of study days for the weekly overview.
-            val cutoff = today.minusDays(STUDY_DAYS_KEPT)
-            preferences[STUDY_DAYS] = (preferences[STUDY_DAYS].orEmpty() + today.format(DATE_FORMATTER))
-                .filterTo(HashSet()) { !LocalDate.parse(it, DATE_FORMATTER).isBefore(cutoff) }
+            val cutoff = today.minus(STUDY_DAYS_KEPT, DateTimeUnit.DAY)
+            preferences[STUDY_DAYS] = (preferences[STUDY_DAYS].orEmpty() + today.toString())
+                .filterTo(HashSet()) { LocalDate.parse(it) >= cutoff }
         }
     }
 
     override suspend fun refreshStreak() {
         dataStore.edit { preferences ->
-            val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it, DATE_FORMATTER) } ?: return@edit
-            if (isStreakBroken(lastStudy, LocalDate.now(clock))) {
+            val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) } ?: return@edit
+            if (isStreakBroken(lastStudy, clock.todayIn(timeZone))) {
                 preferences[STREAK_COUNT] = 0
             }
         }
@@ -245,10 +250,13 @@ class DataStoreSettingsRepository @Inject constructor(
         val REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val REMINDER_MINUTE_OF_DAY = intPreferencesKey("reminder_minute_of_day")
         val STUDY_REVERSED = booleanPreferencesKey("study_reversed")
-        const val STUDY_DAYS_KEPT = 28L
-        val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+        const val STUDY_DAYS_KEPT = 28
     }
 }
+
+/** The DataStore holding the settings, stored in the file at [path]. Only one may exist per file. */
+fun createSettingsDataStore(path: String): DataStore<Preferences> =
+    PreferenceDataStoreFactory.createWithPath(produceFile = { path.toPath() })
 
 /**
  * The single target language from before coasts existed. Only read by [AppDatabase.migration2To3]
@@ -264,10 +272,10 @@ internal suspend fun DataStore<Preferences>.readLegacyTargetLanguage(): String =
 internal fun nextStreak(lastStudy: LocalDate?, currentStreak: Int, today: LocalDate): Int = when {
     lastStudy == null -> 1
     lastStudy == today -> currentStreak
-    lastStudy == today.minusDays(1) -> currentStreak + 1
+    lastStudy == today.minus(1, DateTimeUnit.DAY) -> currentStreak + 1
     else -> 1
 }
 
 /** A streak is broken once a full calendar day passes without a session. */
 internal fun isStreakBroken(lastStudy: LocalDate, today: LocalDate): Boolean =
-    lastStudy.isBefore(today.minusDays(1))
+    lastStudy < today.minus(1, DateTimeUnit.DAY)

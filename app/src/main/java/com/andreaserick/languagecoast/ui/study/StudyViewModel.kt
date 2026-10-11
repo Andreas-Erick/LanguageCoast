@@ -14,7 +14,6 @@ import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.data.reviewOutcomes
 import com.andreaserick.languagecoast.speech.Speaker
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,7 +27,6 @@ import kotlinx.datetime.toKotlinTimeZone
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
-import javax.inject.Inject
 import kotlin.time.toKotlinInstant
 
 data class StudyUiState(
@@ -75,8 +73,7 @@ data class StudyUiState(
  * with [reviewOutcomes]; "Again" also moves it to the end of the session, any other grade removes it.
  * The session is complete once no cards are left.
  */
-@HiltViewModel
-class StudyViewModel @Inject constructor(
+class StudyViewModel(
     savedStateHandle: SavedStateHandle,
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,

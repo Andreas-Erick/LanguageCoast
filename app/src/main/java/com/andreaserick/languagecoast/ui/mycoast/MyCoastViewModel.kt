@@ -9,16 +9,15 @@ import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.availableCoastLanguages
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.toJavaLocalDate
 import java.time.Clock
 import java.time.Duration
 import java.time.LocalDate
-import javax.inject.Inject
 
 data class MyCoastUiState(
     val coasts: List<CoastSummary> = emptyList(),
@@ -37,8 +36,7 @@ data class MyCoastUiState(
 val RECENT_STUDY_WINDOW: Duration = Duration.ofDays(7)
 
 /** The overview of all coasts (one per language being studied) and the study streak. */
-@HiltViewModel
-class MyCoastViewModel @Inject constructor(
+class MyCoastViewModel(
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
     private val clock: Clock
@@ -54,7 +52,7 @@ class MyCoastViewModel @Inject constructor(
             coasts = coasts,
             availableLanguages = availableCoastLanguages(coasts.map { it.coast }, nativeLanguage),
             streakCount = streak,
-            studyDays = studyDays,
+            studyDays = studyDays.mapTo(HashSet()) { it.toJavaLocalDate() },
             today = LocalDate.now(clock),
             now = clock.millis(),
             isLoading = false

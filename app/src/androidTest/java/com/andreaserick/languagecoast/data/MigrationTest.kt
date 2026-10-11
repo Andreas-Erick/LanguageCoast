@@ -2,7 +2,10 @@ package com.andreaserick.languagecoast.data
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.room.Room
+import androidx.sqlite.driver.AndroidSQLiteDriver
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
@@ -117,18 +120,16 @@ class MigrationTest {
         }
     }
 
-    /** Opens the test database with the current schema; Room runs the migrations and validates the result. */
-    private fun openMigratedDatabase(legacyTargetLanguage: String): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
-            .addMigrations(
-                AppDatabase.MIGRATION_1_2,
-                AppDatabase.migration2To3 { legacyTargetLanguage },
-                AppDatabase.MIGRATION_3_4,
-                AppDatabase.MIGRATION_4_5,
-                AppDatabase.MIGRATION_5_6
-            )
-            .build()
-            .also { database = it }
+    /**
+     * Opens the test database as the app does, with settings from before coasts that name [legacyTargetLanguage];
+     * Room runs the migrations and validates the result.
+     */
+    private fun openMigratedDatabase(legacyTargetLanguage: String): AppDatabase {
+        val settings = createSettingsDataStore(context.cacheDir.resolve("migration-test-${System.nanoTime()}.preferences_pb").path)
+        runBlocking { settings.edit { it[stringPreferencesKey("target_language")] = legacyTargetLanguage } }
+        val builder = Room.databaseBuilder<AppDatabase>(context, TEST_DB).setDriver(AndroidSQLiteDriver())
+        return buildAppDatabase(builder, settings).also { database = it }
+    }
 
     private companion object {
         const val TEST_DB = "migration-test"

@@ -1,10 +1,9 @@
 package com.andreaserick.languagecoast.data
 
 import java.time.Clock
-import javax.inject.Inject
 
 /** Makes backups of everything in the app and restores them. */
-class BackupManager @Inject constructor(
+class BackupManager(
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
     private val clock: Clock
