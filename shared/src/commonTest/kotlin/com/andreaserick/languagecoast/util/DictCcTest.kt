@@ -1,8 +1,8 @@
 package com.andreaserick.languagecoast.util
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.Test
 
 class DictCcTest {
 
@@ -40,5 +40,11 @@ class DictCcTest {
             "https://enis.dict.cc/?s=h%C3%BAs",
             dictCcSearchUrl("hús", "English", "Icelandic")
         )
+    }
+
+    @Test
+    fun encodingMatchesJavasUrlEncoder() {
+        assertEquals("guten+Tag%21+a%2Fb%3Fc*d.e-f_g", formEncode("guten Tag! a/b?c*d.e-f_g"))
+        assertEquals("%E3%81%AD%E3%81%93", formEncode("ねこ"))
     }
 }

@@ -1,8 +1,8 @@
 package com.andreaserick.languagecoast.data
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.Test
 
 class BackupTest {
 
@@ -32,15 +32,15 @@ class BackupTest {
 
     @Test
     fun otherFilesAreRefused() {
-        val error = assertThrows(BackupException::class.java) { decodeBackup("Front\tBack\nHello\tHola") }
+        val error = assertFailsWith<BackupException> { decodeBackup("Front\tBack\nHello\tHola") }
         assertEquals("That file isn't a Language Coast backup.", error.message)
 
-        assertThrows(BackupException::class.java) { decodeBackup(encodeBackup(backup.copy(format = "something-else"))) }
+        assertFailsWith<BackupException> { decodeBackup(encodeBackup(backup.copy(format = "something-else"))) }
     }
 
     @Test
     fun backupsFromANewerVersionAreRefused() {
-        val error = assertThrows(BackupException::class.java) { decodeBackup(encodeBackup(backup.copy(version = BACKUP_VERSION + 1))) }
+        val error = assertFailsWith<BackupException> { decodeBackup(encodeBackup(backup.copy(version = BACKUP_VERSION + 1))) }
 
         assertEquals("This backup is from a newer version of Language Coast. Update the app first.", error.message)
     }
@@ -49,6 +49,6 @@ class BackupTest {
     fun cardsWithoutTheirIslandAreRefused() {
         val damaged = backup.copy(cards = backup.cards + backup.cards.first().copy(cardId = 8, islandId = 99))
 
-        assertThrows(BackupException::class.java) { decodeBackup(encodeBackup(damaged)) }
+        assertFailsWith<BackupException> { decodeBackup(encodeBackup(damaged)) }
     }
 }

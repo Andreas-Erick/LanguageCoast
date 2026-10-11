@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.toKotlinTimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -22,6 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.time.LocalDate
+import kotlin.time.toKotlinInstant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BackupViewModelTest {
@@ -48,7 +50,7 @@ class BackupViewModelTest {
         oldCards.seed(islandId = 1, cardCount = 2, coastId = 1)
         oldCards.seedCoast(coastId = 2, language = "German")
         oldCards.addFlashcard(coastId = 2, nativeText = "Hello", targetText = "Hallo", category = "Greetings", alternatives = listOf("Servus"))
-        val reviewed = reviewOutcomes(oldCards.cards.value.first(), TEST_CLOCK.instant(), TEST_CLOCK.zone).getValue(Grade.Good).card
+        val reviewed = reviewOutcomes(oldCards.cards.value.first(), TEST_CLOCK.instant().toKotlinInstant(), TEST_CLOCK.zone.toKotlinTimeZone()).getValue(Grade.Good).card
         oldCards.saveReview(reviewed)
         oldCards.markIslandStudied(1, TEST_CLOCK.millis())
         oldSettings.nativeLanguage.value = "Dutch"

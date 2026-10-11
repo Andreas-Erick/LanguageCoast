@@ -1,7 +1,6 @@
 package com.andreaserick.languagecoast.util
 
 import com.andreaserick.languagecoast.data.Languages
-import java.net.URLEncoder
 
 /** dict.cc only has dictionaries between English or German and another language. */
 private val DICT_CC_HUB_CODES = setOf("en", "de")
@@ -22,7 +21,19 @@ fun getDictCcPrefix(nativeLang: String, targetLang: String): String? =
 /** Builds a dict.cc search URL for [word], or null when dict.cc can't look up [targetLang] words. */
 fun dictCcSearchUrl(word: String, nativeLang: String, targetLang: String): String? {
     val prefix = getDictCcPrefix(nativeLang, targetLang) ?: return null
-    return "https://$prefix.dict.cc/?s=${URLEncoder.encode(word, "UTF-8")}"
+    return "https://$prefix.dict.cc/?s=${formEncode(word)}"
+}
+
+/** [text] encoded for a URL query, as `java.net.URLEncoder` does: spaces become `+`, other bytes `%XX` (UTF-8). */
+internal fun formEncode(text: String): String = buildString {
+    for (byte in text.encodeToByteArray()) {
+        val c = (byte.toInt() and 0xFF).toChar()
+        when {
+            c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c in ".-*_" -> append(c)
+            c == ' ' -> append('+')
+            else -> append('%').append((byte.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0'))
+        }
+    }
 }
 
 /** The subdomain for a pair dict.cc has, which is the two codes in alphabetical order (e.g. "bgde"). */

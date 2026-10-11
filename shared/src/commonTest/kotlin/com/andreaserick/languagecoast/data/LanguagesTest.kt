@@ -1,8 +1,8 @@
 package com.andreaserick.languagecoast.data
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 class LanguagesTest {
 
@@ -48,6 +48,6 @@ class LanguagesTest {
     fun everyLanguageOfferedBeforeIsStillAvailable() {
         // Coasts and settings store these names, so removing one would orphan existing data.
         listOf("English", "Spanish", "French", "German", "Italian", "Japanese", "Korean", "Icelandic", "Norwegian")
-            .forEach { assertTrue(it, Languages.byName(it) != null) }
+            .forEach { assertTrue(Languages.byName(it) != null, it) }
     }
 }
