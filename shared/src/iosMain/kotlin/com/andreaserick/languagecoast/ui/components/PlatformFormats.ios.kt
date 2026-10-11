@@ -11,7 +11,6 @@ import platform.Foundation.NSDateFormatter
 import platform.Foundation.NSDateFormatterNoStyle
 import platform.Foundation.NSDateFormatterShortStyle
 import platform.Foundation.NSCalendar
-import platform.Foundation.currentCalendar
 import platform.Foundation.NSLocale
 import platform.Foundation.currentLocale
 
