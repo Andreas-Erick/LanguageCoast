@@ -32,6 +32,14 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      # Kotlin/Native's compiler and iOS toolchain (about 1 GB), which Gradle would otherwise download on every run.
+      - name: Cache the Kotlin/Native toolchain
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+
       - name: Run shared tests on the iOS simulator
         run: ./gradlew :shared:iosSimulatorArm64Test
 
@@ -56,6 +64,14 @@ jobs:
           java-version: 21
 
       - uses: gradle/actions/setup-gradle@v6
+
+      # Kotlin/Native's compiler and iOS toolchain (about 1 GB), which Gradle would otherwise download on every run.
+      - name: Cache the Kotlin/Native toolchain
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
 
       - name: Generate the Xcode project
         run: |
