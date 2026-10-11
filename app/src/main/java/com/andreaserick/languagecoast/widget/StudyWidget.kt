@@ -12,14 +12,14 @@ import com.andreaserick.languagecoast.MainActivity
 import com.andreaserick.languagecoast.R
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.SettingsRepository
-import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.time.Clock
 import java.time.LocalDate
-import javax.inject.Inject
 
 /** What the home-screen widget shows; see [widgetContent]. */
 data class WidgetContent(
@@ -55,12 +55,11 @@ fun widgetContent(dueCount: Int, streak: Int, studiedToday: Boolean): WidgetCont
  * Tapping it opens the app. It refreshes every hour (see study_widget_info.xml) and whenever the app
  * is left (see [requestUpdate]).
  */
-@AndroidEntryPoint
-class StudyWidgetProvider : AppWidgetProvider() {
+class StudyWidgetProvider : AppWidgetProvider(), KoinComponent {
 
-    @Inject lateinit var flashcards: FlashcardRepository
-    @Inject lateinit var settings: SettingsRepository
-    @Inject lateinit var clock: Clock
+    private val flashcards: FlashcardRepository by inject()
+    private val settings: SettingsRepository by inject()
+    private val clock: Clock by inject()
 
     /** Reads the counts off the main thread, then redraws every placed widget. */
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {

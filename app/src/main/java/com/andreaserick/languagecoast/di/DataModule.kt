@@ -1,8 +1,12 @@
 package com.andreaserick.languagecoast.di
 
+import com.andreaserick.languagecoast.data.BackupManager
 import com.andreaserick.languagecoast.data.DataStoreSettingsRepository
 import com.andreaserick.languagecoast.data.FlashcardRepository
+import com.andreaserick.languagecoast.data.GeminiTranslator
 import com.andreaserick.languagecoast.data.OfflineFlashcardRepository
+import com.andreaserick.languagecoast.data.OnDeviceTranslator
+import com.andreaserick.languagecoast.data.OpenRouterTranslator
 import com.andreaserick.languagecoast.data.RoutingTranslator
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.Translator
@@ -10,36 +14,31 @@ import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import com.andreaserick.languagecoast.notifications.WorkManagerReminderScheduler
 import com.andreaserick.languagecoast.speech.AndroidSpeaker
 import com.andreaserick.languagecoast.speech.Speaker
-import dagger.Binds
-import dagger.Module
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
-import javax.inject.Singleton
+import org.koin.core.module.dsl.bind
+import org.koin.core.module.dsl.factoryOf
+import org.koin.core.module.dsl.singleOf
+import org.koin.dsl.module
 
 /** Binds the data-layer interfaces to their production implementations. */
-@Module
-@InstallIn(SingletonComponent::class)
-abstract class DataModule {
+val dataModule = module {
 
     /** Cards are stored in the Room database. */
-    @Binds
-    @Singleton
-    abstract fun bindFlashcardRepository(impl: OfflineFlashcardRepository): FlashcardRepository
+    singleOf(::OfflineFlashcardRepository) { bind<FlashcardRepository>() }
 
     /** Settings are stored in Preferences DataStore. */
-    @Binds
-    @Singleton
-    abstract fun bindSettingsRepository(impl: DataStoreSettingsRepository): SettingsRepository
+    singleOf(::DataStoreSettingsRepository) { bind<SettingsRepository>() }
 
     /** Translations go to the provider picked in each request. */
-    @Binds
-    abstract fun bindTranslator(impl: RoutingTranslator): Translator
+    factoryOf(::RoutingTranslator) { bind<Translator>() }
+    singleOf(::OnDeviceTranslator)
+    singleOf(::GeminiTranslator)
+    singleOf(::OpenRouterTranslator)
 
-    /** Reminders are scheduled with WorkManager. */
-    @Binds
-    abstract fun bindReminderScheduler(impl: WorkManagerReminderScheduler): ReminderScheduler
+    /** Reminders are scheduled with WorkManager; the worker asks for the concrete class to queue the next one. */
+    singleOf(::WorkManagerReminderScheduler) { bind<ReminderScheduler>() }
 
     /** Text is read aloud with Android's text-to-speech engine. */
-    @Binds
-    abstract fun bindSpeaker(impl: AndroidSpeaker): Speaker
+    singleOf(::AndroidSpeaker) { bind<Speaker>() }
+
+    factoryOf(::BackupManager)
 }

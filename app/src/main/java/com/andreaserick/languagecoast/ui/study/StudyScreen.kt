@@ -43,11 +43,11 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
@@ -84,7 +84,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Grade
@@ -96,19 +95,20 @@ import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CardTints
 import com.andreaserick.languagecoast.ui.theme.CardWash
-import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.CoralAccent
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
+import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.SandMuted
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
 import com.andreaserick.languagecoast.util.dictCcSearchUrl
-import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.random.Random
+import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * The main screen for studying flashcards within a specific "Language Island" (category).
@@ -119,7 +119,7 @@ import kotlin.random.Random
  * @param onShowCards Called to open the list of the island's cards.
  */
 @Composable
-fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: StudyViewModel = hiltViewModel()) {
+fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: StudyViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentCard = uiState.currentCard
     val undoMessenger = LocalUndoMessenger.current

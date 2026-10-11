@@ -22,7 +22,6 @@ import com.andreaserick.languagecoast.data.availableCoastLanguages
 import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.data.normalizedWords
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -35,7 +34,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.time.Clock
-import javax.inject.Inject
 
 /** Category used for manual cards when the user leaves the category blank. */
 const val DEFAULT_MANUAL_CATEGORY = DEFAULT_CATEGORY
@@ -87,8 +85,7 @@ sealed interface SaveResult {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-@HiltViewModel
-class CreateViewModel @Inject constructor(
+class CreateViewModel(
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
     private val translator: Translator,

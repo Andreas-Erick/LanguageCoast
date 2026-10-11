@@ -11,19 +11,14 @@ import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.android.qualifiers.ApplicationContext
-import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.first
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.time.Clock
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.util.concurrent.TimeUnit
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlin.random.Random
 
 /** Schedules the daily study reminder according to the user's [ReminderSettings]. */
@@ -36,9 +31,8 @@ interface ReminderScheduler {
 }
 
 /** [ReminderScheduler] that queues the reminder as one-time WorkManager work, replaced each time it runs. */
-@Singleton
-class WorkManagerReminderScheduler @Inject constructor(
-    @ApplicationContext private val context: Context,
+class WorkManagerReminderScheduler(
+    private val context: Context,
     private val settings: SettingsRepository,
     private val clock: Clock
 ) : ReminderScheduler {
@@ -116,26 +110,20 @@ private fun Duration.coerceAtLeast(min: Duration): Duration = if (this < min) mi
 
 /** Shows the study reminder, then schedules the next one. */
 class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
-    CoroutineWorker(context, workerParams) {
+    CoroutineWorker(context, workerParams), KoinComponent {
 
-    /** Gives the worker, which Hilt doesn't construct, access to the singletons it needs. */
-    @EntryPoint
-    @InstallIn(SingletonComponent::class)
-    interface SchedulerEntryPoint {
-        fun reminderScheduler(): WorkManagerReminderScheduler
-        fun flashcardRepository(): FlashcardRepository
-        fun clock(): Clock
-    }
+    private val reminderScheduler: WorkManagerReminderScheduler by inject()
+    private val flashcards: FlashcardRepository by inject()
+    private val clock: Clock by inject()
 
     /** Shows the reminder with the number of due cards, then queues the next one. */
     override suspend fun doWork(): Result {
         Log.d("StudyReminderWorker", "Showing study reminder")
-        val entryPoint = EntryPointAccessors.fromApplication(applicationContext, SchedulerEntryPoint::class.java)
-        val dueCount = entryPoint.flashcardRepository().countDueCards(entryPoint.clock().millis())
+        val dueCount = flashcards.countDueCards(clock.millis())
         NotificationHelper.showStudyNotification(applicationContext, dueCount)
         // The widget should show the same count as the reminder.
         StudyWidgetProvider.requestUpdate(applicationContext)
-        entryPoint.reminderScheduler().scheduleNext()
+        reminderScheduler.scheduleNext()
         return Result.success()
     }
 }

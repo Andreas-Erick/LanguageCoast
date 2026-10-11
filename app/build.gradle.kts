@@ -3,8 +3,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.ksp) // Room and Hilt annotation processing
-    alias(libs.plugins.hilt)
+    alias(libs.plugins.ksp) // Room annotation processing
     alias(libs.plugins.kotlin.serialization) // Type-safe navigation routes
 }
 
@@ -92,6 +91,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(platform(libs.koin.bom))
+    testImplementation(libs.koin.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -109,9 +110,9 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     // Dependency injection
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
-    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
+    implementation(platform(libs.koin.bom))
+    implementation(libs.koin.android)
+    implementation(libs.koin.androidx.compose)
 
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)

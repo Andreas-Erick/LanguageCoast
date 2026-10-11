@@ -14,7 +14,6 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import javax.inject.Inject
 
 /** Languages a new coast can be started for: not the native language and without a coast yet. */
 fun availableCoastLanguages(coasts: List<Coast>, nativeLanguage: String): List<Language> =
@@ -98,7 +97,7 @@ interface SettingsRepository {
 }
 
 /** [SettingsRepository] backed by Preferences DataStore. */
-class DataStoreSettingsRepository @Inject constructor(
+class DataStoreSettingsRepository(
     private val dataStore: DataStore<Preferences>,
     private val clock: Clock
 ) : SettingsRepository {

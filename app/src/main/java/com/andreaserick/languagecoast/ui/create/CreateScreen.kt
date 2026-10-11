@@ -74,8 +74,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import kotlinx.coroutines.delay
 import com.andreaserick.languagecoast.R
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.RecentCard
@@ -89,6 +87,8 @@ import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.SandMuted
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
+import kotlinx.coroutines.delay
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * The "Create" screen. Lets users create new flashcards from a native sentence, either
@@ -99,7 +99,7 @@ import com.andreaserick.languagecoast.ui.theme.WaveTeal
 @Composable
 fun CreateScreen(
     onStartReview: (islandId: Int, islandName: String) -> Unit,
-    viewModel: CreateViewModel = hiltViewModel()
+    viewModel: CreateViewModel = koinViewModel()
 ) {
     CreateContent(
         uiState = viewModel.uiState,
