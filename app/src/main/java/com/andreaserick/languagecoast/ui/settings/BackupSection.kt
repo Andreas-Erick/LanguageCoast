@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.BackupSummary
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
@@ -32,13 +31,14 @@ import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.koin.androidx.compose.koinViewModel
 
 /** Backups are refused above this size; one this large would hold far more than 50,000 cards with their progress. */
 private const val MAX_BACKUP_CHARS = 30_000_000
@@ -51,7 +51,7 @@ private val BACKUP_MIME_TYPES = arrayOf("application/json", "text/*", "applicati
  * opened with the system file picker, so they can go to Google Drive, Downloads and so on.
  */
 @Composable
-fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
+fun BackupSection(viewModel: BackupViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

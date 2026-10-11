@@ -11,7 +11,6 @@ import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.matchesSearch
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +18,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Clock
-import javax.inject.Inject
 
 data class SearchUiState(
     /** Whether something was typed to search for. */
@@ -37,8 +35,7 @@ data class SearchUiState(
 )
 
 /** Finds cards on every coast by their native text, translation or alternatives. */
-@HiltViewModel
-class SearchViewModel @Inject constructor(
+class SearchViewModel(
     private val flashcards: FlashcardRepository,
     settings: SettingsRepository,
     private val clock: Clock

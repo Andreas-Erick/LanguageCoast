@@ -2,7 +2,6 @@ package com.andreaserick.languagecoast.data
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import javax.inject.Inject
 
 /** Everything removed by one delete, so it can be put back with [FlashcardRepository.restore]. */
 data class DeletedContent(
@@ -115,7 +114,7 @@ interface FlashcardRepository {
 }
 
 /** [FlashcardRepository] backed by the Room database. */
-class OfflineFlashcardRepository @Inject constructor(
+class OfflineFlashcardRepository(
     private val dao: LanguageCoastDao
 ) : FlashcardRepository {
 

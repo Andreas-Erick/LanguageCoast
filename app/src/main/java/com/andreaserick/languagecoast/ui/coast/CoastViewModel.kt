@@ -9,7 +9,6 @@ import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.SettingsRepository
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -17,7 +16,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Clock
 import java.time.LocalDate
-import javax.inject.Inject
 
 data class CoastUiState(
     val coastName: String = "",
@@ -29,8 +27,7 @@ data class CoastUiState(
 )
 
 /** Shows the islands of one coast. Opening a coast makes it the one new cards are added to. */
-@HiltViewModel
-class CoastViewModel @Inject constructor(
+class CoastViewModel(
     savedStateHandle: SavedStateHandle,
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,

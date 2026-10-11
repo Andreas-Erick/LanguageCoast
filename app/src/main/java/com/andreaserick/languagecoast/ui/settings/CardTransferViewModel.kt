@@ -10,7 +10,6 @@ import com.andreaserick.languagecoast.data.ImportedCard
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.exportCards
 import com.andreaserick.languagecoast.data.parseCardFile
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +18,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /**
  * A file read for import, waiting for the user to confirm.
@@ -61,8 +59,7 @@ data class ImportResult(val added: List<AddedCard>, val duplicates: Int)
 const val DEFAULT_IMPORT_ISLAND = "Imported"
 
 /** Exports cards to Anki or Markdown files, and imports cards from CSV / tab-separated files. */
-@HiltViewModel
-class CardTransferViewModel @Inject constructor(
+class CardTransferViewModel(
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository
 ) : ViewModel() {

@@ -10,15 +10,12 @@ import kotlinx.serialization.json.Json
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * [Translator] backed by OpenRouter (https://openrouter.ai), which gives one API key access to many
  * cloud models. Uses the same prompt and answer format as Gemini; expects a [TranslationEngine.OpenRouter] request.
  */
-@Singleton
-class OpenRouterTranslator @Inject constructor() : Translator {
+class OpenRouterTranslator() : Translator {
 
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
         val engine = request.engine as? TranslationEngine.OpenRouter ?: return TranslationResult.FAILURE

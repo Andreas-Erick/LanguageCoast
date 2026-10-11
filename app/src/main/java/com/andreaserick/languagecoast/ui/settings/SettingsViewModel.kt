@@ -11,7 +11,6 @@ import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.nativeLanguageOptions
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,8 +18,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.LocalTime
-import javax.inject.Inject
+import kotlinx.datetime.LocalTime
 
 data class SettingsUiState(
     val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
@@ -40,10 +38,9 @@ data class SettingsUiState(
 )
 
 /** Time suggested when switching reminders from "any time" to a fixed time. */
-val DEFAULT_REMINDER_TIME: LocalTime = LocalTime.of(18, 0)
+val DEFAULT_REMINDER_TIME = LocalTime(18, 0)
 
-@HiltViewModel
-class SettingsViewModel @Inject constructor(
+class SettingsViewModel(
     private val settings: SettingsRepository,
     private val flashcards: FlashcardRepository,
     private val reminderScheduler: ReminderScheduler

@@ -39,13 +39,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
-import com.andreaserick.languagecoast.ui.components.cardCountLabel
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
+import com.andreaserick.languagecoast.ui.components.cardCountLabel
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
@@ -53,6 +52,7 @@ import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
 import com.andreaserick.languagecoast.ui.theme.cardTint
 import java.time.LocalDate
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * A single coast: a grid of its "Language Islands" (categories) that contain flashcards.
@@ -66,7 +66,7 @@ fun CoastScreen(
     onIslandClick: (Int, String) -> Unit,
     onShowCards: (Int, String) -> Unit,
     onNavigateBack: () -> Unit,
-    viewModel: CoastViewModel = hiltViewModel()
+    viewModel: CoastViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current

@@ -8,8 +8,8 @@ import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeReminderScheduler
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
-import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
+import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.ui.coast.CoastViewModel
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastViewModel
 import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
@@ -17,6 +17,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -24,7 +25,6 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.Duration
 import java.time.LocalDate
-import java.time.LocalTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsAndMyCoastViewModelTest {
@@ -163,11 +163,11 @@ class SettingsAndMyCoastViewModelTest {
     fun changingReminderSettingsReschedules() = runTest {
         val viewModel = SettingsViewModel(settings, flashcards, scheduler)
 
-        viewModel.setReminderTime(LocalTime.of(7, 30))
-        assertEquals(ReminderSettings(enabled = true, time = LocalTime.of(7, 30)), settings.reminderSettings.value)
+        viewModel.setReminderTime(LocalTime(7, 30))
+        assertEquals(ReminderSettings(enabled = true, time = LocalTime(7, 30)), settings.reminderSettings.value)
 
         viewModel.setRemindersEnabled(false)
-        assertEquals(ReminderSettings(enabled = false, time = LocalTime.of(7, 30)), settings.reminderSettings.value)
+        assertEquals(ReminderSettings(enabled = false, time = LocalTime(7, 30)), settings.reminderSettings.value)
         assertEquals(2, scheduler.reschedules)
     }
 

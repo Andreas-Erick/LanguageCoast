@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.ui.components.CardListRow
@@ -30,6 +29,7 @@ import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.cardCountLabel
 import com.andreaserick.languagecoast.ui.theme.SandBeige
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * The cards of one "Language Island": each card's native text, translation and when it is due next.
@@ -39,7 +39,7 @@ import com.andreaserick.languagecoast.ui.theme.SandBeige
  * @param onNavigateBack Called when the back arrow is tapped.
  */
 @Composable
-fun IslandScreen(onNavigateBack: () -> Unit, viewModel: IslandViewModel = hiltViewModel()) {
+fun IslandScreen(onNavigateBack: () -> Unit, viewModel: IslandViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current
     var editingCard by remember { mutableStateOf<Flashcard?>(null) }
