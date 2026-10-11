@@ -45,7 +45,7 @@ jobs:
       - name: Test and build release APK
         # The tag sets versionName (v1.2 -> 1.2); the run number keeps versionCode increasing.
         run: >
-          ./gradlew testDebugUnitTest assembleRelease
+          ./gradlew testDebugUnitTest :shared:testAndroidHostTest assembleRelease
           -PversionName="${GITHUB_REF_NAME#v}"
           -PversionCode="${{ github.run_number }}"
 
