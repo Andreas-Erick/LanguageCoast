@@ -6,6 +6,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlin.time.Clock
 
 /**
  * A "Coast": everything the user studies in one target language (e.g. the "German Coast").
@@ -22,7 +23,7 @@ import androidx.room.PrimaryKey
 data class Coast(
     @PrimaryKey(autoGenerate = true) val coastId: Int = 0,
     val language: String,
-    val creationDate: Long = System.currentTimeMillis()
+    val creationDate: Long = Clock.System.now().toEpochMilliseconds()
 ) {
     val displayName: String get() = "$language Coast"
 }
@@ -69,7 +70,7 @@ data class LanguageIsland(
     @PrimaryKey(autoGenerate = true) val islandId: Int = 0,
     val coastId: Int,
     val name: String,
-    val creationDate: Long = System.currentTimeMillis(),
+    val creationDate: Long = Clock.System.now().toEpochMilliseconds(),
     val emoji: String? = null,
     val lastStudied: Long? = null
 )

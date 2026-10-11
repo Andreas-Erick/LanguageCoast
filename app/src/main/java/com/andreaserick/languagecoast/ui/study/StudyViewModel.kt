@@ -24,10 +24,12 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.toKotlinTimeZone
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
+import kotlin.time.toKotlinInstant
 
 data class StudyUiState(
     val islandName: String = "",
@@ -129,7 +131,7 @@ class StudyViewModel @Inject constructor(
             isCaughtUp = s.isStarted && s.allCards.isNotEmpty() && s.total == 0,
             nextDueInDays = daysUntilNextDue(s.allCards, now),
             gradeIntervals = s.cards.getOrNull(s.index)
-                ?.let { card -> reviewOutcomes(card, now, clock.zone).mapValues { it.value.intervalDays } }
+                ?.let { card -> reviewOutcomes(card, now.toKotlinInstant(), clock.zone.toKotlinTimeZone()).mapValues { it.value.intervalDays } }
                 .orEmpty(),
             againCount = s.againCount,
             streakCount = streak,
@@ -196,7 +198,7 @@ class StudyViewModel @Inject constructor(
         val card = session.value.let { it.cards.getOrNull(it.index) } ?: return
         // Don't keep reading the old answer over the next card.
         speaker.stop()
-        val reviewed = reviewOutcomes(card, clock.instant(), clock.zone).getValue(grade).card
+        val reviewed = reviewOutcomes(card, clock.instant().toKotlinInstant(), clock.zone.toKotlinTimeZone()).getValue(grade).card
         updateSession { s ->
             val rest = s.cards.filterNot { it.cardId == card.cardId }
             if (grade == Grade.Again) s.copy(cards = rest + reviewed, againCount = s.againCount + 1) else s.copy(cards = rest)
