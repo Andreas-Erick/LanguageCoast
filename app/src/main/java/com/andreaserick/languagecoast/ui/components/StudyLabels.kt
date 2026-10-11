@@ -1,30 +1,31 @@
 package com.andreaserick.languagecoast.ui.components
 
 import com.andreaserick.languagecoast.data.Flashcard
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 
 /** "Studied today", "Studied yesterday", "Last studied 3 days ago" or "Not studied yet". */
-fun lastStudiedLabel(lastStudied: Long?, today: LocalDate, zone: ZoneId = ZoneId.systemDefault()): String {
+fun lastStudiedLabel(lastStudied: Long?, today: LocalDate, zone: TimeZone = TimeZone.currentSystemDefault()): String {
     if (lastStudied == null) return "Not studied yet"
-    val day = Instant.ofEpochMilli(lastStudied).atZone(zone).toLocalDate()
-    return when (val days = ChronoUnit.DAYS.between(day, today)) {
-        0L -> "Studied today"
-        1L -> "Studied yesterday"
+    val day = Instant.fromEpochMilliseconds(lastStudied).toLocalDateTime(zone).date
+    return when (val days = day.daysUntil(today)) {
+        0 -> "Studied today"
+        1 -> "Studied yesterday"
         else -> "Last studied $days days ago"
     }
 }
 
 /** "New", "Due now", "Due later today", "Due tomorrow" or "Due in 5 days": when [card] is next studied, seen at [now]. */
-fun dueLabel(card: Flashcard, now: Long, zone: ZoneId = ZoneId.systemDefault()): String {
+fun dueLabel(card: Flashcard, now: Long, zone: TimeZone = TimeZone.currentSystemDefault()): String {
     val due = card.due ?: return "New"
     if (due <= now) return "Due now"
-    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-    return when (val days = ChronoUnit.DAYS.between(today, Instant.ofEpochMilli(due).atZone(zone).toLocalDate())) {
-        0L -> "Due later today"
-        1L -> "Due tomorrow"
+    val today = Instant.fromEpochMilliseconds(now).toLocalDateTime(zone).date
+    return when (val days = today.daysUntil(Instant.fromEpochMilliseconds(due).toLocalDateTime(zone).date)) {
+        0 -> "Due later today"
+        1 -> "Due tomorrow"
         else -> "Due in $days days"
     }
 }

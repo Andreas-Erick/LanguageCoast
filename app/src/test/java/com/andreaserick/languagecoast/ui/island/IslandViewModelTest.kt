@@ -7,6 +7,7 @@ import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
+import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -26,14 +27,15 @@ class IslandViewModelTest {
 
     private val flashcards = FakeFlashcardRepository()
     private val settings = FakeSettingsRepository()
-    private val now = TEST_CLOCK.millis()
+    private val now = TEST_CLOCK.now().toEpochMilliseconds()
 
     private fun TestScope.createViewModel(islandId: Int = 1): IslandViewModel {
         val viewModel = IslandViewModel(
             SavedStateHandle(mapOf("islandId" to islandId, "islandName" to "Island $islandId")),
             flashcards,
             settings,
-            TEST_CLOCK
+            TEST_CLOCK,
+            TEST_TIME_ZONE
         )
         // uiState is only computed while collected (WhileSubscribed).
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }

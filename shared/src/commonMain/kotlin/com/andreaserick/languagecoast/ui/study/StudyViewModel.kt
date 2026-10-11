@@ -23,11 +23,11 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.datetime.toKotlinTimeZone
-import java.time.Clock
-import java.time.Instant
-import java.time.temporal.ChronoUnit
-import kotlin.time.toKotlinInstant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 data class StudyUiState(
     val islandName: String = "",
@@ -78,6 +78,7 @@ class StudyViewModel(
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
     private val clock: Clock,
+    private val timeZone: TimeZone,
     private val speaker: Speaker
 ) : ViewModel() {
 
@@ -115,7 +116,7 @@ class StudyViewModel(
         settings.streakCount,
         settings.studyReversed
     ) { s, nativeLanguage, coast, streak, reversed ->
-        val now = clock.instant()
+        val now = clock.now()
         StudyUiState(
             islandName = islandName,
             isLoading = s.isLoading,
@@ -128,7 +129,7 @@ class StudyViewModel(
             isCaughtUp = s.isStarted && s.allCards.isNotEmpty() && s.total == 0,
             nextDueInDays = daysUntilNextDue(s.allCards, now),
             gradeIntervals = s.cards.getOrNull(s.index)
-                ?.let { card -> reviewOutcomes(card, now.toKotlinInstant(), clock.zone.toKotlinTimeZone()).mapValues { it.value.intervalDays } }
+                ?.let { card -> reviewOutcomes(card, now, timeZone).mapValues { it.value.intervalDays } }
                 .orEmpty(),
             againCount = s.againCount,
             streakCount = streak,
@@ -149,7 +150,7 @@ class StudyViewModel(
     /** Starts the session with the due cards once they first load; later updates only refresh or drop cards already in it. */
     private fun onCardsChanged(cards: List<Flashcard>) = updateSession { s ->
         if (!s.isStarted && cards.isNotEmpty()) {
-            val due = dueInStudyOrder(cards, clock.millis())
+            val due = dueInStudyOrder(cards, clock.now().toEpochMilliseconds())
             s.copy(allCards = cards, cards = due, total = due.size, index = 0, isStarted = true, isLoading = false)
         } else {
             // Keep the session order, but use the saved cards and drop those deleted from the database.
@@ -195,7 +196,7 @@ class StudyViewModel(
         val card = session.value.let { it.cards.getOrNull(it.index) } ?: return
         // Don't keep reading the old answer over the next card.
         speaker.stop()
-        val reviewed = reviewOutcomes(card, clock.instant().toKotlinInstant(), clock.zone.toKotlinTimeZone()).getValue(grade).card
+        val reviewed = reviewOutcomes(card, clock.now(), timeZone).getValue(grade).card
         updateSession { s ->
             val rest = s.cards.filterNot { it.cardId == card.cardId }
             if (grade == Grade.Again) s.copy(cards = rest + reviewed, againCount = s.againCount + 1) else s.copy(cards = rest)
@@ -246,7 +247,7 @@ class StudyViewModel(
         if (justCompleted) {
             viewModelScope.launch {
                 settings.recordStudySession()
-                flashcards.markIslandStudied(islandId, clock.millis())
+                flashcards.markIslandStudied(islandId, clock.now().toEpochMilliseconds())
             }
         }
     }
@@ -258,9 +259,9 @@ class StudyViewModel(
 
     /** Days from [now] until the earliest card that isn't due yet becomes due, or null if there is none. */
     private fun daysUntilNextDue(cards: List<Flashcard>, now: Instant): Int? {
-        val nextDue = cards.mapNotNull { it.due }.filter { it > now.toEpochMilli() }.minOrNull() ?: return null
-        val today = now.atZone(clock.zone).toLocalDate()
-        return ChronoUnit.DAYS.between(today, Instant.ofEpochMilli(nextDue).atZone(clock.zone).toLocalDate()).toInt()
+        val nextDue = cards.mapNotNull { it.due }.filter { it > now.toEpochMilliseconds() }.minOrNull() ?: return null
+        val today = now.toLocalDateTime(timeZone).date
+        return today.daysUntil(Instant.fromEpochMilliseconds(nextDue).toLocalDateTime(timeZone).date)
     }
 }
 

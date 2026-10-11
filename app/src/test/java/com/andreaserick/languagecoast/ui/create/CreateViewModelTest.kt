@@ -9,6 +9,7 @@ import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.FakeTranslator
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
+import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -33,7 +34,7 @@ class CreateViewModelTest {
     @Before
     fun setUp() {
         flashcards.seedCoast(coastId = 1, language = "Spanish")
-        viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
+        viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
     }
 
     @Test
@@ -278,7 +279,7 @@ class CreateViewModelTest {
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
         settings.streakCount.value = 4
-        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
 
         assertTrue(viewModel.uiState.hasCards)
         assertEquals(3, viewModel.uiState.dueCount)
@@ -293,7 +294,7 @@ class CreateViewModelTest {
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         flashcards.seed(islandId = 3, cardCount = 5, coastId = 2)
         settings.activeCoastId.value = 1
-        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
         var opened: Pair<Int, String>? = null
 
         viewModel.startReview { id, name -> opened = id to name }
@@ -309,7 +310,7 @@ class CreateViewModelTest {
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         flashcards.seed(islandId = 2, cardCount = 2, coastId = 2)
         settings.activeCoastId.value = 1
-        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
         var opened: Pair<Int, String>? = null
 
         viewModel.startReview { id, name -> opened = id to name }
@@ -323,7 +324,7 @@ class CreateViewModelTest {
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
         settings.activeCoastId.value = 1
-        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK)
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
 
         assertEquals(listOf("n4", "n3", "n2"), viewModel.uiState.recentCards.map { it.card.nativeText })
         assertEquals("Island 1", viewModel.uiState.recentCards.first().islandName)
