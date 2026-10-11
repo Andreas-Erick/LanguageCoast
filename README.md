@@ -5,13 +5,14 @@
 <h1 align="center">🌊 Language Coast</h1>
 
 <p align="center">
-  An AI-powered flashcard app for Android, built with Jetpack Compose, Google Gemini and on-device translation.
+  An AI-powered flashcard app for Android, with an iOS version on the way. Built with Kotlin Multiplatform, Compose Multiplatform, Google Gemini and on-device translation.
 </p>
 
 <p align="center">
   <a href="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ci.yml"><img src="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
-  <img src="https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white" alt="Platform: Android" />
-  <img src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin + Jetpack Compose" />
+  <a href="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ios.yml"><img src="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ios.yml/badge.svg" alt="iOS build status" /></a>
+  <img src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20(preview)-3DDC84?logo=android&logoColor=white" alt="Platforms: Android and iOS (preview)" />
+  <img src="https://img.shields.io/badge/Kotlin-Compose%20Multiplatform-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin + Compose Multiplatform" />
   <img src="https://img.shields.io/badge/min%20SDK-26-blue" alt="Min SDK 26" />
 </p>
 
@@ -74,8 +75,8 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Built-in dictionary**: tap any word on the back of a card to look it up on **dict.cc**. It uses your language pair when dict.cc has it (dict.cc pairs every language with English or German) and falls back to the English dictionary otherwise.
 
 ### 🔔 Study reminders
-- A daily reminder, scheduled with **WorkManager**: at a surprise time between 9:00 and 21:00, or at a fixed time you pick in Settings. It can also be turned off.
-- **Home-screen widget**: the cards due today and your streak, a gentler nudge than a notification. It refreshes every hour and whenever you leave the app, and tapping it opens the app.
+- A daily reminder, scheduled with **WorkManager**: at a surprise time between 9:00 and 21:00, or at a fixed time you pick in Settings. It can also be turned off. On iPhone the reminders are queued with the system's notifications instead, so they don't say how many cards are due.
+- **Home-screen widget** (Android): the cards due today and your streak, a gentler nudge than a notification. It refreshes every hour and whenever you leave the app, and tapping it opens the app.
 
 ### 📤 Export, import & backup
 - **Export to Anki**: save one coast or all of them as a text file that Anki imports with *File › Import*. Each island becomes a subdeck (e.g. *German Coast::Greetings*), and alternatives and notes go on the back of the card. Review progress isn't exported, so cards start fresh in Anki.
@@ -100,14 +101,14 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 | Translation | [Gemini API](https://ai.google.dev/api/generate-content) and [OpenRouter API](https://openrouter.ai/docs) over [Ktor](https://ktor.io/), [ML Kit Translation](https://developers.google.com/ml-kit/language/translation) (on-device, Android) |
 | Database | [Room](https://developer.android.com/kotlin/multiplatform/room) (Kotlin Multiplatform) |
 | Preferences | [Jetpack DataStore](https://developer.android.com/kotlin/multiplatform/datastore) (Kotlin Multiplatform) |
-| Navigation | [Navigation Compose](https://developer.android.com/jetpack/compose/navigation) with type-safe routes |
+| Navigation | [Navigation Compose](https://kotlinlang.org/docs/multiplatform/compose-navigation-routing.html) (multiplatform) with type-safe routes |
 | Spaced repetition | [FSRS-5](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm) with its default parameters (implemented in `shared/.../data/SpacedRepetition.kt`) |
 | Text-to-speech | Android [`TextToSpeech`](https://developer.android.com/reference/android/speech/tts/TextToSpeech) / iOS `AVSpeechSynthesizer`, with the voices installed on the phone |
-| Background work | [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) |
-| Home-screen widget | [`AppWidgetProvider`](https://developer.android.com/develop/ui/views/appwidgets) with `RemoteViews` (no extra library) |
+| Reminders | [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) on Android, `UNUserNotificationCenter` on iOS |
+| Home-screen widget | [`AppWidgetProvider`](https://developer.android.com/develop/ui/views/appwidgets) with `RemoteViews` (no extra library, Android only) |
 | Backups | [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) JSON |
 | Testing | kotlin.test (shared module), JUnit 4, kotlinx-coroutines-test, hand-written fakes |
-| CI/CD | GitHub Actions (tests on every push, shared code and the iOS app built and run on a macOS runner, signed APK on every release tag) |
+| CI/CD | GitHub Actions (tests on every pull request and push to `main`; shared code tested and the iOS app built and launched on a macOS runner; signed APK on every release tag) |
 
 ## 🏗️ Architecture
 
@@ -119,7 +120,7 @@ flowchart LR
     VM --> SR["SettingsRepository"] --> DS[("DataStore")]
     VM --> TR["Translator"] --> Gemini(["Gemini API"])
     TR --> OpenRouter(["OpenRouter API"])
-    TR --> MLKit(["ML Kit (on-device)"])
+    TR --> MLKit(["ML Kit (on-device, Android)"])
 ```
 
 - **Screens** are stateless: they render a UI state and forward user events to their ViewModel.
@@ -146,6 +147,7 @@ shared/src/                  # Kotlin Multiplatform code for Android and iOS
 └── commonTest/              # Tests that run on every platform
 
 app/src/main/java/com/andreaserick/languagecoast/   # The Android app
+├── LanguageCoastApplication.kt  # Starts Koin
 ├── MainActivity.kt          # Splash screen, notification permission, shows the shared UI
 ├── di/                      # Koin modules for Android-only parts
 ├── notifications/           # Daily study reminder (WorkManager + notification)
@@ -190,7 +192,7 @@ Then run it on a simulator from Xcode. The first build takes a few minutes, sinc
 # On a Mac, the shared tests also run on the iOS simulator:
 ./gradlew :shared:iosSimulatorArm64Test
 ```
-The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing (Gemini and OpenRouter), editing and searching cards, export, import, backup and restore, answer checking in Active Type (both directions) and the widget's texts. They run on every push via GitHub Actions. Database migrations are tested on a device or emulator with `./gradlew connectedDebugAndroidTest`.
+The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing (Gemini and OpenRouter), editing and searching cards, export, import, backup and restore, answer checking in Active Type (both directions), reminder timing, the date labels and the widget's texts. They run in GitHub Actions on every pull request and every push to `main`; the shared tests also run on the iOS simulator whenever shared or iOS code changes. Database migrations are tested on a device or emulator with `./gradlew connectedDebugAndroidTest`.
 
 ## 📦 Releases
 
