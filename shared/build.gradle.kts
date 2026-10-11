@@ -34,8 +34,13 @@ kotlin {
         }
     }
 
-    iosArm64()
-    iosSimulatorArm64()
+    // The iOS app links the shared code as one framework, named Shared.
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {

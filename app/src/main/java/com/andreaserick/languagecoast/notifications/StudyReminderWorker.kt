@@ -11,7 +11,10 @@ import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import kotlinx.coroutines.flow.first
+import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.datetime.toJavaLocalTime
+import kotlinx.datetime.toKotlinLocalDateTime
+import kotlinx.datetime.toKotlinLocalTime
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.Clock
@@ -67,12 +70,9 @@ class WorkManagerReminderScheduler(
     }
 }
 
-/** A random reminder can still fire on the same day if the app is opened before this hour. */
-internal const val RANDOM_SAME_DAY_CUTOFF_HOUR = 18
-
 /**
- * Time from [now] until the next reminder: at [time] if set, otherwise at a random time in the day window.
- * With [allowToday] the reminder may still fire later today; otherwise it is always tomorrow.
+ * Time from [now] until the next reminder (see [nextReminderTime]): at [time] if set, otherwise at a random
+ * time in the day window. With [allowToday] the reminder may still fire later today; otherwise it is always tomorrow.
  */
 internal fun delayUntilNextReminder(
     time: LocalTime?,
@@ -80,15 +80,7 @@ internal fun delayUntilNextReminder(
     allowToday: Boolean,
     random: Random = Random.Default
 ): Duration {
-    val target = if (time != null) {
-        val today = now.toLocalDate().atTime(time)
-        if (allowToday && today.isAfter(now)) today else now.toLocalDate().plusDays(1).atTime(time)
-    } else if (allowToday && now.hour < RANDOM_SAME_DAY_CUTOFF_HOUR) {
-        val startHour = maxOf(now.hour + 1, RANDOM_WINDOW_START_HOUR)
-        now.toLocalDate().atTime(random.nextInt(startHour, RANDOM_WINDOW_END_HOUR + 1), random.nextInt(60))
-    } else {
-        now.toLocalDate().plusDays(1).atTime(random.nextInt(RANDOM_WINDOW_START_HOUR, RANDOM_WINDOW_END_HOUR + 1), random.nextInt(60))
-    }
+    val target = nextReminderTime(time?.toKotlinLocalTime(), now.toKotlinLocalDateTime(), allowToday, random).toJavaLocalDateTime()
     return Duration.between(now, target).coerceAtLeast(Duration.ZERO)
 }
 
