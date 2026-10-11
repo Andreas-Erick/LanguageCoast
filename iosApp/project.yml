@@ -1,0 +1,42 @@
+# Describes the Xcode project; generate it with `xcodegen` (brew install xcodegen) in this folder.
+name: iosApp
+options:
+  bundleIdPrefix: com.andreaserick
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources: [iosApp]
+    info:
+      path: iosApp/Info.plist
+      properties:
+        CFBundleDisplayName: Language Coast
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        # The app is always dark, so the status bar uses light text.
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIViewControllerBasedStatusBarAppearance: false
+        # Lets Compose draw at the screen's full refresh rate (ProMotion).
+        CADisableMinimumFrameDurationOnPhone: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.andreaserick.languagecoast
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        OTHER_LDFLAGS: [$(inherited), -framework, Shared]
+        # The shared code is built for Apple Silicon simulators only (iosSimulatorArm64).
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+        # The build script below runs Gradle, which reads and writes outside the sandbox.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    preBuildScripts:
+      - name: Build the shared Kotlin framework
+        basedOnDependencyAnalysis: false
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode

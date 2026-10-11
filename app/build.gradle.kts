@@ -3,7 +3,6 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.serialization) // Type-safe navigation routes
 }
 
 // Release signing is read from keystore.properties (git-ignored). Without it,
@@ -99,18 +98,17 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.sqlite.framework) // MigrationTest opens the database as the app does
 
-    // Navigation; Room, DataStore and the translators come with the shared module
+    // The UI, data layer and translators come with the shared module. These Jetpack libraries
+    // (with the Compose BOM above) pin the versions its Compose Multiplatform code uses on Android.
     implementation(libs.androidx.navigation.compose)
 
     // Dependency injection
     implementation(platform(libs.koin.bom))
     implementation(libs.koin.android)
-    implementation(libs.koin.androidx.compose)
 
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-    implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.core.splashscreen)
 }

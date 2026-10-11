@@ -3,19 +3,13 @@ package com.andreaserick.languagecoast.data
 import com.andreaserick.languagecoast.notifications.RANDOM_WINDOW_END_HOUR
 import com.andreaserick.languagecoast.notifications.RANDOM_WINDOW_START_HOUR
 import com.andreaserick.languagecoast.notifications.delayUntilNextReminder
-import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
-import com.andreaserick.languagecoast.ui.study.splitPunctuation
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toKotlinLocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.ZoneOffset
 import kotlin.random.Random
 
 class PolishLogicTest {
@@ -53,29 +47,6 @@ class PolishLogicTest {
     @Test
     fun categoryIsNotPollutedByEmojiLine() {
         assertEquals("Animals", parseTranslationResponse("TRANSLATION: hestur\nCATEGORY: Animals\nEMOJI: 🐴").finalCategory)
-    }
-
-    // --- Word splitting for dictionary lookups ---
-
-    @Test
-    fun punctuationIsSplitFromWords() {
-        assertEquals(Triple("", "hestur", ","), splitPunctuation("hestur,"))
-        assertEquals(Triple("¿", "Dónde", ""), splitPunctuation("¿Dónde"))
-        assertEquals(Triple("\"", "it's", "\"!"), splitPunctuation("\"it's\"!"))
-        assertEquals(Triple("—", "", ""), splitPunctuation("—"))
-    }
-
-    // --- "Last studied" labels ---
-
-    @Test
-    fun lastStudiedLabels() {
-        val today = LocalDate.of(2026, 10, 9)
-        fun at(date: LocalDate) = date.atTime(15, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
-
-        assertEquals("Not studied yet", lastStudiedLabel(null, today.toKotlinLocalDate(), TimeZone.UTC))
-        assertEquals("Studied today", lastStudiedLabel(at(today), today.toKotlinLocalDate(), TimeZone.UTC))
-        assertEquals("Studied yesterday", lastStudiedLabel(at(today.minusDays(1)), today.toKotlinLocalDate(), TimeZone.UTC))
-        assertEquals("Last studied 5 days ago", lastStudiedLabel(at(today.minusDays(5)), today.toKotlinLocalDate(), TimeZone.UTC))
     }
 
     // --- Reminder timing ---

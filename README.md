@@ -94,9 +94,9 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 | Area | Library |
 | --- | --- |
 | Architecture | MVVM: ViewModels + repositories, unidirectional data flow with `StateFlow` |
-| Code sharing | [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html): ViewModels, data layer and translation in a `shared` module, ready for an iOS app |
+| Code sharing | [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html): UI, ViewModels, data layer and translation in a `shared` module used by the Android and iOS apps |
 | Dependency injection | [Koin](https://insert-koin.io/) |
-| UI | [Jetpack Compose](https://developer.android.com/compose) + Material 3 (100% Kotlin) |
+| UI | [Compose Multiplatform](https://www.jetbrains.com/compose-multiplatform/) + Material 3 (Jetpack Compose on Android), 100% Kotlin |
 | Translation | [Gemini API](https://ai.google.dev/api/generate-content) and [OpenRouter API](https://openrouter.ai/docs) over [Ktor](https://ktor.io/), [ML Kit Translation](https://developers.google.com/ml-kit/language/translation) (on-device, Android) |
 | Database | [Room](https://developer.android.com/kotlin/multiplatform/room) (Kotlin Multiplatform) |
 | Preferences | [Jetpack DataStore](https://developer.android.com/kotlin/multiplatform/datastore) (Kotlin Multiplatform) |
@@ -107,7 +107,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 | Home-screen widget | [`AppWidgetProvider`](https://developer.android.com/develop/ui/views/appwidgets) with `RemoteViews` (no extra library) |
 | Backups | [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) JSON |
 | Testing | kotlin.test (shared module), JUnit 4, kotlinx-coroutines-test, hand-written fakes |
-| CI/CD | GitHub Actions (tests on every push, signed APK on every release tag) |
+| CI/CD | GitHub Actions (tests on every push, shared code and the iOS app built and run on a macOS runner, signed APK on every release tag) |
 
 ## 🏗️ Architecture
 
@@ -130,28 +130,30 @@ flowchart LR
 
 ```
 shared/src/                  # Kotlin Multiplatform code for Android and iOS
-├── commonMain/              # ViewModels, Room database, repositories, DataStore settings, translators
-│                            # (Gemini, OpenRouter), spaced repetition, search, import/export, backups
-├── androidMain/             # Android implementations: database and settings files, ML Kit, text-to-speech
-├── iosMain/                 # iOS implementations of the same
+├── commonMain/
+│   ├── kotlin/…/languagecoast/
+│   │   ├── App.kt           # Bottom navigation and NavHost
+│   │   ├── data/            # Room database, repositories, DataStore settings, translators (Gemini, OpenRouter),
+│   │   │                    # spaced repetition, search, import/export formats, backups
+│   │   ├── di/              # Koin modules
+│   │   ├── navigation/      # Type-safe route definitions
+│   │   ├── notifications/   # Reminder scheduling interface and timing
+│   │   └── ui/              # Each feature's Screen and ViewModel, shared composables and the theme
+│   └── composeResources/    # Nunito font and logos
+├── androidMain/             # Android implementations: database and settings files, ML Kit, text-to-speech,
+│                            # file import/export and backup, date and time formats
+├── iosMain/                 # iOS implementations, plus the entry point and notification reminders
 └── commonTest/              # Tests that run on every platform
 
-app/src/main/java/com/andreaserick/languagecoast/
-├── MainActivity.kt          # Entry point, bottom navigation and NavHost
+app/src/main/java/com/andreaserick/languagecoast/   # The Android app
+├── MainActivity.kt          # Splash screen, notification permission, shows the shared UI
 ├── di/                      # Koin modules for Android-only parts
-├── navigation/              # Type-safe route definitions
 ├── notifications/           # Daily study reminder (WorkManager + notification)
-├── ui/
-│   ├── coast/               # Each feature's Screen; its ViewModel is in the shared module
-│   ├── components/          # Shared composables (screen header, card row, edit card sheet, language picker, undo snackbar)
-│   ├── create/
-│   ├── island/              # An island's card list
-│   ├── mycoast/
-│   ├── search/
-│   ├── settings/            # Also export, import and backup
-│   ├── study/
-│   └── theme/               # Colors, typography and Material theme
 └── widget/                  # Home-screen widget (streak and cards due)
+
+iosApp/                      # The iOS app: a SwiftUI shell around the shared UI
+├── project.yml              # Xcode project description for XcodeGen
+└── iosApp/iOSApp.swift
 ```
 
 ## 🚀 Getting started
@@ -171,11 +173,22 @@ app/src/main/java/com/andreaserick/languagecoast/
 4. Open **Settings**, choose your native language and how to translate: on-device needs nothing else, Gemini and OpenRouter need their API key.
 5. Start a coast for the language you want to learn, then create your first island!
 
+### Running the iOS app
+The iOS app needs a Mac with **Xcode** and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`):
+```bash
+cd iosApp
+xcodegen generate
+open iosApp.xcodeproj
+```
+Then run it on a simulator from Xcode. The first build takes a few minutes, since it compiles the shared Kotlin code. On iPhone, translation uses Gemini or OpenRouter; on-device translation, import/export, backups and the widget are Android-only for now.
+
 > **Your API keys stay on your device.** The app keeps them in local app storage (DataStore). They are never compiled into the app, so you don't need to add them to `local.properties`.
 
 ### Running tests
 ```bash
 ./gradlew testDebugUnitTest :shared:testAndroidHostTest
+# On a Mac, the shared tests also run on the iOS simulator:
+./gradlew :shared:iosSimulatorArm64Test
 ```
 The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing (Gemini and OpenRouter), editing and searching cards, export, import, backup and restore, answer checking in Active Type (both directions) and the widget's texts. They run on every push via GitHub Actions. Database migrations are tested on a device or emulator with `./gradlew connectedDebugAndroidTest`.
 

@@ -50,7 +50,7 @@ interface SettingsRepository {
     val nativeLanguage: Flow<String>
     /** The coast new cards are added to, or null if none was picked yet. */
     val activeCoastId: Flow<Int?>
-    /** Where translations come from. Until one is picked: Gemini if a Gemini key was saved, otherwise on-device. */
+    /** Where translations come from. Until one is picked: on-device where available and no Gemini key was saved, otherwise Gemini. */
     val translationProvider: Flow<TranslationProvider>
     /** The Gemini API key. */
     val apiKey: Flow<String>
@@ -117,7 +117,7 @@ class DataStoreSettingsRepository(
     override val translationProvider: Flow<TranslationProvider> = dataStore.data.map { preferences ->
         preferences[TRANSLATION_PROVIDER]?.let { name -> TranslationProvider.entries.firstOrNull { it.name == name } }
             // Before providers could be picked, Gemini was the only one; keep it for users who set it up.
-            ?: if (preferences[API_KEY].isNullOrBlank()) TranslationProvider.OnDevice else TranslationProvider.Gemini
+            ?: if (onDeviceTranslationAvailable && preferences[API_KEY].isNullOrBlank()) TranslationProvider.OnDevice else TranslationProvider.Gemini
     }
 
     override val apiKey: Flow<String> =
