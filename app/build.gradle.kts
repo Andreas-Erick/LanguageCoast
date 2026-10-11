@@ -92,16 +92,15 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(platform(libs.koin.bom))
     testImplementation(libs.koin.test)
+    testImplementation(libs.ktor.client.core) // KoinModulesTest names the HttpClient's engine types
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.sqlite.framework) // MigrationTest opens the database as the app does
 
-    // Navigation and Gemini; Room and DataStore come with the shared module
+    // Navigation; Room, DataStore and the translators come with the shared module
     implementation(libs.androidx.navigation.compose)
-    implementation(libs.google.genai)
-    implementation(libs.mlkit.translate)
 
     // Dependency injection
     implementation(platform(libs.koin.bom))

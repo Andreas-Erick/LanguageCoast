@@ -15,7 +15,7 @@ room = "2.8.4"
 sqlite = "2.6.2"
 navigationCompose = "2.9.8"
 datastore = "1.2.1"
-geminiAi = "1.60.0"
+ktor = "3.2.3"
 work = "2.11.2"
 koin = "4.1.1"
 coroutines = "1.10.2"
@@ -56,8 +56,10 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 androidx-sqlite-framework = { group = "androidx.sqlite", name = "sqlite-framework", version.ref = "sqlite" }
 androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
 
-# Google Gen AI SDK
-google-genai = { group = "com.google.genai", name = "google-genai", version.ref = "geminiAi" }
+# HTTP for the Gemini and OpenRouter APIs, with each platform's own networking
+ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+ktor-client-android = { group = "io.ktor", name = "ktor-client-android", version.ref = "ktor" }
+ktor-client-darwin = { group = "io.ktor", name = "ktor-client-darwin", version.ref = "ktor" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 
 # Dependency injection

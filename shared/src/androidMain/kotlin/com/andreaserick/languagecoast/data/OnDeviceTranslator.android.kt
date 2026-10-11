@@ -1,6 +1,5 @@
 package com.andreaserick.languagecoast.data
 
-import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
@@ -19,7 +18,7 @@ fun onDeviceLanguage(language: String): String? =
  * (about 30 MB per language) is downloaded on first use. It only translates, so cards go into the
  * category the user typed, or [DEFAULT_CATEGORY].
  */
-class OnDeviceTranslator() : Translator {
+actual class OnDeviceTranslator actual constructor() : Translator {
 
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
         val source = onDeviceLanguage(request.nativeLanguage)
@@ -40,7 +39,7 @@ class OnDeviceTranslator() : Translator {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Language pack download failed", e)
+                logError(TAG, "Language pack download failed", e)
                 return TranslationResult.failure(
                     "The ${request.targetLanguage} language pack couldn't be downloaded. Check your internet connection and try again."
                 )
@@ -50,7 +49,7 @@ class OnDeviceTranslator() : Translator {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "On-device translation failed", e)
+            logError(TAG, "On-device translation failed", e)
             TranslationResult.FAILURE
         } finally {
             translator.close()
