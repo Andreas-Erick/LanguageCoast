@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "LanguageCoast"
 include(":app")
+include(":shared")

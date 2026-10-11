@@ -1,7 +1,5 @@
 package com.andreaserick.languagecoast.data
 
-import java.text.Normalizer
-
 /**
  * A language the app can translate into and from.
  *
@@ -76,5 +74,7 @@ fun List<Language>.search(query: String): List<Language> {
 }
 
 /** Lowercase and without accents or surrounding spaces, for comparing names in [search]. */
-private fun String.normalizedForSearch(): String =
-    Normalizer.normalize(trim().lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+private fun String.normalizedForSearch(): String = removeAccents(trim().lowercase())
+
+/** [text] without accents and other combining marks ("íslenska" → "islenska"), using the platform's Unicode tables. */
+internal expect fun removeAccents(text: String): String
