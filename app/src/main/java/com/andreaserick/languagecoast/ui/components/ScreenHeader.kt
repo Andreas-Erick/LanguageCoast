@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.ui.theme.AbyssBlue
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
@@ -69,6 +71,11 @@ fun ScreenHeader(
                     style = MaterialTheme.typography.headlineMedium,
                     color = SandBeige,
                     maxLines = 1,
+                    // Shrinks before cutting off, so "Language Coast" fits next to the streak badge on small phones.
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = 20.sp,
+                        maxFontSize = MaterialTheme.typography.headlineMedium.fontSize
+                    ),
                     overflow = TextOverflow.Ellipsis
                 )
                 if (subtitle != null) {
