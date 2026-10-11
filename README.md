@@ -26,7 +26,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
   <img src="docs/screenshots/my-coast.png" alt="My Coasts with the study streak and a German and an Icelandic coast, each showing its due cards" width="200" />
   <img src="docs/screenshots/coast.png" alt="German Coast with its Language Islands and how many cards on each are due" width="200" />
   <img src="docs/screenshots/island-cards.png" alt="The cards of the Small Talk island with their translations, alternatives and when each is due" width="200" />
-  <img src="docs/screenshots/study.png" alt="Flipped flashcard with the study direction, a read-aloud button and Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
+  <img src="docs/screenshots/study.png" alt="Flipped flashcard with the study direction, a read-aloud button and Again, Hard, Good and Easy buttons showing when the card comes back (Again: soon, in this session)" width="200" />
   <img src="docs/screenshots/alternatives.png" alt="Sheet with other ways to say a sentence, a note on formal and informal forms, and read-aloud and Make main buttons" width="200" />
   <img src="docs/screenshots/search.png" alt="Search results across all coasts, each showing its coast, island and when it is due" width="200" />
   <img src="docs/screenshots/settings.png" alt="Settings with the native language and the choice of on-device, Gemini or OpenRouter translation" width="200" />
@@ -66,7 +66,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 
 ### 🧠 Study modes
 - **Spaced repetition**: cards are scheduled with [FSRS](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm), the algorithm Anki uses, so each island only asks for the cards that are due. Islands and coasts show how many cards are due, and the daily reminder says how many are waiting. When nothing is due you can still practice all cards.
-- **Flip Cards**: classic flashcards with an animated flip. Grade each card *Again*, *Hard*, *Good* or *Easy* (each button shows when the card comes back), or swipe left for *Again* and right for *Good*. *Again* also moves the card to the end of the session.
+- **Flip Cards**: classic flashcards with an animated flip. Grade each card *Again*, *Hard*, *Good* or *Easy* (each button shows when the card comes back), or swipe left for *Again* and right for *Good*. *Again* shows *Soon*: it moves the card to the end of the session, so you see it again before you finish.
 - **Active Type**: test your recall by typing the translation. Capitalization, punctuation and extra spaces don't count against you, accents do. A correct answer is graded like a flipped card; a wrong one counts as *Again* and the card comes back later in the session.
 - **Read aloud**: a speaker button reads the translation in the coast's language, using the voices installed on your phone (free and offline). It only appears when the phone has a voice for that language.
 - **Study the other way round**: swap the direction under the study tabs to see the translation first and answer in your native language, training recognition instead of recall. Works with Flip Cards and Active Type, and is remembered for later sessions.
