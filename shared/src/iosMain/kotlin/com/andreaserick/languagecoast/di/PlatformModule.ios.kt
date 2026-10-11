@@ -5,6 +5,8 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.andreaserick.languagecoast.data.AppDatabase
 import com.andreaserick.languagecoast.data.buildAppDatabase
 import com.andreaserick.languagecoast.data.createSettingsDataStore
+import com.andreaserick.languagecoast.notifications.IosReminderScheduler
+import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import com.andreaserick.languagecoast.speech.IosSpeaker
 import com.andreaserick.languagecoast.speech.Speaker
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -27,6 +29,9 @@ actual val platformModule = module {
 
     /** Text is read aloud with iOS's speech synthesizer. */
     singleOf(::IosSpeaker) { bind<Speaker>() }
+
+    /** Reminders are queued with iOS's notification center. (Android binds its WorkManager scheduler in the app.) */
+    singleOf(::IosReminderScheduler) { bind<ReminderScheduler>() }
 }
 
 /** The app's Documents folder, which iOS keeps across updates and includes in backups. */

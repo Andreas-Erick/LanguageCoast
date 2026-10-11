@@ -23,3 +23,8 @@ Thumbs.db
 
 # Release signing secrets - never commit
 keystore.properties
+
+# iOS: generated from iosApp/project.yml by xcodegen
+iosApp/iosApp.xcodeproj/
+iosApp/iosApp/Info.plist
+iosApp/build/
