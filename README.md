@@ -11,7 +11,8 @@
 <p align="center">
   <a href="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ci.yml"><img src="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
   <a href="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ios.yml"><img src="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ios.yml/badge.svg" alt="iOS build status" /></a>
-  <img src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20(preview)-3DDC84?logo=android&logoColor=white" alt="Platforms: Android and iOS (preview)" />
+  <img src="https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white" alt="Platform: Android" />
+  <img src="https://img.shields.io/badge/platform-iOS%20preview-000000?logo=apple&logoColor=white" alt="Platform: iOS preview" />
   <img src="https://img.shields.io/badge/Kotlin-Compose%20Multiplatform-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin + Compose Multiplatform" />
   <img src="https://img.shields.io/badge/min%20SDK-26-blue" alt="Min SDK 26" />
 </p>
