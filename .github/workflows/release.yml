@@ -44,11 +44,15 @@ jobs:
             "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
 
       - name: Test and build release APK and AAB
-        # The tag sets versionName (v1.2 -> 1.2); the run number keeps versionCode increasing.
-        run: >
-          ./gradlew testDebugUnitTest :shared:testAndroidHostTest assembleRelease bundleRelease
-          -PversionName="${GITHUB_REF_NAME#v}"
-          -PversionCode="${{ github.run_number }}"
+        # The tag sets versionName (v1.8.2 -> 1.8.2) and versionCode (major * 10000 + minor * 100 + patch -> 10802),
+        # so a newer version always has a higher code, as Google Play requires. Releases up to v1.7.0 used the run
+        # number (at most 25), which every tag from v1.8.0 on is above.
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "${VERSION%%-*}"
+          VERSION_CODE=$(( MAJOR * 10000 + ${MINOR:-0} * 100 + ${PATCH:-0} ))
+          echo "versionName $VERSION, versionCode $VERSION_CODE"
+          ./gradlew testDebugUnitTest :shared:testAndroidHostTest assembleRelease bundleRelease             -PversionName="$VERSION" -PversionCode="$VERSION_CODE"
 
       - name: Rename APK and AAB
         run: |
