@@ -25,9 +25,11 @@ targets:
         UIViewControllerBasedStatusBarAppearance: false
         # Lets Compose draw at the screen's full refresh rate (ProMotion).
         CADisableMinimumFrameDurationOnPhone: true
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.andreaserick.languagecoast
+        TARGETED_DEVICE_FAMILY: "1"
         FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
         OTHER_LDFLAGS: [$(inherited), -framework, Shared]
         # The shared code is built for Apple Silicon simulators only (iosSimulatorArm64).
