@@ -13,18 +13,22 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -190,38 +194,46 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                 )
                 SessionProgress(uiState)
 
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    // key(cardId) resets per-card state (flip state, typed answer)
-                    // when we move to a different card.
-                    key(currentCard.cardId) {
-                        if (uiState.isTypingMode) {
-                            TypeStudyView(
-                                currentCard = currentCard,
-                                nativeLang = uiState.nativeLanguage,
-                                isReversed = uiState.isReversed,
-                                intervals = uiState.gradeIntervals,
-                                onGrade = viewModel::onGrade,
-                                onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak }
+                // Typing mode scrolls when it doesn't fit (short screens, or with the keyboard open),
+                // staying centered when it does; Flip mode sizes its card to the space instead.
+                BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    val scrollState = key(currentCard.cardId) { rememberScrollState() }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (uiState.isTypingMode) Modifier.verticalScroll(scrollState).heightIn(min = maxHeight)
+                                else Modifier.fillMaxHeight()
                             )
-                        } else {
-                            FlipStudyView(
-                                currentCard = currentCard,
-                                nativeLang = uiState.nativeLanguage,
-                                targetLang = uiState.targetLanguage,
-                                isReversed = uiState.isReversed,
-                                intervals = uiState.gradeIntervals,
-                                onGrade = viewModel::onGrade,
-                                onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak },
-                                onSpeakText = viewModel::speak.takeIf { uiState.canSpeak },
-                                onMakeMain = viewModel::makeMainTranslation
-                            )
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        // key(cardId) resets per-card state (flip state, typed answer)
+                        // when we move to a different card.
+                        key(currentCard.cardId) {
+                            if (uiState.isTypingMode) {
+                                TypeStudyView(
+                                    currentCard = currentCard,
+                                    nativeLang = uiState.nativeLanguage,
+                                    isReversed = uiState.isReversed,
+                                    intervals = uiState.gradeIntervals,
+                                    onGrade = viewModel::onGrade,
+                                    onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak }
+                                )
+                            } else {
+                                FlipStudyView(
+                                    currentCard = currentCard,
+                                    nativeLang = uiState.nativeLanguage,
+                                    targetLang = uiState.targetLanguage,
+                                    isReversed = uiState.isReversed,
+                                    intervals = uiState.gradeIntervals,
+                                    onGrade = viewModel::onGrade,
+                                    onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak },
+                                    onSpeakText = viewModel::speak.takeIf { uiState.canSpeak },
+                                    onMakeMain = viewModel::makeMainTranslation
+                                )
+                            }
                         }
                     }
                 }
@@ -626,6 +638,11 @@ fun TypeStudyView(
     val haptics = LocalHapticFeedback.current
     val question = if (isReversed) currentCard.targetText else currentCard.nativeText
     val answer = if (isReversed) currentCard.nativeText else currentCard.targetText
+    // On short screens the result doesn't fit under the question, so it scrolls into view once checked.
+    val result = remember { BringIntoViewRequester() }
+    LaunchedEffect(hasChecked) {
+        if (hasChecked) result.bringIntoView()
+    }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -675,7 +692,12 @@ fun TypeStudyView(
             ) {
                 Text("Check answer", fontSize = 18.sp)
             }
-        } else {
+        } else Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .bringIntoViewRequester(result)
+        ) {
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = if (isCorrect) SandBeige else DeepOceanBlue,

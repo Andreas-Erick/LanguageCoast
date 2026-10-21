@@ -1,0 +1,120 @@
+name: iOS release
+
+# Builds the signed iOS app and uploads it to App Store Connect, where it appears in TestFlight.
+# Submitting it for App Store review is still done by hand in App Store Connect.
+#   Runs for every version tag (git tag v1.8.0 && git push origin v1.8.0), or by hand from the Actions tab.
+# Signing is cloud-managed: Xcode creates the distribution certificate and profile with the App Store Connect
+# API key, so no Mac is needed. Requires the repository secrets APP_STORE_CONNECT_KEY_BASE64,
+# APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID and APPLE_TEAM_ID (see README > Releases).
+# Without them the workflow skips the upload.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Build signed iOS app and upload it to TestFlight
+    # App Store uploads must be built with the latest Xcode and iOS SDK.
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Check the signing secrets
+        id: secrets
+        env:
+          KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$KEY_BASE64" ] || [ -z "$KEY_ID" ] || [ -z "$ISSUER_ID" ] || [ -z "$TEAM_ID" ]; then
+            echo "::notice::The App Store Connect secrets are not configured, so the iOS upload is skipped. See README > Releases."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.secrets.outputs.ready == 'true'
+
+      - uses: actions/setup-java@v6
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+        if: steps.secrets.outputs.ready == 'true'
+
+      # Kotlin/Native's compiler and iOS toolchain (about 1 GB), which Gradle would otherwise download on every run.
+      - name: Cache the Kotlin/Native toolchain
+        if: steps.secrets.outputs.ready == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+
+      - name: Generate the Xcode project
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          brew install xcodegen
+          cd iosApp && xcodegen generate
+
+      - name: Set up the App Store Connect API key
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          echo "$KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          echo "KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Choose the version
+        if: steps.secrets.outputs.ready == 'true'
+        # A tag sets the version (v1.8.0 -> 1.8.0); a run by hand keeps the one in project.yml.
+        # The run number is the build number, which App Store Connect needs to be new for every upload.
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "VERSION_SETTING=MARKETING_VERSION=${VERSION%%-*}" >> "$GITHUB_ENV"
+          fi
+          echo "BUILD_NUMBER=${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      # Archived unsigned: signing it here would need a development profile, which Apple only issues to teams with
+      # a registered device. The export below signs it for the App Store.
+      - name: Archive the app
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/iosApp.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGNING_ALLOWED=NO \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" $VERSION_SETTING \
+            archive
+
+      - name: Sign and upload to App Store Connect
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          OPTIONS="$RUNNER_TEMP/ExportOptions.plist"
+          cp iosApp/ExportOptions.plist "$OPTIONS"
+          /usr/libexec/PlistBuddy -c "Add :teamID string $TEAM_ID" "$OPTIONS"
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/iosApp.xcarchive" \
+            -exportOptionsPlist "$OPTIONS" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID"
+
+      - name: Remove the API key
+        if: always() && steps.secrets.outputs.ready == 'true'
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
