@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andreaserick.languagecoast.data.onDeviceTranslationAvailable
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
@@ -49,8 +50,9 @@ private val GUIDE = listOf(
     ),
     GuideSection(
         "🤖", "Translation",
-        listOf(
-            "On-device translation is free, private and works offline. It needs no setup.",
+        listOfNotNull(
+            "On-device translation is free, private and works offline. It needs no setup."
+                .takeIf { onDeviceTranslationAvailable },
             "Gemini and OpenRouter give more natural translations and sort cards into islands for you. " +
                 "They need an API key, which you add here in Settings.",
             "For longer sentences, they also suggest other ways to say it."
@@ -77,20 +79,23 @@ private val GUIDE = listOf(
     ),
     GuideSection(
         "🔥", "Streaks and reminders",
-        listOf(
+        listOfNotNull(
             "Finish an island each day to keep your streak going.",
             "Turn on the daily reminder here in Settings, at a fixed time or a surprise time.",
             "Add the Language Coast widget to your home screen to see your streak and the cards due today."
+                .takeIf { homeScreenWidgetAvailable }
         )
     ),
     GuideSection(
         "📤", "Your cards",
-        listOf(
+        listOfNotNull(
             "Tap the search icon on My Coasts to find a card on any coast by its native text, translation or alternatives.",
             "Tap ⋮ on an island and \"See cards\" to list its cards with when each is due next.",
             "Tap a card there, or \"Edit card\" in the ⋮ menu while studying, to fix its translation and alternatives or move it to another island.",
-            "Export a coast to Anki or Markdown, or import cards from a CSV file, under \"Your cards\" in Settings.",
-            "Changing phones? \"Back up\" under Backup in Settings saves everything, including your progress and streak. \"Restore\" it on the new phone.",
+            "Export a coast to Anki or Markdown, or import cards from a CSV file, under \"Your cards\" in Settings."
+                .takeIf { fileTransferAvailable },
+            "Changing phones? \"Back up\" under Backup in Settings saves everything, including your progress and streak. \"Restore\" it on the new phone."
+                .takeIf { fileTransferAvailable },
             "Deleted a coast, island or card by accident? Tap \"Undo\" in the message at the bottom."
         )
     )
