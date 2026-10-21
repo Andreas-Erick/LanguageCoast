@@ -3,6 +3,8 @@ name: Release
 # Builds a signed APK and publishes it as a GitHub Release when a version tag is pushed:
 #   git tag v1.0 && git push origin v1.0
 # Requires the repository secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD.
+# The .aab is for Google Play (required for new apps); the .apk is for direct/sideloaded installs.
+
 
 on:
   push:
@@ -45,14 +47,19 @@ jobs:
       - name: Test and build release APK
         # The tag sets versionName (v1.2 -> 1.2); the run number keeps versionCode increasing.
         run: >
-          ./gradlew testDebugUnitTest :shared:testAndroidHostTest assembleRelease
+          ./gradlew testDebugUnitTest :shared:testAndroidHostTest assembleRelease bundleRelease
           -PversionName="${GITHUB_REF_NAME#v}"
           -PversionCode="${{ github.run_number }}"
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk "LanguageCoast-${GITHUB_REF_NAME}.apk"
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "LanguageCoast-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "LanguageCoast-${GITHUB_REF_NAME}.aab"
 
       - uses: softprops/action-gh-release@v3
         with:
-          files: LanguageCoast-*.apk
+          files: |
+            LanguageCoast-*.apk
+            LanguageCoast-*.aab
           generate_release_notes: true
+
