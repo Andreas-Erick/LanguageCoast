@@ -130,12 +130,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
                 )
             }
 
-            SettingsCard(title = "Your cards", icon = Icons.Default.SwapVert) {
-                CardTransferSection()
-            }
+            if (fileTransferAvailable) {
+                SettingsCard(title = "Your cards", icon = Icons.Default.SwapVert) {
+                    CardTransferSection()
+                }
 
-            SettingsCard(title = "Backup", icon = Icons.Default.Backup) {
-                BackupSection()
+                SettingsCard(title = "Backup", icon = Icons.Default.Backup) {
+                    BackupSection()
+                }
             }
 
             SettingsCard(title = "Help", icon = Icons.AutoMirrored.Filled.HelpOutline) {
