@@ -4,6 +4,7 @@ Texts, images and form answers for Google Play and the App Store, ready to paste
 
 - `icon-512.png`: the Play Store icon (512 × 512 px).
 - `feature-graphic.png`: the Play Store feature graphic (1024 × 500 px).
+- `screenshots/android/`: Play Store phone screenshots, and `demo-backup.json`: the demo data they show.
 - The iOS app icon is in `iosApp/iosApp/Assets.xcassets/AppIcon.appiconset` (1024 × 1024 px, made from the 512 px icon).
 - Privacy policy: [docs/privacy-policy.md](../privacy-policy.md), published at
   `https://github.com/Andreas-Erick/LanguageCoast/blob/main/docs/privacy-policy.md` and linked under Settings → About.
@@ -62,7 +63,11 @@ And this line under PRIVATE BY DESIGN:
 
 ## Screenshots
 
-Both stores need phone screenshots: Play at least 2, App Store at least 1 for the 6.9" display (1320 × 2868 px). Good screens to show: My Coasts, Create, an island's cards, Flip Cards with the back showing, and Active Type.
+`screenshots/android/` has six Play Store phone screenshots (1080 × 1920, 9:16): Create, My Coasts, a coast's islands, Flip Cards, Active Type and an island's cards. Play needs at least 2, and no side may be more than twice the other, so taller phones like the Pixel 9 Pro XL don't qualify.
+
+They show the demo data in `demo-backup.json` (3 coasts, 27 cards, a 12-day streak). To redo them, restore that file under Settings → Backup on an emulator with a 1080 × 1920 screen (the "pixel" device profile). Turn on the emulator's demo mode for a tidy status bar.
+
+The App Store needs at least one screenshot for the 6.9" iPhone display (1320 × 2868 px). The iPhone app can't restore backups yet, so those need data entered by hand on the simulator.
 
 ## Google Play: Data safety
 
@@ -75,10 +80,13 @@ Data types:
 | Data type | Collected | Shared | Optional | Purpose |
 |---|---|---|---|---|
 | App activity → Other user-generated content (sentences to translate, island names) | Yes | Yes, with the translation provider the user picks (Google Gemini or OpenRouter) | Yes. Only when the user picks Gemini or OpenRouter and adds an API key | App functionality |
+| App info and performance → Diagnostics (ML Kit) | Yes | No | No | Analytics |
+| App info and performance → Other app performance data (ML Kit: configured languages) | Yes | No | No | Analytics |
+| Device or other IDs (ML Kit: per-installation ID via Firebase Installations) | Yes | No | No | Analytics |
 
 Processed ephemerally: **No.** The provider may keep requests under its own terms.
 
-Nothing else is collected: no location, contacts, identifiers, analytics, crash logs or advertising data. The API key is the user's own credential for the provider and isn't a data type in the form.
+The ML Kit rows come from Google's [ML Kit data disclosure](https://developers.google.com/ml-kit/android-data-disclosure): the on-device translator sends Google diagnostics and usage analytics, and Google says it doesn't share them with third parties. Re-check that page before submitting, since Google updates it. Nothing else is collected: no location, contacts, advertising data or crash logs of our own. The API key is the user's own credential for the provider and isn't a data type in the form.
 
 ## Google Play: other forms
 
@@ -90,7 +98,7 @@ Nothing else is collected: no location, contacts, identifiers, analytics, crash 
 
 ## App Store: App Privacy
 
-Answer **"Data Not Collected"**. Apple counts data as collected only when the developer or its partners can access it. The app has no server, and translation requests go straight from the phone to the provider under the user's own key. If you'd rather be cautious, declare *User Content → Other User Content*, *Not linked to the user*, *Not used for tracking*, purpose *App Functionality*.
+Answer **"Data Not Collected"** (the iPhone app doesn't include ML Kit, so the Android diagnostics above don't apply). Apple counts data as collected only when the developer or its partners can access it. The app has no server, and translation requests go straight from the phone to the provider under the user's own key. If you'd rather be cautious, declare *User Content → Other User Content*, *Not linked to the user*, *Not used for tracking*, purpose *App Functionality*.
 
 - **Age rating:** 4+.
 - **Export compliance:** already answered in `Info.plist` (`ITSAppUsesNonExemptEncryption = false`; the app only uses HTTPS).
