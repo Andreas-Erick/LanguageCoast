@@ -4,7 +4,7 @@
 
 Language Coast is a flashcard app for learning languages, made by Andreas Erick. This policy explains what happens to your data when you use it on Android or iPhone.
 
-**In short:** there is no account, no advertising, no analytics and no tracking. Your cards stay on your phone. Text leaves your phone only when you ask the app to translate it with Gemini or OpenRouter, and then it goes straight to the provider you picked.
+**In short:** there is no account, no advertising and no tracking, and the developer collects nothing. Your cards stay on your phone. Text leaves your phone only when you ask the app to translate it with Gemini or OpenRouter, and then it goes straight to the provider you picked. On Android, the on-device translator built into the app (Google ML Kit) sends Google diagnostic data, described below.
 
 ## What the app stores on your phone
 
@@ -23,7 +23,7 @@ All of this stays in the app's private storage on your phone. The developer neve
 
 The key is your own, so the request is made under your account with that provider, and its terms decide how long it keeps the text and whether it may use it. The developer never sees these requests. If you don't add an API key, nothing is sent.
 
-**On-device translation (Android only).** Translation runs on your phone with Google ML Kit. The first time you use a language, the app downloads its translation model from Google. Your sentences are not sent.
+**On-device translation (Android only).** Translation runs on your phone with Google ML Kit. The first time you use a language, the app downloads its translation model from Google. Your sentences are not sent. ML Kit does send Google diagnostic and usage data so Google can measure and improve it: device information (such as manufacturer, model and Android version), app information, performance metrics, error codes, the languages you translate between, and a per-installation identifier. Google describes this in its [ML Kit data disclosure](https://developers.google.com/ml-kit/android-data-disclosure), and it is covered by [Google's privacy policy](https://policies.google.com/privacy). The iPhone app doesn't include ML Kit.
 
 **Dictionary lookups.** Tapping a word opens it on dict.cc in your browser. What happens there is covered by [dict.cc's privacy policy](https://www.dict.cc/?s=privacy).
 
@@ -39,7 +39,7 @@ If you turn on study reminders, the app schedules them on your phone. No push se
 
 ## Children
 
-The app does not collect personal information from anyone, including children.
+The developer does not collect personal information from anyone, including children.
 
 ## Deleting your data
 
