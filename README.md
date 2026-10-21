@@ -206,14 +206,14 @@ The released APK is built for ARM phones (practically every Android phone) to ke
 <details>
 <summary>How releases are built (for maintainers)</summary>
 
-Pushing a tag such as `v1.0` runs the [release workflow](.github/workflows/release.yml), which builds a signed APK and attaches it to a GitHub Release:
+Pushing a tag such as `v1.0` runs the [release workflow](.github/workflows/release.yml), which builds a signed APK and app bundle (for Google Play) and attaches them to a GitHub Release:
 
 ```bash
 git tag v1.0
 git push origin v1.0
 ```
 
-The version name comes from the tag (`v1.0` → `1.0`) and the version code from the workflow run number, so there is no need to edit `build.gradle.kts` before a release.
+The version name and code come from the tag (`v1.8.2` → `1.8.2`, code `10802`), so there is no need to edit `build.gradle.kts` before a release.
 
 The workflow needs these repository secrets (*Settings → Secrets and variables → Actions*): `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`.
 
@@ -225,6 +225,19 @@ storePassword=...
 keyAlias=...
 keyPassword=...
 ```
+
+**iOS.** The same tag also runs the [iOS release workflow](.github/workflows/ios-release.yml), which builds the signed app on a GitHub Mac runner and uploads it to App Store Connect, where it shows up in TestFlight. Submitting it for review is done in App Store Connect. The version comes from the tag and the build number from the workflow run. The workflow can also be started by hand from the Actions tab. Signing is cloud-managed, so no Mac or certificate files are needed. One-time setup, all in the browser:
+
+1. In the [Apple Developer portal](https://developer.apple.com/account/resources/identifiers/list), register the bundle ID `com.andreaserick.languagecoast`.
+2. In [App Store Connect](https://appstoreconnect.apple.com), create the app with that bundle ID.
+3. Under *Users and Access → Integrations → App Store Connect API → Team Keys*, generate a key with **Admin** access (needed to create the distribution certificate) and download the `.p8` file. It can be downloaded only once.
+4. Add these repository secrets:
+   - `APP_STORE_CONNECT_KEY_BASE64`: the `.p8` file in Base64 (`base64 -w0 AuthKey_XXXX.p8`)
+   - `APP_STORE_CONNECT_KEY_ID`: the key's ID
+   - `APP_STORE_CONNECT_ISSUER_ID`: the issuer ID shown above the keys
+   - `APPLE_TEAM_ID`: the team ID from *Membership details* in the Developer portal
+
+Without these secrets, the iOS workflow skips the upload.
 </details>
 
 ## 🎨 Design
