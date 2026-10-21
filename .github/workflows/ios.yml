@@ -108,3 +108,44 @@ jobs:
           name: ios-app-screenshot
           path: ios-app.png
           if-no-files-found: ignore
+
+  device:
+    name: iOS app for iPhones
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # Kotlin/Native's compiler and iOS toolchain (about 1 GB), which Gradle would otherwise download on every run.
+      - name: Cache the Kotlin/Native toolchain
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd iosApp && xcodegen generate
+
+      # The Release build an App Store upload would use, for real iPhones (arm64). Signing needs an Apple
+      # developer account, so it is left out here.
+      - name: Build the app for iPhones
+        run: |
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release             -sdk iphoneos -destination 'generic/platform=iOS'             -derivedDataPath iosApp/build CODE_SIGNING_ALLOWED=NO build
+
+      - name: Check the app has its icon and privacy manifest
+        run: |
+          APP=iosApp/build/Build/Products/Release-iphoneos/iosApp.app
+          test -f "$APP/PrivacyInfo.xcprivacy" || { echo "::error::PrivacyInfo.xcprivacy is missing from the app"; exit 1; }
+          test -f "$APP/Assets.car" || { echo "::error::The asset catalog with the app icon is missing from the app"; exit 1; }
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName" "$APP/Info.plist"
