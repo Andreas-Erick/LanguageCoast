@@ -13,8 +13,12 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
+import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSNumber
+import platform.Foundation.NSURL
+import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUserDomainMask
 
 actual val platformModule = module {
@@ -25,7 +29,7 @@ actual val platformModule = module {
         buildAppDatabase(builder, settings = get())
     }
 
-    single { createSettingsDataStore("${documentsPath()}/settings.preferences_pb") }
+    single { createSettingsDataStore(settingsPath()) }
 
     /** Text is read aloud with iOS's speech synthesizer. */
     singleOf(::IosSpeaker) { bind<Speaker>() }
@@ -36,7 +40,36 @@ actual val platformModule = module {
 
 /** The app's Documents folder, which iOS keeps across updates and includes in backups. */
 @OptIn(ExperimentalForeignApi::class)
-private fun documentsPath(): String {
-    val url = NSFileManager.defaultManager.URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, false, null)
-    return requireNotNull(url?.path) { "No Documents folder" }
+private fun documentsPath(): String = requireNotNull(documentsUrl().path) { "No Documents folder" }
+
+@OptIn(ExperimentalForeignApi::class)
+private fun documentsUrl(): NSURL =
+    requireNotNull(NSFileManager.defaultManager.URLForDirectory(NSDocumentDirectory, NSUserDomainMask, null, false, null)) {
+        "No Documents folder"
+    }
+
+/**
+ * The settings file, which holds the user's Gemini and OpenRouter API keys. It lives in a folder in
+ * Application Support that is excluded from iCloud backup, so keys never leave the device (Android
+ * excludes it the same way in its backup rules). The flag is set on the folder because DataStore
+ * replaces the file on every write. Earlier versions kept the file in Documents; it is moved over once.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun settingsPath(): String {
+    val fileManager = NSFileManager.defaultManager
+    val supportUrl = requireNotNull(
+        fileManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)
+    ) { "No Application Support folder" }
+    val folder = requireNotNull(supportUrl.URLByAppendingPathComponent("datastore")) { "No settings folder" }
+    fileManager.createDirectoryAtURL(folder, withIntermediateDirectories = true, attributes = null, error = null)
+    folder.setResourceValue(NSNumber.numberWithBool(true), forKey = NSURLIsExcludedFromBackupKey, error = null)
+
+    val file = requireNotNull(folder.URLByAppendingPathComponent(SETTINGS_FILE)) { "No settings file" }
+    val legacyFile = documentsUrl().URLByAppendingPathComponent(SETTINGS_FILE)
+    if (legacyFile != null && fileManager.fileExistsAtPath(legacyFile.path!!) && !fileManager.fileExistsAtPath(file.path!!)) {
+        fileManager.moveItemAtURL(legacyFile, toURL = file, error = null)
+    }
+    return requireNotNull(file.path) { "No settings file" }
 }
+
+private const val SETTINGS_FILE = "settings.preferences_pb"
