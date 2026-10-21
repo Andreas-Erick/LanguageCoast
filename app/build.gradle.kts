@@ -54,8 +54,9 @@ android {
             ndk {
                 abiFilters += listOf("arm64-v8a", "armeabi-v7a")
             }
+            isShrinkResources = true
             optimization {
-                enable = false
+                enable = true
             }
         }
     }
