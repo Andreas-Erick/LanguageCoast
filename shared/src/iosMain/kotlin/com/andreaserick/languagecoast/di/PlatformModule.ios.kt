@@ -62,7 +62,7 @@ private fun settingsPath(): String {
     ) { "No Application Support folder" }
     val folder = requireNotNull(supportUrl.URLByAppendingPathComponent("datastore")) { "No settings folder" }
     fileManager.createDirectoryAtURL(folder, withIntermediateDirectories = true, attributes = null, error = null)
-    folder.setResourceValue(NSNumber.numberWithBool(true), forKey = NSURLIsExcludedFromBackupKey, error = null)
+    folder.setResourceValue(NSNumber(bool = true), forKey = NSURLIsExcludedFromBackupKey, error = null)
 
     val file = requireNotNull(folder.URLByAppendingPathComponent(SETTINGS_FILE)) { "No settings file" }
     val legacyFile = documentsUrl().URLByAppendingPathComponent(SETTINGS_FILE)
