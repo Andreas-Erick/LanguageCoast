@@ -187,6 +187,8 @@ Then run it on a simulator from Xcode. The first build takes a few minutes, sinc
 
 > **Your API keys stay on your device.** The app keeps them in local app storage (DataStore). They are never compiled into the app, so you don't need to add them to `local.properties`.
 
+See the [privacy policy](docs/privacy-policy.md) for what the app stores and sends. Store listing texts and form answers are in [docs/store](docs/store/).
+
 ### Running tests
 ```bash
 ./gradlew testDebugUnitTest :shared:testAndroidHostTest

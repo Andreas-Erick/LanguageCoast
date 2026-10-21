@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -159,12 +161,24 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
             SettingsCard(title = "About", icon = Icons.Default.Info) {
                 Text("Language Coast ${appVersion()}", color = Color.White)
                 Hint("Translations by Google Gemini · Dictionary lookups by dict.cc")
+                val uriHandler = LocalUriHandler.current
+                TextButton(
+                    onClick = { runCatching { uriHandler.openUri(PRIVACY_POLICY_URL) } },
+                    colors = ButtonDefaults.textButtonColors(contentColor = SandBeige),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("Privacy policy")
+                }
             }
         }
     }
 
     if (showHowToUse) HowToUseSheet(onDismiss = { showHowToUse = false })
 }
+
+/** Where the privacy policy is published; the app stores link to it too. */
+private const val PRIVACY_POLICY_URL =
+    "https://github.com/Andreas-Erick/LanguageCoast/blob/main/docs/privacy-policy.md"
 
 /** A titled group of settings. */
 @Composable
