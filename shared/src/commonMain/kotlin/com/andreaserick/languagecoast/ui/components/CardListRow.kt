@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.isDue
+import com.andreaserick.languagecoast.ui.theme.CardBorder
 import com.andreaserick.languagecoast.ui.theme.CardWash
 import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
@@ -47,13 +49,14 @@ fun CardListRow(
             .fillMaxWidth()
             .clickable(onClickLabel = "Edit card", onClick = onEdit),
         colors = CardDefaults.cardColors(containerColor = CardWash, contentColor = Color.White),
+        border = BorderStroke(1.dp, if (due) SandBeige.copy(alpha = 0.35f) else CardBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = MaterialTheme.shapes.large
     ) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp)) {
             Column(modifier = Modifier.weight(1f).padding(top = 4.dp)) {
                 Text(card.nativeText, color = MistWhite, fontSize = 14.sp)
-                Text(card.targetText, color = SandBeige, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                Text(card.targetText, color = SandBeige, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                 if (card.alternatives.isNotEmpty()) {
                     Text(
                         "also: ${card.alternatives.joinToString(" · ")}",
@@ -64,7 +67,7 @@ fun CardListRow(
                     )
                 }
                 Spacer(modifier = Modifier.height(6.dp))
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     if (place != null) {
                         Text("$place · ", color = MistWhite, fontSize = 12.sp, maxLines = 1)
                     }
@@ -72,7 +75,7 @@ fun CardListRow(
                         dueLabel(card, now),
                         color = if (due) SandBeige else MistWhite,
                         fontSize = 12.sp,
-                        fontWeight = if (due) FontWeight.SemiBold else FontWeight.Normal,
+                        fontWeight = if (due) FontWeight.Bold else FontWeight.Normal,
                         maxLines = 1
                     )
                 }

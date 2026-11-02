@@ -2,7 +2,9 @@ package com.andreaserick.languagecoast.di
 
 import androidx.room.Room
 import androidx.sqlite.driver.AndroidSQLiteDriver
+import com.andreaserick.languagecoast.data.AndroidLocalModelController
 import com.andreaserick.languagecoast.data.AppDatabase
+import com.andreaserick.languagecoast.data.LocalModelController
 import com.andreaserick.languagecoast.data.buildAppDatabase
 import com.andreaserick.languagecoast.data.createSettingsDataStore
 import com.andreaserick.languagecoast.speech.AndroidSpeaker
@@ -25,4 +27,7 @@ actual val platformModule = module {
 
     /** Text is read aloud with Android's text-to-speech engine. */
     singleOf(::AndroidSpeaker) { bind<Speaker>() }
+
+    /** Scans the phone's hardware and downloads/manages local `.litertlm` AI models. */
+    singleOf(::AndroidLocalModelController) { bind<LocalModelController>() }
 }

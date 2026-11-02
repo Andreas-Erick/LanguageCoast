@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.ui.coast
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,9 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Delete
@@ -24,6 +28,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -46,7 +52,6 @@ import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.cardCountLabel
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
-import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
@@ -119,8 +124,8 @@ fun CoastScreen(
 }
 
 /**
- * A square card for one "Language Island": its emoji, name, card count and last study session,
- * with a ⋮ menu to see its cards or delete it.
+ * A square card for one "Language Island": its emoji in a soft medallion, name, card count
+ * and last study session, with a ⋮ menu to see its cards or delete it.
  */
 @Composable
 fun IslandCard(
@@ -139,6 +144,7 @@ fun IslandCard(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = cardTint(island.islandId), contentColor = DeepOceanBlue)
     ) {
         Box {
@@ -148,11 +154,18 @@ fun IslandCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .atLeastSquare()
-                    .padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 10.dp)
+                    .padding(start = 10.dp, end = 10.dp, top = 14.dp, bottom = 12.dp)
             ) {
                 Spacer(modifier = Modifier.weight(1f))
-                Text(text = islandEmoji(island), fontSize = 36.sp)
-                Spacer(modifier = Modifier.height(6.dp))
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(DeepOceanBlue.copy(alpha = 0.09f), CircleShape)
+                ) {
+                    Text(text = islandEmoji(island), fontSize = 32.sp)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = island.name,
                     style = MaterialTheme.typography.titleMedium,
@@ -170,6 +183,24 @@ fun IslandCard(
                     color = onCardSecondary,
                     textAlign = TextAlign.Center
                 )
+            }
+
+            if (summary.dueCount > 0) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = DeepOceanBlue,
+                    contentColor = SandBeige,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 10.dp, top = 10.dp)
+                ) {
+                    Text(
+                        text = "${summary.dueCount} due",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
             }
 
             IslandMenu(

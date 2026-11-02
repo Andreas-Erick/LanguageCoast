@@ -10,18 +10,42 @@ interface Translator {
 }
 
 /** Where translations come from, as picked in Settings. */
-enum class TranslationProvider(val label: String) {
+enum class TranslationProvider(
+    val label: String,
+    val subtitle: String,
+    val badge: String,
+    val isCloud: Boolean
+) {
     /** Google ML Kit on the phone: free and offline, but it only translates and can't pick a category. */
-    OnDevice("On-device"),
-    Gemini("Gemini"),
+    OnDevice("On-device", "Google ML Kit · Fast basic translation", "Offline", isCloud = false),
+    /** Local `.litertlm` LLM on the phone: free, private and offline with full categorization and alternatives. */
+    LocalAi("Local AI", "On-device LLM · Full AI categorization offline", "Private AI", isCloud = false),
+    /** Google Gemini API. */
+    Gemini("Gemini", "Google AI Studio · Fast & accurate", "Google", isCloud = true),
+    /** OpenAI ChatGPT / GPT-4.1 / GPT-4o API. */
+    OpenAI("OpenAI", "GPT-4.1 & GPT-4o · High precision", "OpenAI", isCloud = true),
+    /** Anthropic Claude API. */
+    Claude("Claude", "Anthropic Claude · Natural phrasing & nuance", "Anthropic", isCloud = true),
+    /** Groq Cloud ultra-fast LPU inference. */
+    Groq("Groq", "Ultra-fast LPU · Llama & Qwen cloud models", "Ultra-Fast", isCloud = true),
+    /** DeepSeek API. */
+    DeepSeek("DeepSeek", "DeepSeek V3 · Cost-effective multilingual AI", "DeepSeek", isCloud = true),
     /** One API key for many cloud models (GPT, Claude, Llama, …) through openrouter.ai. */
-    OpenRouter("OpenRouter")
+    OpenRouter("OpenRouter", "All cloud models with one API key", "Multi-Model", isCloud = true)
 }
 
 /** The provider for one translation, with what it needs to run. */
 sealed interface TranslationEngine {
     data object OnDevice : TranslationEngine
+    data class LocalAi(
+        val modelId: String = LocalAiCatalog.DEFAULT_MODEL_ID,
+        val modelPath: String? = null
+    ) : TranslationEngine
     data class Gemini(val apiKey: String, val model: String) : TranslationEngine
+    data class OpenAI(val apiKey: String, val model: String) : TranslationEngine
+    data class Claude(val apiKey: String, val model: String) : TranslationEngine
+    data class Groq(val apiKey: String, val model: String) : TranslationEngine
+    data class DeepSeek(val apiKey: String, val model: String) : TranslationEngine
     data class OpenRouter(val apiKey: String, val model: String) : TranslationEngine
 }
 
@@ -44,7 +68,7 @@ data class TranslationRequest(
     val existingCategories: List<String>
 )
 
-/** Builds the prompt cloud models (Gemini, OpenRouter) get for [request]. */
+/** Builds the prompt AI models (Gemini, OpenAI, Claude, Groq, DeepSeek, OpenRouter, Local AI) get for [request]. */
 fun buildTranslationPrompt(request: TranslationRequest): String = with(request) {
     val categoryText = if (existingCategories.isEmpty()) {
         "You have no existing categories yet. Generate a brand new, single-word category (the name of the category should be in English)."
@@ -106,32 +130,75 @@ const val ALTERNATIVES_MIN_WORDS = 6
 internal fun wantsAlternatives(sentence: String): Boolean =
     sentence.split(Regex("\\s+")).count { it.isNotBlank() } >= ALTERNATIVES_MIN_WORDS
 
+private val KNOWN_LABELS = listOf("TRANSLATION", "CATEGORY", "EMOJI", "ALTERNATIVES", "NOTE")
+
 /**
  * Parses a model response of the form `TRANSLATION: ... CATEGORY: ... EMOJI: ...`, optionally followed by
  * `ALTERNATIVES: a || b` and `NOTE: ...`.
+ *
+ * Resilient against markdown formatting (`**`, code fences, bullet points), case variations (`Translation:`),
+ * reordered labels (e.g. `EMOJI:` appearing before `CATEGORY:`), and literal `[...]` brackets around values.
  * Returns [TranslationResult.FAILURE] if the translation or category is missing or empty;
  * the emoji is optional and dropped if it doesn't look like one, and "NONE" means no alternatives or note.
  */
 fun parseTranslationResponse(responseText: String): TranslationResult {
-    // Models occasionally wrap the labels in Markdown bold; strip that before parsing.
-    val text = responseText.replace("**", "")
-    if (!text.contains("TRANSLATION:") || !text.contains("CATEGORY:")) {
+    // Strip markdown bold, code fences, and normalize known field labels to uppercase so case-insensitive
+    // model outputs ("Translation:", "- **Category**:") parse reliably.
+    val cleaned = responseText
+        .replace(Regex("```[a-zA-Z]*"), "")
+        .replace("```", "")
+        .replace("**", "")
+        .replace(Regex("(?m)^\\s*[-*•#]+\\s*(?=(?:translation|category|emoji|alternatives|note)\\s*:)", RegexOption.IGNORE_CASE), "")
+
+    val normalized = KNOWN_LABELS.fold(cleaned) { acc, label ->
+        acc.replace(Regex("(?i)\\b$label\\s*:"), "$label:")
+    }
+
+    if (!normalized.contains("TRANSLATION:") || !normalized.contains("CATEGORY:")) {
         return TranslationResult.FAILURE
     }
 
-    val translation = text.substringAfter("TRANSLATION:").substringBefore("CATEGORY:").trim()
-    val category = text.substringAfter("CATEGORY:").trim().lineSequence().first().trim()
+    fun extractField(label: String, singleLineOnly: Boolean): String {
+        val marker = "$label:"
+        val startIndex = normalized.indexOf(marker)
+        if (startIndex == -1) return ""
+        val afterMarker = normalized.substring(startIndex + marker.length)
 
-    val emoji = if (text.contains("EMOJI:")) text.substringAfter("EMOJI:").trim().lineSequence().first().trim() else ""
+        // Stop at the earliest occurrence of any other known label.
+        val nextLabelOffset = KNOWN_LABELS
+            .filter { it != label }
+            .mapNotNull { other ->
+                val idx = afterMarker.indexOf("$other:")
+                if (idx >= 0) idx else null
+            }
+            .minOrNull()
 
-    // The rest of the line after [label], or an empty string if the response has no such line.
-    fun line(label: String) = if (text.contains(label)) text.substringAfter(label).trim().lineSequence().first().trim() else ""
-    val alternatives = line("ALTERNATIVES:").split("||")
-        .map { it.trim() }
+        val rawSegment = if (nextLabelOffset != null) {
+            afterMarker.substring(0, nextLabelOffset)
+        } else {
+            afterMarker
+        }
+
+        val value = if (singleLineOnly) {
+            rawSegment.trim().lineSequence().firstOrNull()?.trim().orEmpty()
+        } else {
+            rawSegment.trim().lines().firstOrNull { it.isNotBlank() }?.trim() ?: rawSegment.trim()
+        }
+        return stripPromptBrackets(value)
+    }
+
+    val translation = extractField("TRANSLATION", singleLineOnly = false)
+    val category = extractField("CATEGORY", singleLineOnly = true)
+    val emoji = extractField("EMOJI", singleLineOnly = true)
+
+    val alternatives = extractField("ALTERNATIVES", singleLineOnly = true)
+        .split("||")
+        .map { stripPromptBrackets(it.trim()) }
         .filter { it.isNotEmpty() && !it.equals("NONE", ignoreCase = true) && it != translation }
         .distinct()
         .take(2)
-    val note = line("NOTE:").takeIf { it.isNotEmpty() && !it.equals("NONE", ignoreCase = true) && alternatives.isNotEmpty() }
+    val note = extractField("NOTE", singleLineOnly = true)
+        .takeIf { it.isNotEmpty() && !it.equals("NONE", ignoreCase = true) && alternatives.isNotEmpty() }
 
     return if (translation.isNotEmpty() && category.isNotEmpty()) {
         TranslationResult(
@@ -144,6 +211,16 @@ fun parseTranslationResponse(responseText: String): TranslationResult {
         )
     } else {
         TranslationResult.FAILURE
+    }
+}
+
+/** Strips literal `[` and `]` if a model echoed the prompt's placeholder brackets (e.g. `[Greetings]` -> `Greetings`). */
+private fun stripPromptBrackets(value: String): String {
+    val trimmed = value.trim()
+    return if (trimmed.length >= 2 && trimmed.startsWith("[") && trimmed.endsWith("]") && !trimmed.substring(1, trimmed.length - 1).contains("[")) {
+        trimmed.substring(1, trimmed.length - 1).trim()
+    } else {
+        trimmed
     }
 }
 

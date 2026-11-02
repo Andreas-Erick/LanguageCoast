@@ -4,11 +4,17 @@ import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Sailing
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.Sailing
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -25,6 +31,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -51,6 +59,7 @@ import com.andreaserick.languagecoast.ui.search.SearchScreen
 import com.andreaserick.languagecoast.ui.settings.SettingsScreen
 import com.andreaserick.languagecoast.ui.study.StudyScreen
 import com.andreaserick.languagecoast.ui.theme.AbyssBlue
+import com.andreaserick.languagecoast.ui.theme.CardBorder
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.LanguageCoastTheme
 import com.andreaserick.languagecoast.ui.theme.SandBeige
@@ -60,17 +69,31 @@ import com.andreaserick.languagecoast.ui.theme.SandMuted
 private data class TopLevelDestination(
     val route: Any,
     val label: String,
-    val icon: ImageVector,
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector,
     val isSelected: (NavDestination) -> Boolean
 )
 
 private val topLevelDestinations = listOf(
-    TopLevelDestination(CreateScreenRoute, "Create", Icons.Default.EditNote) { it.hasRoute<CreateScreenRoute>() },
+    TopLevelDestination(
+        route = CreateScreenRoute,
+        label = "Create",
+        selectedIcon = Icons.Filled.EditNote,
+        unselectedIcon = Icons.Outlined.EditNote
+    ) { it.hasRoute<CreateScreenRoute>() },
     // A coast is only opened from My Coasts, so it keeps that tab selected.
-    TopLevelDestination(MyCoastScreenRoute, "My Coasts", Icons.Default.Sailing) {
-        it.hasRoute<MyCoastScreenRoute>() || it.hasRoute<CoastScreenRoute>()
-    },
-    TopLevelDestination(SettingsScreenRoute, "Settings", Icons.Default.Tune) { it.hasRoute<SettingsScreenRoute>() }
+    TopLevelDestination(
+        route = MyCoastScreenRoute,
+        label = "My Coasts",
+        selectedIcon = Icons.Filled.Sailing,
+        unselectedIcon = Icons.Outlined.Sailing
+    ) { it.hasRoute<MyCoastScreenRoute>() || it.hasRoute<CoastScreenRoute>() },
+    TopLevelDestination(
+        route = SettingsScreenRoute,
+        label = "Settings",
+        selectedIcon = Icons.Filled.Tune,
+        unselectedIcon = Icons.Outlined.Tune
+    ) { it.hasRoute<SettingsScreenRoute>() }
 )
 
 private const val TRANSITION_MILLIS = 300
@@ -96,35 +119,49 @@ private fun AppContent() {
                 containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbarHostState) { CoastSnackbar(it) } },
                 bottomBar = {
-                    // Matches the bottom of the background gradient.
-                    NavigationBar(containerColor = AbyssBlue) {
-                        // A study session belongs to the tab it was opened from (My Coasts or Create's
-                        // "Start reviewing"), so select the tab of the newest screen that has one.
-                        val backStack by navController.currentBackStack.collectAsState()
-                        val tabDestination = backStack.lastOrNull { entry ->
-                            topLevelDestinations.any { tab -> entry.destination.hierarchy.any(tab.isSelected) }
-                        }?.destination
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        HorizontalDivider(color = CardBorder, thickness = 1.dp)
+                        // Matches the bottom of the background gradient.
+                        NavigationBar(containerColor = AbyssBlue, tonalElevation = 0.dp) {
+                            // A study session belongs to the tab it was opened from (My Coasts or Create's
+                            // "Start reviewing"), so select the tab of the newest screen that has one.
+                            val backStack by navController.currentBackStack.collectAsState()
+                            val tabDestination = backStack.lastOrNull { entry ->
+                                topLevelDestinations.any { tab -> entry.destination.hierarchy.any(tab.isSelected) }
+                            }?.destination
 
-                        topLevelDestinations.forEach { destination ->
-                            NavigationBarItem(
-                                icon = { Icon(destination.icon, contentDescription = null) },
-                                label = { Text(destination.label) },
-                                selected = tabDestination?.hierarchy?.any(destination.isSelected) == true,
-                                onClick = {
-                                    navController.navigate(destination.route) {
-                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = DeepOceanBlue,
-                                    indicatorColor = SandBeige,
-                                    selectedTextColor = SandBeige,
-                                    unselectedIconColor = SandMuted,
-                                    unselectedTextColor = SandMuted
+                            topLevelDestinations.forEach { destination ->
+                                val selected = tabDestination?.hierarchy?.any(destination.isSelected) == true
+                                NavigationBarItem(
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            text = destination.label,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                    },
+                                    selected = selected,
+                                    onClick = {
+                                        navController.navigate(destination.route) {
+                                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = DeepOceanBlue,
+                                        indicatorColor = SandBeige,
+                                        selectedTextColor = SandBeige,
+                                        unselectedIconColor = SandMuted,
+                                        unselectedTextColor = SandMuted
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
                 }

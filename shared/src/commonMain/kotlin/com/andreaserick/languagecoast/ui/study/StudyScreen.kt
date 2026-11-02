@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -52,6 +55,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -81,6 +85,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,6 +98,7 @@ import com.andreaserick.languagecoast.ui.components.EditCardSheet
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.plural
+import com.andreaserick.languagecoast.ui.theme.CardBorder
 import com.andreaserick.languagecoast.ui.theme.CardTints
 import com.andreaserick.languagecoast.ui.theme.CardWash
 import com.andreaserick.languagecoast.ui.theme.CoralAccent
@@ -102,6 +108,7 @@ import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.SandMuted
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
+import com.andreaserick.languagecoast.ui.theme.coastTextFieldColors
 import com.andreaserick.languagecoast.util.dictCcSearchUrl
 import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
@@ -279,7 +286,7 @@ private fun DirectionToggle(
             colors = ButtonDefaults.textButtonColors(contentColor = SandMuted),
             modifier = Modifier.semantics { contentDescription = "Studying $from to $to. Tap to swap." }
         ) {
-            Text("$from → $to", fontSize = 14.sp)
+            Text("$from → $to", fontSize = 14.sp, fontWeight = FontWeight.Medium)
             Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.padding(start = 6.dp))
         }
     }
@@ -395,6 +402,13 @@ fun FlipStudyView(
         label = "flip"
     )
 
+    val faceLanguage = when {
+        isReversed && !isFlipped -> targetLang
+        isReversed && isFlipped -> nativeLang
+        !isReversed && !isFlipped -> nativeLang
+        else -> targetLang
+    }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.weight(1f, fill = false)) {
             // Shown behind the card while it is dragged, to tell which way grades it how.
@@ -432,7 +446,8 @@ fun FlipStudyView(
                         rotationZ = offsetX.value / 40f
                     }
                     .clickable { isFlipped = !isFlipped },
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
+                shape = MaterialTheme.shapes.extraLarge,
                 // Light card faces with dark text keep both sides readable
                 colors = CardDefaults.cardColors(
                     // Sky on the front keeps the small "Tap to flip" hint above 4.5:1 contrast.
@@ -448,6 +463,24 @@ fun FlipStudyView(
                             .graphicsLayer { rotationY = if (isFlipped) 180f else 0f },
                         contentAlignment = Alignment.Center
                     ) {
+                        if (faceLanguage.isNotEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = DeepOceanBlue.copy(alpha = 0.1f),
+                                contentColor = DeepOceanBlue,
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(start = 16.dp, top = 14.dp)
+                            ) {
+                                Text(
+                                    text = faceLanguage,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
                         if (isReversed) {
                             // The translation is the question: it can be heard before flipping.
                             CardFaceText(if (isFlipped) currentCard.nativeText else currentCard.targetText)
@@ -521,7 +554,7 @@ fun FlipStudyView(
                     .height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = WaveTeal, contentColor = Color.White)
             ) {
-                Text("Show answer", fontSize = 18.sp)
+                Text("Show answer", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -533,9 +566,9 @@ private fun CardFaceText(text: String) {
     Text(
         text = text,
         fontSize = 24.sp,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center,
-        modifier = Modifier.padding(16.dp)
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 28.dp)
     )
 }
 
@@ -545,6 +578,7 @@ private fun BoxScope.FlipHint() {
     Text(
         text = "Tap to flip",
         fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
         color = DeepOceanBlue.copy(alpha = 0.85f),
         modifier = Modifier
             .align(Alignment.BottomCenter)
@@ -644,6 +678,13 @@ fun TypeStudyView(
         if (hasChecked) result.bringIntoView()
     }
 
+    fun checkAnswer() {
+        if (userInput.isBlank()) return
+        isCorrect = isCorrectAnswer(userInput, currentCard, isReversed)
+        hasChecked = true
+        haptics.performHapticFeedback(if (isCorrect) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
@@ -672,6 +713,10 @@ fun TypeStudyView(
                 hasChecked = false // Hide feedback if they start typing again
             },
             label = { Text(if (isReversed && nativeLang.isNotEmpty()) "Type it in $nativeLang..." else "Type the translation...") },
+            colors = coastTextFieldColors(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { checkAnswer() }),
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -679,18 +724,14 @@ fun TypeStudyView(
 
         if (!hasChecked) {
             Button(
-                onClick = {
-                    isCorrect = isCorrectAnswer(userInput, currentCard, isReversed)
-                    hasChecked = true
-                    haptics.performHapticFeedback(if (isCorrect) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
-                },
+                onClick = ::checkAnswer,
                 enabled = userInput.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = WaveTeal, contentColor = Color.White)
             ) {
-                Text("Check answer", fontSize = 18.sp)
+                Text("Check answer", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         } else Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -762,7 +803,7 @@ fun TypeStudyView(
                         .fillMaxWidth()
                         .height(56.dp)
                 ) {
-                    Text("Continue", fontSize = 18.sp)
+                    Text("Continue", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
                 Text(
                     text = "This card comes back later in this session.",
@@ -947,7 +988,7 @@ private fun SessionEndButtons(onPracticeAll: () -> Unit, onBack: () -> Unit) {
             .height(56.dp),
         colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
     ) {
-        Text("Practice all cards", fontSize = 18.sp)
+        Text("Practice all cards", fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
 
     Spacer(modifier = Modifier.height(12.dp))
@@ -960,7 +1001,7 @@ private fun SessionEndButtons(onPracticeAll: () -> Unit, onBack: () -> Unit) {
         border = BorderStroke(1.dp, SandBeige),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige)
     ) {
-        Text("Back to islands", fontSize = 18.sp)
+        Text("Back to islands", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -969,6 +1010,7 @@ private fun SessionEndButtons(onPracticeAll: () -> Unit, onBack: () -> Unit) {
 private fun StatTile(value: String, label: String, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
+        border = BorderStroke(1.dp, CardBorder),
         colors = CardDefaults.cardColors(containerColor = CardWash, contentColor = SandBeige)
     ) {
         Column(
@@ -1028,7 +1070,7 @@ fun ClickableWordSentence(sentence: String, onWordClick: ((String) -> Unit)?) {
     FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(horizontal = 20.dp, vertical = 28.dp),
         horizontalArrangement = Arrangement.Center
     ) {
         sentence.split(" ").filter { it.isNotEmpty() }.forEach { token ->
@@ -1052,7 +1094,7 @@ fun ClickableWordSentence(sentence: String, onWordClick: ((String) -> Unit)?) {
 /** A word or punctuation of a card's sentence, at the size cards are shown in. */
 @Composable
 private fun WordText(text: String, modifier: Modifier = Modifier) {
-    Text(text = text, fontSize = 24.sp, fontWeight = FontWeight.Medium, modifier = modifier)
+    Text(text = text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, modifier = modifier)
 }
 
 /** Splits "¿hola," into "¿", "hola" and ",": the word is everything from the first to the last letter or digit. */

@@ -21,22 +21,27 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.ui.theme.AbyssBlue
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
+import com.andreaserick.languagecoast.ui.theme.MidnightOcean
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.SandMuted
+import com.andreaserick.languagecoast.ui.theme.SurfLightBlue
+import com.andreaserick.languagecoast.ui.theme.WaveTeal
 import kotlin.math.PI
 import kotlin.math.sin
 
 /**
  * The title bar used by every screen: a title, an optional back arrow, optional actions,
- * and a faint wave line underneath.
+ * and a layered coastal wave line underneath.
  *
  * @param subtitle Optional smaller line under the title (e.g. a coast's native name).
  * @param onBack Shows a back arrow when not null.
@@ -56,7 +61,7 @@ fun ScreenHeader(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = if (onBack == null) 24.dp else 8.dp, end = 8.dp, top = 20.dp, bottom = 8.dp)
+                .padding(start = if (onBack == null) 24.dp else 8.dp, end = 8.dp, top = 18.dp, bottom = 8.dp)
         ) {
             if (onBack != null) {
                 IconButton(onClick = onBack) {
@@ -87,19 +92,19 @@ fun ScreenHeader(
         WaveLine(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(12.dp)
+                .height(14.dp)
                 .padding(horizontal = 24.dp)
         )
     }
 }
 
-/** A faint hand-drawn-looking wave, used as a divider under headers. */
+/** A dual-wave divider under headers, evoking gentle ocean swells. */
 @Composable
 fun WaveLine(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        val waves = 6
-        val amplitude = size.height / 3
-        val path = Path().apply {
+        val waves = 5
+        val amplitude = size.height / 3.2f
+        val primaryPath = Path().apply {
             moveTo(0f, size.height / 2)
             val steps = 120
             for (i in 1..steps) {
@@ -108,17 +113,59 @@ fun WaveLine(modifier: Modifier = Modifier) {
                 lineTo(x, y)
             }
         }
-        drawPath(path, color = SandBeige.copy(alpha = 0.18f), style = Stroke(width = 1.5.dp.toPx()))
+        val secondaryPath = Path().apply {
+            moveTo(0f, size.height / 2)
+            val steps = 120
+            for (i in 1..steps) {
+                val x = size.width * i / steps
+                val y = size.height / 2 + (amplitude * 0.65f) * sin(2 * PI * waves * i / steps + 1.1).toFloat()
+                lineTo(x, y)
+            }
+        }
+        drawPath(
+            path = secondaryPath,
+            color = SurfLightBlue.copy(alpha = 0.14f),
+            style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round)
+        )
+        drawPath(
+            path = primaryPath,
+            color = SandBeige.copy(alpha = 0.26f),
+            style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round)
+        )
     }
 }
 
-/** The app background: a gentle gradient from [DeepOceanBlue] at the surface to [AbyssBlue] below. */
+/**
+ * The app background: a deep ocean gradient from [DeepOceanBlue] through [MidnightOcean] to [AbyssBlue],
+ * with subtle sunlit water reflections near the surface.
+ */
 @Composable
 fun OceanBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(DeepOceanBlue, AbyssBlue))),
-        content = content
-    )
+            .background(Brush.verticalGradient(listOf(DeepOceanBlue, MidnightOcean, AbyssBlue)))
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(WaveTeal.copy(alpha = 0.22f), androidx.compose.ui.graphics.Color.Transparent),
+                    center = Offset(size.width * 0.85f, size.height * 0.08f),
+                    radius = size.width * 0.75f
+                ),
+                radius = size.width * 0.75f,
+                center = Offset(size.width * 0.85f, size.height * 0.08f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(SandBeige.copy(alpha = 0.07f), androidx.compose.ui.graphics.Color.Transparent),
+                    center = Offset(size.width * 0.15f, size.height * 0.28f),
+                    radius = size.width * 0.6f
+                ),
+                radius = size.width * 0.6f,
+                center = Offset(size.width * 0.15f, size.height * 0.28f)
+            )
+        }
+        content()
+    }
 }

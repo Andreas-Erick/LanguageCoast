@@ -1,9 +1,10 @@
 package com.andreaserick.languagecoast.data
 
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.test.Test
 
 class TranslationResponseParserTest {
 
@@ -23,6 +24,24 @@ class TranslationResponseParserTest {
         assertTrue(result.isSuccess)
         assertEquals("hestur, hesturinn, hestar", result.translatedText)
         assertEquals("Animals", result.finalCategory)
+    }
+
+    @Test
+    fun parsesCodeFencedCaseInsensitiveAndReorderedLabels() {
+        val result = parseTranslationResponse(
+            """
+            ```text
+            - translation: [¿Cuánto cuesta esto?]
+            - emoji: 🛍️
+            - category: [Shopping]
+            ```
+            """.trimIndent()
+        )
+
+        assertTrue(result.isSuccess)
+        assertEquals("¿Cuánto cuesta esto?", result.translatedText)
+        assertEquals("Shopping", result.finalCategory)
+        assertEquals("🛍️", result.emoji)
     }
 
     @Test
@@ -93,6 +112,42 @@ class TranslationResponseParserTest {
         assertTrue(long.contains("ALTERNATIVES: [alternative 1] || [alternative 2]"))
         assertTrue(long.contains("explaining how they differ"))
         assertTrue(long.lines().contains("Input text: Do you want to go to the cinema tomorrow?"))
+    }
+
+    @Test
+    fun normalizesLegacyGeminiModelsToValidIds() {
+        assertEquals("gemini-2.5-flash", normalizeGeminiModel("gemini-3.5-flash"))
+        assertEquals("gemini-2.5-pro", normalizeGeminiModel("gemini-3.1-pro-preview"))
+        assertEquals("gemini-2.5-flash-lite", normalizeGeminiModel("gemini-3.1-flash-lite-preview"))
+        assertEquals("gemini-2.5-flash", normalizeGeminiModel(""))
+        assertEquals("gemini-2.0-flash", normalizeGeminiModel("models/gemini-2.0-flash"))
+    }
+
+    @Test
+    fun recommendsBestMatchLocalModelForDeviceHardware() {
+        val midRangeProfile = DeviceHardwareProfile(
+            deviceName = "Pixel 8a",
+            socOrProcessor = "Tensor G3",
+            cpuCores = 8,
+            primaryAbi = "arm64-v8a",
+            isArm64 = true,
+            totalRamMb = 7_800L,
+            availableRamMb = 4_200L,
+            freeStorageMb = 24_000L,
+            totalStorageMb = 128_000L,
+            gpuAccelerationSupported = true
+        )
+
+        val recommendations = recommendModelsForHardware(midRangeProfile)
+        assertEquals(LocalAiCatalog.MODELS.size, recommendations.size)
+        val bestMatch = recommendations.firstOrNull { it.fitLevel == ModelFitLevel.BEST_MATCH }
+        assertNotNull(bestMatch)
+        assertEquals("GPU (OpenCL)", bestMatch.recommendedBackend)
+        assertTrue(bestMatch.hasEnoughStorage)
+
+        val lowStorageProfile = midRangeProfile.copy(freeStorageMb = 400L)
+        val lowStorageRecs = recommendModelsForHardware(lowStorageProfile)
+        assertTrue(lowStorageRecs.all { !it.hasEnoughStorage && it.fitLevel == ModelFitLevel.NOT_RECOMMENDED })
     }
 
     private fun request(existingCategories: List<String>) = TranslationRequest(

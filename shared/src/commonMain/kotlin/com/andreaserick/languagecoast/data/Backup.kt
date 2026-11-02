@@ -37,6 +37,11 @@ data class BackupSettings(
     val translationProvider: String? = null,
     val geminiModel: String? = null,
     val openRouterModel: String? = null,
+    val localAiModel: String? = null,
+    val openAiModel: String? = null,
+    val claudeModel: String? = null,
+    val groqModel: String? = null,
+    val deepSeekModel: String? = null,
     val streakCount: Int = 0,
     /** The day of the last study session (ISO, e.g. "2026-10-11"), which the streak counts from. */
     val lastStudyDate: String? = null,

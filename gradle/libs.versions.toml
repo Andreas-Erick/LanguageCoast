@@ -27,10 +27,13 @@ work = "2.11.2"
 koin = "4.1.1"
 coroutines = "1.10.2"
 splashscreen = "1.0.1"
+# On-device translation & Local AI (LiteRT-LM)
 mlkitTranslate = "17.0.3"
+litertlm = "0.18.0"
 kotlinxDatetime = "0.7.1"
 
 [libraries]
+litertlm-android = { group = "com.google.ai.edge.litertlm", name = "litertlm-android", version.ref = "litertlm" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

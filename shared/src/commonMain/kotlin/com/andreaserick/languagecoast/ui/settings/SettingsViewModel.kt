@@ -2,14 +2,22 @@ package com.andreaserick.languagecoast.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andreaserick.languagecoast.data.DeviceHardwareProfile
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.Languages
+import com.andreaserick.languagecoast.data.LocalAiCatalog
+import com.andreaserick.languagecoast.data.LocalModelController
+import com.andreaserick.languagecoast.data.ModelFitLevel
+import com.andreaserick.languagecoast.data.ModelInstallStatus
+import com.andreaserick.languagecoast.data.ModelRecommendation
+import com.andreaserick.languagecoast.data.NoOpLocalModelController
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.nativeLanguageOptions
+import com.andreaserick.languagecoast.data.recommendModelsForHardware
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,8 +42,37 @@ data class SettingsUiState(
     val savedOpenRouterKey: String = "",
     /** True right after the OpenRouter key was saved, until it is edited again. */
     val openRouterSaved: Boolean = false,
+    val openAiModel: String = SettingsDefaults.OPENAI_MODEL,
+    val savedOpenAiKey: String = "",
+    val openAiSaved: Boolean = false,
+    val claudeModel: String = SettingsDefaults.CLAUDE_MODEL,
+    val savedClaudeKey: String = "",
+    val claudeSaved: Boolean = false,
+    val groqModel: String = SettingsDefaults.GROQ_MODEL,
+    val savedGroqKey: String = "",
+    val groqSaved: Boolean = false,
+    val deepSeekModel: String = SettingsDefaults.DEEPSEEK_MODEL,
+    val savedDeepSeekKey: String = "",
+    val deepSeekSaved: Boolean = false,
+    val localAiModel: String = SettingsDefaults.LOCAL_AI_MODEL,
+    val hardwareProfile: DeviceHardwareProfile? = null,
+    val isScanningHardware: Boolean = false,
+    val modelRecommendations: List<ModelRecommendation> = defaultRecommendations(),
+    val modelInstallStates: Map<String, ModelInstallStatus> = emptyMap(),
     val reminder: ReminderSettings = ReminderSettings()
 )
+
+private fun defaultRecommendations(): List<ModelRecommendation> =
+    LocalAiCatalog.MODELS.mapIndexed { index, model ->
+        ModelRecommendation(
+            model = model,
+            fitLevel = if (index == 0) ModelFitLevel.BEST_MATCH else ModelFitLevel.GREAT_FIT,
+            fitScore = 95 - index * 5,
+            reason = model.summary,
+            recommendedBackend = "GPU / CPU",
+            hasEnoughStorage = true
+        )
+    }
 
 /** Time suggested when switching reminders from "any time" to a fixed time. */
 val DEFAULT_REMINDER_TIME = LocalTime(18, 0)
@@ -43,29 +80,124 @@ val DEFAULT_REMINDER_TIME = LocalTime(18, 0)
 class SettingsViewModel(
     private val settings: SettingsRepository,
     private val flashcards: FlashcardRepository,
-    private val reminderScheduler: ReminderScheduler
+    private val reminderScheduler: ReminderScheduler,
+    private val localModels: LocalModelController = NoOpLocalModelController()
 ) : ViewModel() {
 
     private val apiKeySaved = MutableStateFlow(false)
     private val openRouterSaved = MutableStateFlow(false)
+    private val openAiSaved = MutableStateFlow(false)
+    private val claudeSaved = MutableStateFlow(false)
+    private val groqSaved = MutableStateFlow(false)
+    private val deepSeekSaved = MutableStateFlow(false)
+
+    private data class CloudProviderState(
+        val geminiModel: String,
+        val geminiKey: String,
+        val geminiSaved: Boolean,
+        val openRouterModel: String,
+        val openRouterKey: String,
+        val openRouterSaved: Boolean,
+        val openAiModel: String,
+        val openAiKey: String,
+        val openAiSaved: Boolean,
+        val claudeModel: String,
+        val claudeKey: String,
+        val claudeSaved: Boolean,
+        val groqModel: String,
+        val groqKey: String,
+        val groqSaved: Boolean,
+        val deepSeekModel: String,
+        val deepSeekKey: String,
+        val deepSeekSaved: Boolean
+    )
+
+    private data class LocalAiState(
+        val activeModelId: String,
+        val hardwareProfile: DeviceHardwareProfile?,
+        val isScanning: Boolean,
+        val installStates: Map<String, ModelInstallStatus>
+    )
+
+    private val cloudState = combine(
+        combine(
+            combine(settings.geminiModel, settings.apiKey, apiKeySaved, ::Triple),
+            combine(settings.openRouterModel, settings.openRouterKey, openRouterSaved, ::Triple),
+            combine(settings.openAiModel, settings.openAiKey, openAiSaved, ::Triple),
+            ::Triple
+        ),
+        combine(
+            combine(settings.claudeModel, settings.claudeKey, claudeSaved, ::Triple),
+            combine(settings.groqModel, settings.groqKey, groqSaved, ::Triple),
+            combine(settings.deepSeekModel, settings.deepSeekKey, deepSeekSaved, ::Triple),
+            ::Triple
+        )
+    ) { (gemini, openRouter, openAi), (claude, groq, deepSeek) ->
+        CloudProviderState(
+            geminiModel = gemini.first,
+            geminiKey = gemini.second,
+            geminiSaved = gemini.third,
+            openRouterModel = openRouter.first,
+            openRouterKey = openRouter.second,
+            openRouterSaved = openRouter.third,
+            openAiModel = openAi.first,
+            openAiKey = openAi.second,
+            openAiSaved = openAi.third,
+            claudeModel = claude.first,
+            claudeKey = claude.second,
+            claudeSaved = claude.third,
+            groqModel = groq.first,
+            groqKey = groq.second,
+            groqSaved = groq.third,
+            deepSeekModel = deepSeek.first,
+            deepSeekKey = deepSeek.second,
+            deepSeekSaved = deepSeek.third
+        )
+    }
+
+    private val localAiState = combine(
+        settings.localAiModel,
+        localModels.hardwareProfile,
+        localModels.isScanning,
+        localModels.installStates,
+        ::LocalAiState
+    )
 
     val uiState: StateFlow<SettingsUiState> = combine(
         combine(settings.nativeLanguage, flashcards.observeCoasts(), ::Pair),
-        combine(settings.geminiModel, settings.apiKey, apiKeySaved, ::Triple),
-        combine(settings.openRouterModel, settings.openRouterKey, openRouterSaved, ::Triple),
+        cloudState,
+        localAiState,
         settings.translationProvider,
         settings.reminderSettings
-    ) { (native, coasts), (geminiModel, geminiKey, geminiSaved), (openRouterModel, openRouterKey, openRouterSaved), provider, reminder ->
+    ) { (native, coasts), cloud, local, provider, reminder ->
+        val recommendations = local.hardwareProfile?.let(::recommendModelsForHardware) ?: defaultRecommendations()
         SettingsUiState(
             nativeLanguage = native,
             nativeLanguageOptions = nativeLanguageOptions(coasts),
             translationProvider = provider,
-            geminiModel = geminiModel,
-            savedApiKey = geminiKey,
-            apiKeySaved = geminiSaved,
-            openRouterModel = openRouterModel,
-            savedOpenRouterKey = openRouterKey,
-            openRouterSaved = openRouterSaved,
+            geminiModel = cloud.geminiModel,
+            savedApiKey = cloud.geminiKey,
+            apiKeySaved = cloud.geminiSaved,
+            openRouterModel = cloud.openRouterModel,
+            savedOpenRouterKey = cloud.openRouterKey,
+            openRouterSaved = cloud.openRouterSaved,
+            openAiModel = cloud.openAiModel,
+            savedOpenAiKey = cloud.openAiKey,
+            openAiSaved = cloud.openAiSaved,
+            claudeModel = cloud.claudeModel,
+            savedClaudeKey = cloud.claudeKey,
+            claudeSaved = cloud.claudeSaved,
+            groqModel = cloud.groqModel,
+            savedGroqKey = cloud.groqKey,
+            groqSaved = cloud.groqSaved,
+            deepSeekModel = cloud.deepSeekModel,
+            savedDeepSeekKey = cloud.deepSeekKey,
+            deepSeekSaved = cloud.deepSeekSaved,
+            localAiModel = local.activeModelId,
+            hardwareProfile = local.hardwareProfile,
+            isScanningHardware = local.isScanning,
+            modelRecommendations = recommendations,
+            modelInstallStates = local.installStates,
             reminder = reminder
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
@@ -81,6 +213,32 @@ class SettingsViewModel(
     /** Changes where translations come from. */
     fun setTranslationProvider(provider: TranslationProvider) {
         viewModelScope.launch { settings.setTranslationProvider(provider) }
+    }
+
+    /** Scans or re-scans the user's phone hardware to recommend compatible local AI models. */
+    fun scanHardware() {
+        localModels.scanHardware()
+    }
+
+    /** Downloads and installs a local `.litertlm` model and sets it as the active Local AI model. */
+    fun installLocalModel(modelId: String) {
+        localModels.installModel(modelId)
+        viewModelScope.launch { settings.setLocalAiModel(modelId) }
+    }
+
+    /** Cancels an active download for [modelId]. */
+    fun cancelLocalModelInstall(modelId: String) {
+        localModels.cancelInstall(modelId)
+    }
+
+    /** Deletes the installed `.litertlm` file for [modelId] to free storage space. */
+    fun deleteLocalModel(modelId: String) {
+        localModels.deleteModel(modelId)
+    }
+
+    /** Selects [modelId] as the active Local AI model used when translating. */
+    fun setLocalAiModel(modelId: String) {
+        viewModelScope.launch { settings.setLocalAiModel(modelId) }
     }
 
     /** Saves the OpenRouter model ID as typed; a blank one means [SettingsDefaults.OPENROUTER_MODEL] when translating. */
@@ -117,6 +275,74 @@ class SettingsViewModel(
     /** Hides the "saved" confirmation once the user edits the key again. */
     fun onApiKeyEdited() {
         apiKeySaved.value = false
+    }
+
+    /** Changes the OpenAI model used for translations. */
+    fun setOpenAiModel(model: String) {
+        viewModelScope.launch { settings.setOpenAiModel(model) }
+    }
+
+    /** Saves the OpenAI API key. */
+    fun saveOpenAiKey(key: String) {
+        viewModelScope.launch {
+            settings.setOpenAiKey(key.trim())
+            openAiSaved.value = true
+        }
+    }
+
+    fun onOpenAiKeyEdited() {
+        openAiSaved.value = false
+    }
+
+    /** Changes the Anthropic Claude model used for translations. */
+    fun setClaudeModel(model: String) {
+        viewModelScope.launch { settings.setClaudeModel(model) }
+    }
+
+    /** Saves the Anthropic Claude API key. */
+    fun saveClaudeKey(key: String) {
+        viewModelScope.launch {
+            settings.setClaudeKey(key.trim())
+            claudeSaved.value = true
+        }
+    }
+
+    fun onClaudeKeyEdited() {
+        claudeSaved.value = false
+    }
+
+    /** Changes the Groq model used for translations. */
+    fun setGroqModel(model: String) {
+        viewModelScope.launch { settings.setGroqModel(model) }
+    }
+
+    /** Saves the Groq API key. */
+    fun saveGroqKey(key: String) {
+        viewModelScope.launch {
+            settings.setGroqKey(key.trim())
+            groqSaved.value = true
+        }
+    }
+
+    fun onGroqKeyEdited() {
+        groqSaved.value = false
+    }
+
+    /** Changes the DeepSeek model used for translations. */
+    fun setDeepSeekModel(model: String) {
+        viewModelScope.launch { settings.setDeepSeekModel(model) }
+    }
+
+    /** Saves the DeepSeek API key. */
+    fun saveDeepSeekKey(key: String) {
+        viewModelScope.launch {
+            settings.setDeepSeekKey(key.trim())
+            deepSeekSaved.value = true
+        }
+    }
+
+    fun onDeepSeekKeyEdited() {
+        deepSeekSaved.value = false
     }
 
     /** Turns the daily study reminder on or off. */

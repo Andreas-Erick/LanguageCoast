@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andreaserick.languagecoast.data.localAiAvailable
 import com.andreaserick.languagecoast.data.onDeviceTranslationAvailable
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.MistWhite
@@ -43,19 +44,20 @@ private val GUIDE = listOf(
             "On Create, type what you want to say in your own language and tap \"Translate & Save\".",
             "Tap the coast name to pick which coast the card goes to.",
             "Choose \"I'll type it\" to enter the translation yourself instead.",
-            "Type a category to choose the island yourself. Leave it empty and Gemini or OpenRouter pick one for you.",
+            "Tap an existing island chip or type a category to choose the island yourself. Leave it empty and your AI provider picks one for you.",
             "If the coast already has that sentence, a line under the text box says which island it is on.",
             "Made a mistake? Tap \"Undo\" right after saving."
         )
     ),
     GuideSection(
-        "🤖", "Translation",
+        "🤖", "AI & Translation Providers",
         listOfNotNull(
             "On-device translation is free, private and works offline. It needs no setup."
                 .takeIf { onDeviceTranslationAvailable },
-            "Gemini and OpenRouter give more natural translations and sort cards into islands for you. " +
-                "They need an API key, which you add here in Settings.",
-            "For longer sentences, they also suggest other ways to say it."
+            "Local AI scans your phone's RAM, storage, CPU and GPU, recommends compatible .litertlm models (such as Qwen3, Gemma 3, Llama 3.2 and Gemma 4), and lets you install and run them 100% offline with automatic island categorization."
+                .takeIf { localAiAvailable },
+            "Cloud AI providers (Google Gemini, OpenAI, Anthropic Claude, Groq, DeepSeek and OpenRouter) give rich translations, sort cards into islands and suggest natural alternatives.",
+            "For longer sentences, AI models also suggest other ways to say it and explain nuances."
         )
     ),
     GuideSection(
