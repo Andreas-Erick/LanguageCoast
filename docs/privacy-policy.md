@@ -10,7 +10,7 @@ Language Coast is a flashcard app for learning languages, made by Andreas Erick.
 
 - Your coasts, islands and cards, with their review history, your streak and the days you studied.
 - Your settings, such as your native language, your translation provider and reminder times.
-- The API keys you enter for cloud providers.
+- The API keys you enter for cloud providers, and a Hugging Face token if you add one for gated local models.
 - On Android, any Local AI model you download.
 
 All of this stays in the app's private storage on your phone. The developer never receives any of it, and there is no server that receives it.
@@ -28,7 +28,7 @@ All of this stays in the app's private storage on your phone. The developer neve
 
 The key is your own, so the request is made under your account with that provider, and its terms decide how long it keeps the text and whether it may use it. The developer never sees these requests. If you don't add an API key, nothing is sent.
 
-**Local AI (Android only).** Translation runs on your phone with a language model you download once, from [Hugging Face](https://huggingface.co/privacy), where the model files are hosted. That download is the only request: your sentences are never sent anywhere, and no account or key is needed. The app reads your phone's memory, storage and processor details to recommend models that fit; those details stay on your phone.
+**Local AI (Android only).** Translation runs on your phone with a language model you download once, from [Hugging Face](https://huggingface.co/privacy), where the model files are hosted. That download is the only request: your sentences are never sent anywhere. Most models need no account; a gated one (such as Gemma 3) is downloaded with the Hugging Face token you enter, which is sent only to Hugging Face. The app reads your phone's memory, storage and processor details to recommend models that fit; those details stay on your phone.
 
 **On-device translation (Android only).** Translation runs on your phone with Google ML Kit. The first time you use a language, the app downloads its translation model from Google. Your sentences are not sent. ML Kit does send Google diagnostic and usage data so Google can measure and improve it: device information (such as manufacturer, model and Android version), app information, performance metrics, error codes, the languages you translate between, and a per-installation identifier. Google describes this in its [ML Kit data disclosure](https://developers.google.com/ml-kit/android-data-disclosure), and it is covered by [Google's privacy policy](https://policies.google.com/privacy). The iPhone app doesn't include ML Kit.
 

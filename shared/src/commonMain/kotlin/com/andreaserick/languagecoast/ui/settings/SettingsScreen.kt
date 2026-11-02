@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -68,6 +69,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -516,12 +518,27 @@ private fun LocalAiHubSection(uiState: SettingsUiState, viewModel: SettingsViewM
                 recommendation = recommendation,
                 installStatus = installStatus,
                 isActive = isActive,
+                hasToken = uiState.savedHuggingFaceToken.isNotBlank(),
                 onInstall = { viewModel.installLocalModel(model.id) },
                 onCancel = { viewModel.cancelLocalModelInstall(model.id) },
                 onSelect = { viewModel.setLocalAiModel(model.id) },
                 onDelete = { viewModel.deleteLocalModel(model.id) }
             )
         }
+    }
+
+    if (uiState.modelRecommendations.any { it.model.gated }) {
+        Spacer(modifier = Modifier.height(20.dp))
+        ApiKeySection(
+            title = "Hugging Face token",
+            hint = "Only for the gated models: accept the model's licence on huggingface.co, then create a read token " +
+                "under Settings \u2192 Access Tokens. It is sent to Hugging Face only when downloading.",
+            placeholder = "hf_...",
+            savedKey = uiState.savedHuggingFaceToken,
+            justSaved = uiState.huggingFaceTokenSaved,
+            onSave = viewModel::saveHuggingFaceToken,
+            onEdited = viewModel::onHuggingFaceTokenEdited
+        )
     }
 }
 
@@ -645,6 +662,7 @@ private fun ModelRecommendationCard(
     recommendation: ModelRecommendation,
     installStatus: ModelInstallStatus,
     isActive: Boolean,
+    hasToken: Boolean,
     onInstall: () -> Unit,
     onCancel: () -> Unit,
     onSelect: () -> Unit,
@@ -706,20 +724,17 @@ private fun ModelRecommendationCard(
 
             when (installStatus) {
                 is ModelInstallStatus.NotInstalled -> {
-                    CoastButton(
-                        onClick = onInstall,
-                        enabled = recommendation.hasEnoughStorage,
-                        colors = if (isBestMatch) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(containerColor = SurfaceSelected, contentColor = TextPrimary),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                    ) {
-                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (recommendation.hasEnoughStorage) "Download & Install (${model.sizeLabel})" else "Not Enough Free Storage",
-                        )
-                    }
+                    val needsToken = model.gated && !hasToken
+                    DownloadButton(
+                        label = when {
+                            needsToken -> "Needs a Hugging Face token"
+                            !recommendation.hasEnoughStorage -> "Not enough free storage"
+                            else -> "Download \u00B7 ${model.sizeLabel}"
+                        },
+                        enabled = recommendation.hasEnoughStorage && !needsToken,
+                        primary = isBestMatch,
+                        onClick = onInstall
+                    )
                 }
                 is ModelInstallStatus.Downloading -> {
                     val percent = (installStatus.progress * 100).roundToInt().coerceIn(0, 100)
@@ -731,7 +746,7 @@ private fun ModelRecommendationCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                 CircularProgressIndicator(
                                     color = Sunlit,
                                     strokeWidth = 2.dp,
@@ -739,10 +754,11 @@ private fun ModelRecommendationCard(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Installing... $downloadedMb / $totalMb MB ($percent%)",
+                                    text = "Downloading $downloadedMb / $totalMb MB ($percent%)",
                                     color = TextPrimary,
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             TextButton(
@@ -809,19 +825,28 @@ private fun ModelRecommendationCard(
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    CoastButton(
-                        onClick = onInstall,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                    ) {
-                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Retry Install (${model.sizeLabel})")
-                    }
+                    DownloadButton(label = "Try again \u00B7 ${model.sizeLabel}", enabled = true, primary = true, onClick = onInstall)
                 }
             }
         }
+    }
+}
+
+/** The button that starts a model download: one line, never clipped, with the accent only for the best match. */
+@Composable
+private fun DownloadButton(label: String, enabled: Boolean, primary: Boolean, onClick: () -> Unit) {
+    CoastButton(
+        onClick = onClick,
+        enabled = enabled,
+        colors = if (primary) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(containerColor = SurfaceSelected, contentColor = TextPrimary),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+    ) {
+        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

@@ -91,10 +91,16 @@ data class LocalAiModel(
     val supportsGpu: Boolean,
     val badge: String,
     val summary: String,
-    val strengths: List<String>
+    val strengths: List<String>,
+    /** Gated on Hugging Face: the licence must be accepted there and the download needs a token. */
+    val gated: Boolean = false
 ) {
     val downloadUrl: String
         get() = "https://huggingface.co/$huggingFaceRepo/resolve/main/$fileName"
+
+    /** Where the licence is accepted for a [gated] model. */
+    val huggingFaceUrl: String
+        get() = "https://huggingface.co/$huggingFaceRepo"
 
     val sizeLabel: String
         get() = formatGb(sizeMb)
@@ -115,13 +121,43 @@ object LocalAiCatalog {
             parameterCount = "0.6B",
             huggingFaceRepo = "litert-community/Qwen3-0.6B",
             fileName = "Qwen3-0.6B.litertlm",
-            sizeMb = 614L,
+            sizeMb = 585L,
             minRamMb = 3_072L,
             recommendedRamMb = 4_096L,
             supportsGpu = true,
             badge = "Fastest · Compact",
             summary = "Ultra-lightweight multilingual model that loads in seconds and uses minimal battery and RAM.",
             strengths = listOf("Instant responses", "Low memory footprint", "30+ languages")
+        ),
+        LocalAiModel(
+            id = "lfm2.5-1.2b",
+            name = "LFM2.5 1.2B Instruct",
+            family = "Liquid AI LFM2.5",
+            parameterCount = "1.2B",
+            huggingFaceRepo = "litert-community/LFM2.5-1.2B-Instruct",
+            fileName = "LFM2.5-1.2B-Instruct_int4.litertlm",
+            sizeMb = 702L,
+            minRamMb = 4_096L,
+            recommendedRamMb = 5_000L,
+            supportsGpu = true,
+            badge = "Balanced · Multilingual",
+            summary = "Built for phones: quick, frugal with memory and trained on many European and Asian languages.",
+            strengths = listOf("Natural phrasing", "Fast on mid-range phones", "Small download")
+        ),
+        LocalAiModel(
+            id = "qwen3-1.7b",
+            name = "Qwen 3 1.7B",
+            family = "Qwen 3",
+            parameterCount = "1.7B",
+            huggingFaceRepo = "litert-community/Qwen3-1.7B",
+            fileName = "Qwen3-1.7B_dynamic_wi4b32_afp32.litertlm",
+            sizeMb = 932L,
+            minRamMb = 4_500L,
+            recommendedRamMb = 6_000L,
+            supportsGpu = true,
+            badge = "Consistent · Reliable",
+            summary = "A step up in accuracy and island sorting while still fitting most phones.",
+            strengths = listOf("Strict format adherence", "Good at categories", "Many languages")
         ),
         LocalAiModel(
             id = "gemma3-1b-it",
@@ -134,24 +170,10 @@ object LocalAiCatalog {
             minRamMb = 4_096L,
             recommendedRamMb = 5_500L,
             supportsGpu = true,
-            badge = "Balanced · Everyday",
-            summary = "Google's compact 1B instruction-tuned model with strong European and Asian vocabulary accuracy.",
-            strengths = listOf("Great island sorting", "Natural phrasing", "Balanced size")
-        ),
-        LocalAiModel(
-            id = "llama-3.2-1b",
-            name = "Llama 3.2 1B Instruct",
-            family = "Meta Llama 3.2",
-            parameterCount = "1.2B",
-            huggingFaceRepo = "litert-community/Llama-3.2-1B-Instruct",
-            fileName = "Llama-3.2-1B-Instruct_multi-prefill-seq_q8_ekv1280.litertlm",
-            sizeMb = 1_220L,
-            minRamMb = 4_500L,
-            recommendedRamMb = 6_000L,
-            supportsGpu = true,
-            badge = "Consistent · Reliable",
-            summary = "Dependable instruction following for structured flashcard formatting and category reuse.",
-            strengths = listOf("Strict format adherence", "Strong European languages", "Q8 precision")
+            badge = "Gated · Needs a token",
+            summary = "Google's compact instruction-tuned model. Gated on Hugging Face: accept its licence there and add a token below.",
+            strengths = listOf("Great island sorting", "Natural phrasing", "Balanced size"),
+            gated = true
         ),
         LocalAiModel(
             id = "gemma-4-e2b-it",
@@ -160,7 +182,7 @@ object LocalAiCatalog {
             parameterCount = "2B",
             huggingFaceRepo = "litert-community/gemma-4-E2B-it-litert-lm",
             fileName = "gemma-4-E2B-it.litertlm",
-            sizeMb = 2_660L,
+            sizeMb = 2_468L,
             minRamMb = 6_000L,
             recommendedRamMb = 7_500L,
             supportsGpu = true,
@@ -174,8 +196,8 @@ object LocalAiCatalog {
             family = "Microsoft Phi-4",
             parameterCount = "3.8B",
             huggingFaceRepo = "litert-community/Phi-4-mini-instruct",
-            fileName = "Phi-4-mini-instruct_multi-prefill-seq_q8_ekv1280.litertlm",
-            sizeMb = 3_780L,
+            fileName = "Phi-4-mini-instruct_multi-prefill-seq_q8_ekv4096.litertlm",
+            sizeMb = 3_729L,
             minRamMb = 8_000L,
             recommendedRamMb = 11_000L,
             supportsGpu = true,
@@ -333,8 +355,12 @@ interface LocalModelController {
     /** Scans or refreshes the phone's RAM, storage, CPU/SoC and GPU capability. */
     fun scanHardware()
 
-    /** Downloads and installs the `.litertlm` model with [modelId] into app storage. */
-    fun installModel(modelId: String)
+    /**
+     * Downloads and installs the `.litertlm` model with [modelId] into app storage.
+     *
+     * @param accessToken A Hugging Face token, needed for a [LocalAiModel.gated] model; otherwise ignored.
+     */
+    fun installModel(modelId: String, accessToken: String? = null)
 
     /** Cancels an in-progress download for [modelId] and cleans up partial files. */
     fun cancelInstall(modelId: String)
@@ -356,7 +382,7 @@ class NoOpLocalModelController : LocalModelController {
     override val installStates: StateFlow<Map<String, ModelInstallStatus>> =
         MutableStateFlow<Map<String, ModelInstallStatus>>(emptyMap()).asStateFlow()
     override fun scanHardware() = Unit
-    override fun installModel(modelId: String) = Unit
+    override fun installModel(modelId: String, accessToken: String?) = Unit
     override fun cancelInstall(modelId: String) = Unit
     override fun deleteModel(modelId: String) = Unit
     override fun registerExternalModelFile(modelId: String, absolutePath: String) = Unit

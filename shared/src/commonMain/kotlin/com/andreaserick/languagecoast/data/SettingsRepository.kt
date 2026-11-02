@@ -73,6 +73,8 @@ interface SettingsRepository {
     val claudeModel: Flow<String> get() = flowOf(SettingsDefaults.CLAUDE_MODEL)
     /** The Groq API key. */
     val groqKey: Flow<String> get() = flowOf("")
+    /** A Hugging Face access token, for downloading gated local models. */
+    val huggingFaceToken: Flow<String> get() = flowOf("")
     /** The Groq model used for translations. */
     val groqModel: Flow<String> get() = flowOf(SettingsDefaults.GROQ_MODEL)
     /** The DeepSeek API key. */
@@ -114,6 +116,8 @@ interface SettingsRepository {
     suspend fun setClaudeModel(model: String) = Unit
     /** Stores the Groq API key. */
     suspend fun setGroqKey(key: String) = Unit
+    /** Stores the Hugging Face access token. */
+    suspend fun setHuggingFaceToken(token: String) = Unit
     /** Stores the Groq model used for translations. */
     suspend fun setGroqModel(model: String) = Unit
     /** Stores the DeepSeek API key. */
@@ -187,6 +191,9 @@ class DataStoreSettingsRepository(
     override val groqKey: Flow<String> =
         dataStore.data.map { it[GROQ_KEY] ?: "" }
 
+    override val huggingFaceToken: Flow<String> =
+        dataStore.data.map { it[HUGGING_FACE_TOKEN] ?: "" }
+
     override val groqModel: Flow<String> =
         dataStore.data.map { it[GROQ_MODEL] ?: SettingsDefaults.GROQ_MODEL }
 
@@ -231,6 +238,7 @@ class DataStoreSettingsRepository(
     override suspend fun setClaudeKey(key: String) = set(CLAUDE_KEY, key)
     override suspend fun setClaudeModel(model: String) = set(CLAUDE_MODEL, model)
     override suspend fun setGroqKey(key: String) = set(GROQ_KEY, key)
+    override suspend fun setHuggingFaceToken(token: String) = set(HUGGING_FACE_TOKEN, token)
     override suspend fun setGroqModel(model: String) = set(GROQ_MODEL, model)
     override suspend fun setDeepSeekKey(key: String) = set(DEEPSEEK_KEY, key)
     override suspend fun setDeepSeekModel(model: String) = set(DEEPSEEK_MODEL, model)
@@ -333,6 +341,8 @@ class DataStoreSettingsRepository(
         val CLAUDE_KEY = stringPreferencesKey("claude_api_key")
         val CLAUDE_MODEL = stringPreferencesKey("claude_model")
         val GROQ_KEY = stringPreferencesKey("groq_api_key")
+        // Like the API keys, never part of a backup.
+        val HUGGING_FACE_TOKEN = stringPreferencesKey("hugging_face_token")
         val GROQ_MODEL = stringPreferencesKey("groq_model")
         val DEEPSEEK_KEY = stringPreferencesKey("deepseek_api_key")
         val DEEPSEEK_MODEL = stringPreferencesKey("deepseek_model")

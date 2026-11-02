@@ -1,7 +1,9 @@
 package com.andreaserick.languagecoast.data
 
 import android.app.ActivityManager
+import android.app.DownloadManager
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.StatFs
 import com.google.ai.edge.litertlm.Backend
@@ -11,14 +13,7 @@ import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.SamplerConfig
-import io.ktor.client.HttpClient
-import io.ktor.client.request.prepareGet
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.contentLength
-import io.ktor.http.isSuccess
-import io.ktor.utils.io.readAvailable
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -60,6 +56,7 @@ internal object LocalAiPaths {
         val spec = LocalAiCatalog.byId(modelId) ?: LocalAiCatalog.MODELS.first()
         val candidates = listOfNotNull(
             modelsDir?.resolve(spec.fileName),
+            filesDir?.resolve("local_models")?.resolve(spec.fileName),
             filesDir?.resolve(spec.fileName),
             filesDir?.resolve("model.litertlm")
         )
@@ -68,17 +65,20 @@ internal object LocalAiPaths {
 }
 
 /**
- * Android implementation of [LocalModelController]: inspects phone RAM, storage, CPU/SoC and OpenCL GPU
- * support, and downloads `.litertlm` models into `filesDir/local_models`.
+ * Manages local models on Android: scans the hardware, and downloads `.litertlm` files with the
+ * system's DownloadManager, which keeps going when the app is in the background, survives the process
+ * being killed, resumes after a dropped connection and shows its own progress notification.
+ * Models live in the app's external files directory (app-private, no permission needed), which is the
+ * only place DownloadManager can write to.
  */
-class AndroidLocalModelController(
-    private val context: Context,
-    private val client: HttpClient
-) : LocalModelController {
+class AndroidLocalModelController(private val context: Context) : LocalModelController {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val modelsFolder = File(context.filesDir, "local_models").apply { mkdirs() }
-    private val downloadJobs = mutableMapOf<String, Job>()
+    private val downloads = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+    private val modelsFolder = (context.getExternalFilesDir(MODELS_DIR) ?: File(context.filesDir, MODELS_DIR)).apply { mkdirs() }
+    /** The DownloadManager id of each running download, by model id, so a restart can pick them up again. */
+    private val pending = context.getSharedPreferences("local_model_downloads", Context.MODE_PRIVATE)
+    private val trackers = mutableMapOf<String, Job>()
 
     private val _hardwareProfile = MutableStateFlow<DeviceHardwareProfile?>(null)
     override val hardwareProfile: StateFlow<DeviceHardwareProfile?> = _hardwareProfile.asStateFlow()
@@ -94,120 +94,131 @@ class AndroidLocalModelController(
         LocalAiPaths.filesDir = context.filesDir
         LocalAiPaths.cacheDir = context.cacheDir
         refreshInstalledModels()
+        // Downloads started before the process was killed are still running in DownloadManager.
+        pending.all.forEach { (modelId, id) -> if (id is Long) track(modelId, id) }
         scanHardware()
     }
 
     override fun scanHardware() {
+        if (_isScanning.value) return
         scope.launch {
             _isScanning.value = true
-            delay(350) // Brief scan window so the UI shows live progress feedback when re-scanning
-            val profile = readDeviceHardware(context)
-            LocalAiPaths.gpuSupported = profile.gpuAccelerationSupported
-            _hardwareProfile.value = profile
-            refreshInstalledModels()
-            _isScanning.value = false
+            try {
+                _hardwareProfile.value = readDeviceHardware(context)
+            } finally {
+                _isScanning.value = false
+            }
         }
     }
 
-    override fun installModel(modelId: String) {
+    override fun installModel(modelId: String, accessToken: String?) {
         val model = LocalAiCatalog.byId(modelId) ?: return
-        if (downloadJobs[modelId]?.isActive == true) return
+        if (trackers[modelId]?.isActive == true) return
+        if (model.gated && accessToken.isNullOrBlank()) {
+            _installStates.update { it + (modelId to ModelInstallStatus.Failed(NEEDS_TOKEN)) }
+            return
+        }
+        if (context.getExternalFilesDir(MODELS_DIR) == null) {
+            _installStates.update { it + (modelId to ModelInstallStatus.Failed("This phone has no storage the download manager can write to.")) }
+            return
+        }
+        // DownloadManager refuses to overwrite, so clear leftovers from an earlier attempt.
+        File(modelsFolder, model.fileName).delete()
 
-        val job = scope.launch {
-            val partFile = File(modelsFolder, "${model.fileName}.part")
-            val targetFile = File(modelsFolder, model.fileName)
-            _installStates.update {
-                it + (modelId to ModelInstallStatus.Downloading(progress = 0f, downloadedMb = 0L, totalMb = model.sizeMb))
-            }
+        val request = DownloadManager.Request(Uri.parse(model.downloadUrl))
+            .setTitle("Language Coast · ${model.name}")
+            .setDescription("Local AI model, ${model.sizeLabel}")
+            .setDestinationInExternalFilesDir(context, MODELS_DIR, model.fileName)
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(false)
+        if (model.gated) request.addRequestHeader("Authorization", "Bearer ${accessToken!!.trim()}")
 
-            try {
-                client.prepareGet(model.downloadUrl).execute { response ->
-                    if (!response.status.isSuccess()) {
-                        val message = when (response.status.value) {
-                            401, 403 -> "This model requires Hugging Face access or is gated. Try Qwen 3 0.6B or Gemma 4 E2B."
-                            404 -> "Model file was not found on the server (${response.status.value})."
-                            else -> "Download failed with HTTP ${response.status.value}."
-                        }
-                        _installStates.update { it + (modelId to ModelInstallStatus.Failed(message)) }
-                        return@execute
-                    }
+        val id = downloads.enqueue(request)
+        pending.edit().putLong(modelId, id).apply()
+        _installStates.update { it + (modelId to ModelInstallStatus.Downloading(progress = 0f, downloadedMb = 0L, totalMb = model.sizeMb)) }
+        track(modelId, id)
+    }
 
-                    val contentLength = response.contentLength() ?: (model.sizeMb * 1024L * 1024L)
-                    val totalMb = (contentLength / (1024L * 1024L)).coerceAtLeast(1L)
-                    val channel = response.bodyAsChannel()
-                    val buffer = ByteArray(64 * 1024)
-                    var downloadedBytes = 0L
-                    var lastEmitMs = 0L
-
-                    FileOutputStream(partFile).use { output ->
-                        while (!channel.isClosedForRead) {
-                            val read = channel.readAvailable(buffer, 0, buffer.size)
-                            if (read <= 0) break
-                            output.write(buffer, 0, read)
-                            downloadedBytes += read
-                            val now = System.currentTimeMillis()
-                            if (now - lastEmitMs >= 120L) {
-                                lastEmitMs = now
-                                val downloadedMb = downloadedBytes / (1024L * 1024L)
-                                val progress = (downloadedBytes.toFloat() / contentLength.toFloat()).coerceIn(0f, 0.99f)
-                                _installStates.update {
-                                    it + (modelId to ModelInstallStatus.Downloading(progress, downloadedMb, totalMb))
-                                }
-                            }
-                        }
-                        output.flush()
-                    }
+    /** Follows download [id] in DownloadManager until it ends, mirroring its progress into [installStates]. */
+    private fun track(modelId: String, id: Long) {
+        val model = LocalAiCatalog.byId(modelId) ?: return
+        trackers[modelId]?.cancel()
+        trackers[modelId] = scope.launch {
+            while (isActive) {
+                val snapshot = downloads.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+                    if (!cursor.moveToFirst()) return@use null
+                    DownloadSnapshot(
+                        status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
+                        reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+                        downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                        total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                    )
                 }
-
-                // Verify we didn't already fail inside execute
-                if (_installStates.value[modelId] is ModelInstallStatus.Failed) {
-                    partFile.delete()
+                if (snapshot == null) {
+                    // Removed from DownloadManager, e.g. cancelled from its notification.
+                    finish(modelId, id, ModelInstallStatus.NotInstalled)
                     return@launch
                 }
-
-                // Sanity check: a real .litertlm model is at least several megabytes
-                if (!partFile.exists() || partFile.length() < 10L * 1024L * 1024L) {
-                    partFile.delete()
-                    _installStates.update {
-                        it + (modelId to ModelInstallStatus.Failed("Downloaded file was incomplete. Check your connection and try again."))
+                when (snapshot.status) {
+                    DownloadManager.STATUS_SUCCESSFUL -> {
+                        val file = File(modelsFolder, model.fileName)
+                        val status = if (file.exists() && file.length() > MIN_MODEL_BYTES) {
+                            ModelInstallStatus.Installed(file.absolutePath, (file.length() / MB).coerceAtLeast(1L))
+                        } else {
+                            file.delete()
+                            ModelInstallStatus.Failed("The downloaded file was incomplete. Please try again.")
+                        }
+                        finish(modelId, id, status)
+                        _hardwareProfile.value = readDeviceHardware(context)
+                        return@launch
                     }
-                    return@launch
+                    DownloadManager.STATUS_FAILED -> {
+                        downloads.remove(id)
+                        finish(modelId, id, ModelInstallStatus.Failed(failureMessage(snapshot.reason, model)))
+                        return@launch
+                    }
+                    else -> {
+                        val total = if (snapshot.total > 0) snapshot.total else model.sizeMb * MB
+                        _installStates.update {
+                            it + (modelId to ModelInstallStatus.Downloading(
+                                progress = (snapshot.downloaded.toFloat() / total).coerceIn(0f, 0.99f),
+                                downloadedMb = snapshot.downloaded / MB,
+                                totalMb = (total / MB).coerceAtLeast(1L)
+                            ))
+                        }
+                    }
                 }
-
-                if (targetFile.exists()) targetFile.delete()
-                val renamed = partFile.renameTo(targetFile)
-                if (!renamed) {
-                    partFile.copyTo(targetFile, overwrite = true)
-                    partFile.delete()
-                }
-
-                val finalSizeMb = (targetFile.length() / (1024L * 1024L)).coerceAtLeast(1L)
-                _installStates.update {
-                    it + (modelId to ModelInstallStatus.Installed(targetFile.absolutePath, finalSizeMb))
-                }
-                // Update free storage after installing a large model file
-                _hardwareProfile.value = readDeviceHardware(context)
-            } catch (e: CancellationException) {
-                partFile.delete()
-                _installStates.update { it + (modelId to ModelInstallStatus.NotInstalled) }
-                throw e
-            } catch (e: Exception) {
-                logError(TAG, "Failed to download model ${model.id}", e)
-                partFile.delete()
-                _installStates.update {
-                    it + (modelId to ModelInstallStatus.Failed("Download interrupted: ${e.message ?: "check your internet connection"}"))
-                }
+                delay(700)
             }
         }
-        downloadJobs[modelId] = job
+    }
+
+    private fun finish(modelId: String, id: Long, status: ModelInstallStatus) {
+        pending.edit().remove(modelId).apply()
+        trackers.remove(modelId)
+        _installStates.update { it + (modelId to status) }
+    }
+
+    private fun failureMessage(reason: Int, model: LocalAiModel): String = when (reason) {
+        401, 403 -> if (model.gated) {
+            "Hugging Face refused the token. Accept the model's licence on huggingface.co and check the token."
+        } else {
+            "Hugging Face refused the download (HTTP $reason)."
+        }
+        404 -> "The model file is no longer on Hugging Face (HTTP 404)."
+        DownloadManager.ERROR_INSUFFICIENT_SPACE -> "Not enough free storage for ${model.sizeLabel}."
+        DownloadManager.ERROR_HTTP_DATA_ERROR, DownloadManager.ERROR_CANNOT_RESUME -> "The connection dropped. Please try again."
+        DownloadManager.ERROR_DEVICE_NOT_FOUND, DownloadManager.ERROR_FILE_ERROR -> "The download couldn't be saved to storage."
+        else -> "Download failed (error $reason). Please try again."
     }
 
     override fun cancelInstall(modelId: String) {
-        downloadJobs.remove(modelId)?.cancel()
-        val model = LocalAiCatalog.byId(modelId)
-        if (model != null) {
-            File(modelsFolder, "${model.fileName}.part").delete()
-        }
+        trackers.remove(modelId)?.cancel()
+        val id = pending.getLong(modelId, -1L)
+        if (id != -1L) downloads.remove(id)
+        pending.edit().remove(modelId).apply()
+        LocalAiCatalog.byId(modelId)?.let { File(modelsFolder, it.fileName).delete() }
         _installStates.update { it + (modelId to ModelInstallStatus.NotInstalled) }
     }
 
@@ -215,6 +226,7 @@ class AndroidLocalModelController(
         cancelInstall(modelId)
         val model = LocalAiCatalog.byId(modelId) ?: return
         File(modelsFolder, model.fileName).delete()
+        File(context.filesDir, MODELS_DIR).resolve(model.fileName).delete()
         File(context.filesDir, model.fileName).delete()
         _installStates.update { it + (modelId to ModelInstallStatus.NotInstalled) }
         _hardwareProfile.value = readDeviceHardware(context)
@@ -223,42 +235,35 @@ class AndroidLocalModelController(
     override fun registerExternalModelFile(modelId: String, absolutePath: String) {
         val file = File(absolutePath)
         if (file.exists() && file.length() > 0L) {
-            val sizeMb = (file.length() / (1024L * 1024L)).coerceAtLeast(1L)
-            _installStates.update {
-                it + (modelId to ModelInstallStatus.Installed(file.absolutePath, sizeMb))
-            }
+            _installStates.update { it + (modelId to ModelInstallStatus.Installed(file.absolutePath, (file.length() / MB).coerceAtLeast(1L))) }
         }
     }
 
     override fun resolveInstalledModelPath(modelId: String): String? {
         val state = _installStates.value[modelId]
-        if (state is ModelInstallStatus.Installed && File(state.path).exists()) {
-            return state.path
-        }
+        if (state is ModelInstallStatus.Installed && File(state.path).exists()) return state.path
         return LocalAiPaths.resolveModelFile(modelId, null)?.absolutePath
     }
 
     private fun refreshInstalledModels() {
-        val updated = mutableMapOf<String, ModelInstallStatus>()
-        for (model in LocalAiCatalog.MODELS) {
-            val current = _installStates.value[model.id]
-            if (current is ModelInstallStatus.Downloading) {
-                updated[model.id] = current
-                continue
-            }
+        _installStates.value = LocalAiCatalog.MODELS.associate { model ->
             val existing = LocalAiPaths.resolveModelFile(model.id, null)
-            if (existing != null) {
-                val sizeMb = (existing.length() / (1024L * 1024L)).coerceAtLeast(1L)
-                updated[model.id] = ModelInstallStatus.Installed(existing.absolutePath, sizeMb)
+            model.id to if (existing != null) {
+                ModelInstallStatus.Installed(existing.absolutePath, (existing.length() / MB).coerceAtLeast(1L))
             } else {
-                updated[model.id] = ModelInstallStatus.NotInstalled
+                ModelInstallStatus.NotInstalled
             }
         }
-        _installStates.value = updated
     }
 
+    private data class DownloadSnapshot(val status: Int, val reason: Int, val downloaded: Long, val total: Long)
+
     private companion object {
-        const val TAG = "AndroidLocalModelController"
+        const val MODELS_DIR = "local_models"
+        const val MB = 1024L * 1024L
+        /** A real `.litertlm` model is far larger than this; anything smaller is an error page. */
+        const val MIN_MODEL_BYTES = 10L * MB
+        const val NEEDS_TOKEN = "This model is gated on Hugging Face. Add a Hugging Face token below to download it."
     }
 }
 
