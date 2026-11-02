@@ -264,7 +264,6 @@ fun CoastCard(
     val coast = summary.coast
     val language = Languages.byName(coast.language)
     val nativeName = language?.nativeName?.takeIf { it != coast.language }
-    val flag = language?.flag
     // The islands are counted on the line under the progress bar, or here if there is no bar yet.
     val counts = if (summary.islandCount > 0) plural(summary.cardCount, "card") else plural(summary.islandCount, "island")
 
@@ -275,16 +274,11 @@ fun CoastCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconTile {
-                if (flag != null) {
-                    Text(flag, fontSize = 24.sp)
+                if (language != null) {
+                    Text(language.flag, fontSize = 24.sp)
                 } else {
-                    // No flag stands for this language, so it shows its code instead.
-                    Text(
-                        (language?.code ?: coast.language.take(2)).uppercase(),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = TextPrimary
-                    )
+                    // A language the app no longer offers: its first letters stand in for a flag.
+                    Text(coast.language.take(2).uppercase(), style = MaterialTheme.typography.titleSmall, color = TextPrimary)
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))

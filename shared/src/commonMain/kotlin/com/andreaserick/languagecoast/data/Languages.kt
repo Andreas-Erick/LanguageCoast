@@ -7,7 +7,8 @@ package com.andreaserick.languagecoast.data
  * @property nativeName The language's name for itself (e.g. "Deutsch"), shown and searchable in the picker.
  * @property code ISO 639-1 code, as used by dict.cc subdomains.
  * @property flagCountry ISO 3166 code of the country whose flag stands for this language. It's often not the
- *     same as [code] (Japanese is "ja", Japan is "JP"). Null for a language no country stands for, like Esperanto.
+ *     same as [code] (Japanese is "ja", Japan is "JP"). Null for a language no country stands for, like Esperanto,
+ *     which gets the world instead.
  * @property onDictCc Whether dict.cc has dictionaries for this language.
  */
 data class Language(
@@ -17,14 +18,16 @@ data class Language(
     val flagCountry: String? = null,
     val onDictCc: Boolean = true
 ) {
-    /** The flag as an emoji, or null if it has none (see [flagCountry]). */
-    val flag: String? get() = flagCountry?.let(::flagEmoji)
+    /** The flag as an emoji, or the world for a language with no [flagCountry]. */
+    val flag: String get() = flagCountry?.let(::flagEmoji) ?: WORLD
 }
 
 /**
  * The flag emoji for a two-letter country code. A flag is the code's letters written as a pair of
  * "regional indicator" symbols, which take two UTF-16 chars each.
  */
+private const val WORLD = "🌍"
+
 private fun flagEmoji(country: String): String = buildString {
     country.forEach { letter ->
         append(Char(0xD83C))

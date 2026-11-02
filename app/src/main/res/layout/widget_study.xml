@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     The home-screen widget (see StudyWidgetProvider), styled like the app: the logo and title over the
-    header wave, the streak and the cards due on tiles tinted like island cards, and a nudge below.
+    header wave, the streak and the cards due on raised tiles, and a nudge below.
     The numbers shrink to fit their tile, so a 1000 day streak still shows on a narrow widget.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -60,7 +60,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="@drawable/widget_tile_dune"
+            android:background="@drawable/widget_tile"
             android:gravity="center"
             android:orientation="vertical"
             android:padding="6dp">
@@ -78,7 +78,7 @@
                 android:fontVariationSettings="'wght' 800"
                 android:maxLines="1"
                 android:text="@string/widget_preview_streak"
-                android:textColor="@color/ocean_ground"
+                android:textColor="@color/text_primary"
                 android:textSize="26sp" />
 
             <TextView
@@ -87,7 +87,7 @@
                 android:layout_height="wrap_content"
                 android:maxLines="1"
                 android:text="@string/widget_streak_label"
-                android:textColor="@color/ocean_ground_secondary"
+                android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -100,7 +100,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="@drawable/widget_tile_sky"
+            android:background="@drawable/widget_tile"
             android:gravity="center"
             android:orientation="vertical"
             android:padding="6dp">
@@ -118,7 +118,7 @@
                 android:fontVariationSettings="'wght' 800"
                 android:maxLines="1"
                 android:text="@string/widget_preview_due"
-                android:textColor="@color/ocean_ground"
+                android:textColor="@color/text_primary"
                 android:textSize="26sp" />
 
             <TextView
@@ -127,7 +127,7 @@
                 android:layout_height="wrap_content"
                 android:maxLines="1"
                 android:text="@string/widget_preview_due_label"
-                android:textColor="@color/ocean_ground_secondary"
+                android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>

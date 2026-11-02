@@ -5,7 +5,7 @@
 <h1 align="center">🌊 Language Coast</h1>
 
 <p align="center">
-  An AI-powered flashcard app for Android, with an iOS version on the way. Built with Kotlin Multiplatform, Compose Multiplatform, Google Gemini and on-device translation.
+  An AI-powered flashcard app for Android, with an iOS version on the way. Built with Kotlin Multiplatform and Compose Multiplatform, with translation on your phone or by the cloud AI of your choice.
 </p>
 
 <p align="center">
@@ -33,45 +33,46 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
   <img src="docs/screenshots/search.png" alt="Search results across all coasts, each showing its coast, island and when it is due" width="200" />
   <img src="docs/screenshots/settings.png" alt="Settings with the native language and the choice of on-device, Local AI or cloud translation" width="200" />
   <img src="docs/screenshots/notification.png" alt="Daily study reminder saying how many cards are due" width="200" />
-  <img src="docs/screenshots/widget.jpg" alt="Home-screen widget with the study streak and the cards due today" width="200" />
+  <img src="docs/screenshots/widget.png" alt="Home-screen widget with the study streak and the cards due today" width="200" />
 </p>
 
 ## ✨ Features
 
 ### 🏠 Home screen
-- **Today at a glance**: how many cards are due across your coasts, and a *Start reviewing* button that opens the island with the most due cards.
+- **Today at a glance**: how many cards are due across your coasts, and a *Review* button that opens the island with the most due cards.
 - **Your streak** in the header, the **new card form** with a compact coast picker, and the **cards you added most recently** to that coast.
 
 ### 🤖 AI-powered card creation
-- **Three ways to translate**, picked in Settings:
-  - **On-device** (Google ML Kit): free, private and offline once a language is downloaded (about 30 MB). It only translates, so cards go into the category you type. Covers every app language except Bosnian, Latin and Serbian.
-  - **Google Gemini** (`gemini-2.5-flash` by default) for natural, context-aware translations.
-  - **OpenRouter**: one API key for many cloud models (GPT, Claude, Llama, …). `openrouter/auto` picks a model for you, or enter any model ID.
-- **Auto-categorization**: the cloud models sort each new card into an island such as *Travel*, *Restaurant* or *Greetings*, reusing your existing islands whenever one fits.
+- **Translate however you like**, picked in Settings:
+  - **On-device** (Google ML Kit): free, private and offline once a language is downloaded (about 30 MB). It only translates, so cards go into the island you type. Covers every app language except Bosnian, Latin and Serbian.
+  - **Local AI** (Android): a language model that runs on your phone with Google LiteRT-LM. The app scans your phone's RAM, storage and processor, recommends models that fit (such as Qwen 3, Gemma 3 and Llama 3.2), and downloads the one you pick. Free, private and offline, and unlike the on-device translator it also sorts cards into islands and suggests alternatives.
+  - **Cloud AI** with your own API key: **Google Gemini**, **OpenAI**, **Anthropic Claude**, **Groq**, **DeepSeek** or **OpenRouter** (one key for many models; `openrouter/auto` picks one for you, or enter any model ID).
+- **Auto-categorization**: the AI models sort each new card into an island such as *Travel*, *Restaurant* or *Greetings*, reusing your existing islands whenever one fits.
 - **Icelandic noun rule**: single Icelandic nouns are returned with their definite and plural forms (e.g. *hestur, hesturinn, hestar*).
-- **Island emojis**: the cloud models also pick an emoji for each new island (🍽️ *Restaurant*, ✈️ *Travel*).
-- **Manual mode**: you can skip the AI and enter your own translation and category.
+- **Island emojis**: the AI models also pick an emoji for each new island (🍽️ *Restaurant*, ✈️ *Travel*).
+- **Manual mode**: you can skip the AI and enter your own translation and island.
 - **Instant preview with undo**: after saving you see the card that was created and can undo it right away.
-- **Alternatives for longer sentences**: for sentences of 6 words or more, Gemini and OpenRouter also suggest up to two other translations with a note on how they differ (e.g. formal vs. informal). They are saved with the card: after flipping it, *2 alternatives* opens a sheet with the note, a read-aloud button for each and *Make main* to swap one with the card's translation. Alternatives also count as correct in Active Type and are included in exports.
+- **Alternatives for longer sentences**: for sentences of 6 words or more, the AI models also suggest up to two other translations with a note on how they differ (e.g. formal vs. informal). They are saved with the card: after flipping it, *2 alternatives* opens a sheet with the note, a read-aloud button for each and *Make main* to swap one with the card's translation. Alternatives also count as correct in Active Type and are included in exports.
 
 ### 🏝️ My Coasts
-- **One coast per language**: study several languages side by side, each with its own islands. Pick which coast new cards go to right on the Create screen.
-- **Language Islands**: on each coast, your vocabulary is grouped into islands by category, each with its emoji, card count and when you last studied it.
+- **One coast per language**: study several languages side by side, each with its flag and its own islands. Pick which coast new cards go to right on the Create screen.
+- **Language Islands**: on each coast, your vocabulary is grouped into islands by category, each with its emoji, card count and how many cards are due. A coast with cards due offers to review its busiest island right away.
 - **Progress at a glance**: coasts show how many islands you explored this week.
-- **Island card list**: *See cards* in an island's ⋮ menu (or the list icon while studying) shows every card with its translation, alternatives and when it is due next.
+- **Island card list**: *See cards* in an island's ⋮ menu (or *All cards* in the ⋮ menu while studying) shows every card with its translation, alternatives and when it is due next.
 - **Search**: the search icon on My Coasts finds cards on every coast by their native text, translation or alternatives, and shows which coast and island each is on.
 - **Duplicate hint**: while you type a new card, Create tells you if the coast already has that sentence and on which island.
 - **Edit cards**: fix a card's native text, translation or alternatives, or move it to another island, without losing its review progress.
-- **Daily streaks**: a streak counter and a dot for each day of the week track your study days.
+- **Daily streaks**: a streak counter and a bar for each day of the week track your study days.
 - **Undo instead of "Are you sure?"**: deleted coasts, islands and cards can be restored from the snackbar.
 - **Offline-first storage**: cards are stored locally with **Room**, and preferences with **Jetpack DataStore**.
 
 ### 🧠 Study modes
 - **Spaced repetition**: cards are scheduled with [FSRS](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm), the algorithm Anki uses, so each island only asks for the cards that are due. Islands and coasts show how many cards are due, and the daily reminder says how many are waiting. When nothing is due you can still practice all cards.
+- **Focus mode**: a study session takes the whole screen, with just a progress bar, the card and the grade buttons. Previous card, Skip card and the island's card list are in the ⋮ menu.
 - **Flip Cards**: classic flashcards with an animated flip. Grade each card *Again*, *Hard*, *Good* or *Easy* (each button shows when the card comes back), or swipe left for *Again* and right for *Good*. *Again* shows *Soon*: it moves the card to the end of the session, so you see it again before you finish.
 - **Active Type**: test your recall by typing the translation. Capitalization, punctuation and extra spaces don't count against you, accents do. A correct answer is graded like a flipped card; a wrong one counts as *Again* and the card comes back later in the session.
 - **Read aloud**: a speaker button reads the translation in the coast's language, using the voices installed on your phone (free and offline). It only appears when the phone has a voice for that language.
-- **Study the other way round**: swap the direction under the study tabs to see the translation first and answer in your native language, training recognition instead of recall. Works with Flip Cards and Active Type, and is remembered for later sessions.
+- **Study the other way round**: swap the direction under the mode switch to see the translation first and answer in your native language, training recognition instead of recall. Works with Flip Cards and Active Type, and is remembered for later sessions.
 - **Session summary**: finishing an island shows a short celebration with your stats and streak.
 - **Built-in dictionary**: tap any word on the back of a card to look it up on **dict.cc**. It uses your language pair when dict.cc has it (dict.cc pairs every language with English or German) and falls back to the English dictionary otherwise.
 
@@ -99,7 +100,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 | Code sharing | [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html): UI, ViewModels, data layer and translation in a `shared` module used by the Android and iOS apps |
 | Dependency injection | [Koin](https://insert-koin.io/) |
 | UI | [Compose Multiplatform](https://www.jetbrains.com/compose-multiplatform/) + Material 3 (Jetpack Compose on Android), 100% Kotlin |
-| Translation | [Gemini API](https://ai.google.dev/api/generate-content) and [OpenRouter API](https://openrouter.ai/docs) over [Ktor](https://ktor.io/), [ML Kit Translation](https://developers.google.com/ml-kit/language/translation) (on-device, Android) |
+| Translation | [Gemini](https://ai.google.dev/api/generate-content), [OpenAI](https://platform.openai.com/docs/api-reference), [Anthropic](https://docs.anthropic.com/en/api), [Groq](https://console.groq.com/docs), [DeepSeek](https://api-docs.deepseek.com/) and [OpenRouter](https://openrouter.ai/docs) APIs over [Ktor](https://ktor.io/); [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) for local models and [ML Kit Translation](https://developers.google.com/ml-kit/language/translation) on-device (both Android) |
 | Database | [Room](https://developer.android.com/kotlin/multiplatform/room) (Kotlin Multiplatform) |
 | Preferences | [Jetpack DataStore](https://developer.android.com/kotlin/multiplatform/datastore) (Kotlin Multiplatform) |
 | Navigation | [Navigation Compose](https://kotlinlang.org/docs/multiplatform/compose-navigation-routing.html) (multiplatform) with type-safe routes |
@@ -119,8 +120,8 @@ flowchart LR
     VM -- UI state --> UI
     VM --> FR["FlashcardRepository"] --> Room[("Room")]
     VM --> SR["SettingsRepository"] --> DS[("DataStore")]
-    VM --> TR["Translator"] --> Gemini(["Gemini API"])
-    TR --> OpenRouter(["OpenRouter API"])
+    VM --> TR["Translator"] --> Cloud(["Gemini, OpenAI, Claude, Groq, DeepSeek or OpenRouter API"])
+    TR --> LocalAI(["LiteRT-LM local model (Android)"])
     TR --> MLKit(["ML Kit (on-device, Android)"])
 ```
 
@@ -135,15 +136,15 @@ shared/src/                  # Kotlin Multiplatform code for Android and iOS
 ├── commonMain/
 │   ├── kotlin/…/languagecoast/
 │   │   ├── App.kt           # Bottom navigation and NavHost
-│   │   ├── data/            # Room database, repositories, DataStore settings, translators (Gemini, OpenRouter),
-│   │   │                    # spaced repetition, search, import/export formats, backups
+│   │   ├── data/            # Room database, repositories, DataStore settings, translators (cloud providers,
+│   │   │                    # local AI models), spaced repetition, search, import/export formats, backups
 │   │   ├── di/              # Koin modules
 │   │   ├── navigation/      # Type-safe route definitions
 │   │   ├── notifications/   # Reminder scheduling interface and timing
 │   │   └── ui/              # Each feature's Screen and ViewModel, shared composables and the theme
-│   └── composeResources/    # Nunito font and logos
-├── androidMain/             # Android implementations: database and settings files, ML Kit, text-to-speech,
-│                            # file import/export and backup, date and time formats
+│   └── composeResources/    # Nunito font and the logo mark
+├── androidMain/             # Android implementations: database and settings files, ML Kit, the LiteRT-LM engine,
+│                            # text-to-speech, file import/export and backup, date and time formats
 ├── iosMain/                 # iOS implementations, plus the entry point and notification reminders
 └── commonTest/              # Tests that run on every platform
 
@@ -164,7 +165,7 @@ iosApp/                      # The iOS app: a SwiftUI shell around the shared UI
 ### Prerequisites
 - A recent version of **Android Studio** that supports Android Gradle Plugin 9.2.
 - **JDK 21** (Gradle can download it automatically through the toolchain resolver).
-- Optionally a **Google Gemini API key** ([Google AI Studio](https://aistudio.google.com/)) or an **OpenRouter API key** ([openrouter.ai](https://openrouter.ai/)). On-device translation needs no key.
+- Optionally an API key for a cloud provider: Google Gemini ([Google AI Studio](https://aistudio.google.com/)), OpenAI, Anthropic, Groq, DeepSeek or OpenRouter ([openrouter.ai](https://openrouter.ai/)). On-device and Local AI translation need no key.
 
 ### Setup
 1. Clone the repository:
@@ -173,7 +174,7 @@ iosApp/                      # The iOS app: a SwiftUI shell around the shared UI
    ```
 2. Open the project in Android Studio and let Gradle sync.
 3. Run the app on an emulator or a physical device (Android 8.0 / API 26 or higher).
-4. Open **Settings**, choose your native language and how to translate: on-device needs nothing else, Gemini and OpenRouter need their API key.
+4. Open **Settings**, choose your native language and how to translate: on-device needs nothing else, Local AI downloads a model, and the cloud providers need their API key.
 5. Start a coast for the language you want to learn, then create your first island!
 
 ### Running the iOS app
@@ -183,7 +184,7 @@ cd iosApp
 xcodegen generate
 open iosApp.xcodeproj
 ```
-Then run it on a simulator from Xcode. The first build takes a few minutes, since it compiles the shared Kotlin code. On iPhone, translation uses Gemini or OpenRouter; on-device translation, import/export, backups and the widget are Android-only for now.
+Then run it on a simulator from Xcode. The first build takes a few minutes, since it compiles the shared Kotlin code. On iPhone, translation uses the cloud providers; on-device translation, Local AI, import/export, backups and the widget are Android-only for now.
 
 > **Your API keys stay on your device.** The app keeps them in local app storage (DataStore). They are never compiled into the app, so you don't need to add them to `local.properties`.
 
@@ -195,7 +196,7 @@ See the [privacy policy](docs/privacy-policy.md) for what the app stores and sen
 # On a Mac, the shared tests also run on the iOS simulator:
 ./gradlew :shared:iosSimulatorArm64Test
 ```
-The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing (Gemini and OpenRouter), editing and searching cards, export, import, backup and restore, answer checking in Active Type (both directions), reminder timing, the date labels and the widget's texts. They run in GitHub Actions on every pull request and every push to `main`; the shared tests also run on the iOS simulator whenever shared or iOS code changes. Database migrations are tested on a device or emulator with `./gradlew connectedDebugAndroidTest`.
+The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing, editing and searching cards, export, import, backup and restore, answer checking in Active Type (both directions), reminder timing, the date labels and the widget's texts. They run in GitHub Actions on every pull request and every push to `main`; the shared tests also run on the iOS simulator whenever shared or iOS code changes. Database migrations are tested on a device or emulator with `./gradlew connectedDebugAndroidTest`.
 
 ## 📦 Releases
 
@@ -242,13 +243,13 @@ Without these secrets, the iOS workflow skips the upload.
 
 ## 🎨 Design
 
-Language Coast uses a deep-sea color palette:
-- **Deep Ocean Blue**: the app's main background.
-- **Sand Beige**: warm, readable text and primary accents.
-- **Coral & Wave Teal**: bright highlights for interactive elements and feedback.
-- **Card tints**: sky, seafoam, dune and shell for coasts and islands.
+Language Coast is deep water lit from above, with one sunlit accent:
+- **Ocean**: a dark blue ground with a gradient that lightens towards the top, and a few lighter layers of it for cards, tiles and selected controls.
+- **Sunlit**: a single warm gold, used only for what to do next: the main button, due counts, the active tab.
+- **Coral** for *Again* and errors, **seafoam** for success, and off-white and mist for text.
+- **The mark**: a sun on the horizon over two waves, drawn once as a vector for the launcher icon, splash, widget and the app itself.
 
-Text colors are checked against the WCAG contrast guidelines (at least 4.5:1 for normal text). Headings use [Nunito](https://github.com/googlefonts/nunito), licensed under the [SIL Open Font License](docs/licenses/Nunito-OFL.txt).
+Everything is set in [Nunito](https://github.com/googlefonts/nunito) (licensed under the [SIL Open Font License](docs/licenses/Nunito-OFL.txt)) on one type scale, and text colors are checked against the WCAG contrast guidelines (at least 4.5:1 for normal text). The palette lives in `shared/.../ui/theme/Color.kt` and the shared controls in `ui/components/CoastControls.kt`.
 
 ## 📄 License
 

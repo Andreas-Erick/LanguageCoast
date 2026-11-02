@@ -7,8 +7,7 @@
     <!-- Widget colours, matching NavGround, Sunlit, TextSecondary and WaveLineColor in ui/theme/Color.kt -->
     <color name="nav_ground">#FF0A1F2E</color>
     <color name="sunlit">#FFF3C969</color>
+    <color name="text_primary">#FFF5F2EA</color>
     <color name="text_secondary">#FFA9BDCB</color>
     <color name="widget_wave">#FF2C5C7C</color>
-    <!-- OceanGround at 85%, for secondary text on the widget's light tiles -->
-    <color name="ocean_ground_secondary">#D90C2536</color>
 </resources>

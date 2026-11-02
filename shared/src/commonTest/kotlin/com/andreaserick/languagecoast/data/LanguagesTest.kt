@@ -52,8 +52,9 @@ class LanguagesTest {
     }
 
     @Test
-    fun onlyEsperantoHasNoFlag() {
-        assertEquals(listOf("Esperanto"), Languages.ALL.filter { it.flag == null }.map { it.name })
+    fun esperantoShowsTheWorld() {
+        assertEquals("🌍", Languages.byName("Esperanto")?.flag)
+        assertEquals(listOf("Esperanto"), Languages.ALL.filter { it.flagCountry == null }.map { it.name })
     }
 
     @Test
