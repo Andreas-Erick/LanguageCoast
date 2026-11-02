@@ -5,7 +5,6 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,10 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -25,31 +22,32 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.ExportFormat
+import com.andreaserick.languagecoast.ui.components.ButtonHeight
+import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.SelectionDropdown
+import com.andreaserick.languagecoast.ui.components.coastChipBorder
+import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.plural
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.MistWhite
-import com.andreaserick.languagecoast.ui.theme.SandBeige
+import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.viewmodel.koinViewModel
-import java.io.IOException
 
 /** Import files larger than this are refused; a card file of this size would hold well over 50,000 cards. */
 private const val MAX_IMPORT_CHARS = 5_000_000
@@ -107,33 +105,31 @@ actual fun CardTransferSection() {
         }
     }
 
-    Text("Export", color = Color.White)
+    Text("Export", style = MaterialTheme.typography.titleSmall)
     Hint("Save your cards as a file to import into Anki, or as Markdown tables to read or print.")
     Spacer(modifier = Modifier.height(12.dp))
-    Button(
+    CoastSecondaryButton(
         onClick = { showExportDialog = true },
         enabled = uiState.coasts.isNotEmpty(),
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(ButtonHeight)
     ) {
-        Text("Export cards", fontSize = 16.sp)
+        Text("Export cards")
     }
 
     Spacer(modifier = Modifier.height(20.dp))
 
-    Text("Import", color = Color.White)
+    Text("Import", style = MaterialTheme.typography.titleSmall)
     Hint("Add cards from a CSV or tab-separated file, e.g. one exported from Anki or a spreadsheet.")
     Spacer(modifier = Modifier.height(12.dp))
-    OutlinedButton(
+    CoastSecondaryButton(
         onClick = { importLauncher.launch(IMPORT_MIME_TYPES) },
-        border = BorderStroke(1.dp, SandBeige),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige),
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(ButtonHeight)
     ) {
-        Text("Import cards", fontSize = 16.sp)
+        Text("Import cards")
     }
 
     if (showExportDialog) {
@@ -189,9 +185,6 @@ private fun ExportDialog(
     val coastOptions = listOf(CoastOption(null, "All coasts")) + coasts.map { CoastOption(it.coastId, it.displayName) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = DeepOceanBlue,
-        titleContentColor = SandBeige,
-        textContentColor = Color.White,
         title = { Text("Export cards") },
         text = {
             Column {
@@ -209,8 +202,10 @@ private fun ExportDialog(
                         FilterChip(
                             selected = option == format,
                             onClick = { onFormatChange(option) },
-                            label = { Text(option.label) },
-                            colors = coastChipColors()
+                            label = { Text(option.label, style = MaterialTheme.typography.labelMedium) },
+                            colors = coastChipColors(),
+                            border = coastChipBorder(enabled = true, selected = option == format),
+                            shape = MaterialTheme.shapes.small
                         )
                     }
                 }
@@ -222,8 +217,8 @@ private fun ExportDialog(
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onExport) { Text("Export", color = SandBeige) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = SandBeige) } }
+        confirmButton = { TextButton(onClick = onExport) { Text("Export", style = MaterialTheme.typography.titleSmall) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = TextPrimary, style = MaterialTheme.typography.labelMedium) } }
     )
 }
 
@@ -248,9 +243,6 @@ private fun ImportDialog(
     val coast = coasts.firstOrNull { it.coastId == preview.coastId }
     AlertDialog(
         onDismissRequest = { if (!isImporting) onDismiss() },
-        containerColor = DeepOceanBlue,
-        titleContentColor = SandBeige,
-        textContentColor = Color.White,
         title = { Text("Import ${plural(cards.size, "card")}") },
         text = {
             Column {
@@ -271,8 +263,8 @@ private fun ImportDialog(
                     )
                     Text(
                         text = card.island ?: DEFAULT_IMPORT_ISLAND,
-                        color = MistWhite,
-                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
                 }
@@ -284,11 +276,11 @@ private fun ImportDialog(
         },
         confirmButton = {
             TextButton(onClick = onImport, enabled = cards.isNotEmpty() && !isImporting) {
-                Text(if (isImporting) "Importing…" else "Import", color = SandBeige)
+                Text(if (isImporting) "Importing…" else "Import", color = Sunlit, style = MaterialTheme.typography.labelMedium)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isImporting) { Text("Cancel", color = SandBeige) }
+            TextButton(onClick = onDismiss, enabled = !isImporting) { Text("Cancel", color = TextPrimary, style = MaterialTheme.typography.labelMedium) }
         }
     )
 }
@@ -298,7 +290,7 @@ private fun ImportDialog(
 private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange, colors = coastSwitchColors())
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

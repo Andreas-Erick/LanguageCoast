@@ -1,11 +1,12 @@
 package com.andreaserick.languagecoast
 
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EditNote
@@ -14,8 +15,8 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Sailing
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -30,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,12 +60,11 @@ import com.andreaserick.languagecoast.ui.mycoast.MyCoastScreen
 import com.andreaserick.languagecoast.ui.search.SearchScreen
 import com.andreaserick.languagecoast.ui.settings.SettingsScreen
 import com.andreaserick.languagecoast.ui.study.StudyScreen
-import com.andreaserick.languagecoast.ui.theme.AbyssBlue
-import com.andreaserick.languagecoast.ui.theme.CardBorder
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.LanguageCoastTheme
-import com.andreaserick.languagecoast.ui.theme.SandBeige
-import com.andreaserick.languagecoast.ui.theme.SandMuted
+import com.andreaserick.languagecoast.ui.theme.NavGround
+import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
 /** A tab in the bottom navigation bar. */
 private data class TopLevelDestination(
@@ -116,16 +117,22 @@ private fun AppContent() {
     CompositionLocalProvider(LocalUndoMessenger provides undoMessenger) {
         OceanBackground {
             Scaffold(
-                containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                containerColor = Color.Transparent,
+                // Can't be worked out from a transparent container, and would default to black.
+                contentColor = TextPrimary,
                 snackbarHost = { SnackbarHost(snackbarHostState) { CoastSnackbar(it) } },
                 bottomBar = {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        HorizontalDivider(color = CardBorder, thickness = 1.dp)
-                        // Matches the bottom of the background gradient.
-                        NavigationBar(containerColor = AbyssBlue, tonalElevation = 0.dp) {
-                            // A study session belongs to the tab it was opened from (My Coasts or Create's
-                            // "Start reviewing"), so select the tab of the newest screen that has one.
-                            val backStack by navController.currentBackStack.collectAsState()
+                    val backStack by navController.currentBackStack.collectAsState()
+                    // A study session is a focus mode, so it gets the whole screen.
+                    val inStudySession = backStack.lastOrNull()?.destination?.hasRoute<StudyScreenRoute>() == true
+                    AnimatedVisibility(
+                        visible = !inStudySession,
+                        enter = expandVertically(tween(TRANSITION_MILLIS)),
+                        exit = shrinkVertically(tween(TRANSITION_MILLIS))
+                    ) {
+                        NavigationBar(containerColor = NavGround, tonalElevation = 0.dp) {
+                            // A screen on top of a study session belongs to the tab the session was opened from
+                            // (My Coasts or Create's review button), so select the tab of the newest screen that has one.
                             val tabDestination = backStack.lastOrNull { entry ->
                                 topLevelDestinations.any { tab -> entry.destination.hierarchy.any(tab.isSelected) }
                             }?.destination
@@ -142,7 +149,8 @@ private fun AppContent() {
                                     label = {
                                         Text(
                                             text = destination.label,
-                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Bold
                                         )
                                     },
                                     selected = selected,
@@ -154,11 +162,11 @@ private fun AppContent() {
                                         }
                                     },
                                     colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = DeepOceanBlue,
-                                        indicatorColor = SandBeige,
-                                        selectedTextColor = SandBeige,
-                                        unselectedIconColor = SandMuted,
-                                        unselectedTextColor = SandMuted
+                                        selectedIconColor = Sunlit,
+                                        indicatorColor = Color.Transparent,
+                                        selectedTextColor = Sunlit,
+                                        unselectedIconColor = TextSecondary,
+                                        unselectedTextColor = TextSecondary
                                     )
                                 )
                             }

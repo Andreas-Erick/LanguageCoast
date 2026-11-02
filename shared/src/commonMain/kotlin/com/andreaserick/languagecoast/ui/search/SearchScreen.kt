@@ -15,7 +15,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,13 +34,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.ui.components.CardListRow
+import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.EditCardSheet
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
+import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.plural
-import com.andreaserick.languagecoast.ui.theme.MistWhite
-import com.andreaserick.languagecoast.ui.theme.SandBeige
-import com.andreaserick.languagecoast.ui.theme.coastTextFieldColors
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -81,7 +81,7 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "Search", onBack = onNavigateBack)
 
-        OutlinedTextField(
+        CoastTextField(
             value = query,
             onValueChange = {
                 query = it
@@ -100,13 +100,12 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
                 }
             } else null,
             singleLine = true,
-            colors = coastTextFieldColors(),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             // Results update while typing, so the search key only makes room to see them.
             keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 24.dp, end = 24.dp, top = 16.dp)
+                .padding(start = ScreenMargin, end = ScreenMargin, top = 12.dp)
                 .focusRequester(focusRequester)
         )
 
@@ -120,7 +119,7 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
         if (message != null) {
             Text(
                 message,
-                color = if (uiState.hasQuery) SandBeige else MistWhite,
+                color = TextSecondary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -129,11 +128,11 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
         } else if (!uiState.isLoading) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 24.dp),
+                contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 8.dp, bottom = 24.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
                 item(key = "count") {
-                    Text(plural(uiState.results.size, "card") + " found", color = MistWhite, modifier = Modifier.padding(top = 8.dp))
+                    Text(plural(uiState.results.size, "card") + " found", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 8.dp))
                 }
                 items(uiState.results, key = { it.card.cardId }) { placed ->
                     CardListRow(

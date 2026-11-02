@@ -2,78 +2,72 @@ package com.andreaserick.languagecoast.ui.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Shapes
-import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
- * The "Language Coast" color scheme. Built on `darkColorScheme` so all Material 3 components
- * (text fields, dialogs, menus, buttons, icons) have high-contrast legibility on the deep
- * [DeepOceanBlue] coastal background.
+ * The "Language Coast" color scheme. Material components pick their colors from here, so dialogs,
+ * sheets, menus and pickers match the app without setting colors on each one.
  */
 private val CoastColorScheme = darkColorScheme(
-    primary = SandBeige,            // Main buttons, active indicators, and top bar accents
-    onPrimary = DeepOceanBlue,      // High-contrast dark ocean text inside sand buttons
+    primary = Sunlit,
+    onPrimary = OceanGround,
 
-    primaryContainer = WaveTeal,    // Highlighted cards (e.g., save confirmation)
-    onPrimaryContainer = Color.White,
+    primaryContainer = SurfaceSelected,
+    onPrimaryContainer = TextPrimary,
 
-    secondary = WaveTeal,           // Secondary elements
-    onSecondary = Color.White,
+    secondary = SurfBlue,
+    onSecondary = OceanGround,
 
-    secondaryContainer = ElevatedCardWash,
-    onSecondaryContainer = SandBeige,
+    secondaryContainer = SurfaceSelected,
+    onSecondaryContainer = TextPrimary,
 
-    tertiary = CoralAccent,         // Highlights or error/warning accents
-    onTertiary = DeepOceanBlue,
+    tertiary = CoralText,
+    onTertiary = OceanGround,
 
-    background = DeepOceanBlue,     // The main background of all screens
-    onBackground = Color.White,     // Standard text color on the dark ocean background
+    tertiaryContainer = SurfaceSelected,
+    onTertiaryContainer = TextPrimary,
 
-    surface = DeepOceanBlue,        // Dialogs, bottom sheets, and default surfaces
-    onSurface = Color.White,        // High-contrast text inside inputs and surfaces
+    background = OceanGround,
+    onBackground = TextPrimary,
 
-    surfaceVariant = WaveTeal.copy(alpha = 0.35f),
-    onSurfaceVariant = MistWhite,   // Labels, placeholders, and supporting text
+    surface = OceanGround,
+    onSurface = TextPrimary,
 
-    outline = SandMuted,            // Unfocused borders for OutlinedTextFields and chips
-    outlineVariant = SandBeige.copy(alpha = 0.22f),
+    surfaceVariant = SurfaceRaised,
+    onSurfaceVariant = TextSecondary,
+
+    // Bottom sheets use Low, menus plain, dialogs High, and the time picker's dial Highest.
+    surfaceContainerLowest = NavGround,
+    surfaceContainerLow = SurfaceCard,
+    surfaceContainer = SurfaceRaised,
+    surfaceContainerHigh = SurfaceCard,
+    surfaceContainerHighest = SurfaceRaised,
+
+    outline = TextSecondary,
+    outlineVariant = SurfaceSelected,
 
     error = CoralText,
-    onError = DeepOceanBlue
+    onError = OceanGround
 )
 
 private val CoastShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
+    // Material's menus use this one; a plain 4dp corner would look out of place next to everything else.
+    extraSmall = RoundedCornerShape(12.dp),
     small = RoundedCornerShape(12.dp),
+    // Buttons and text fields.
     medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(22.dp),
-    extraLarge = RoundedCornerShape(28.dp)
+    // Cards.
+    large = RoundedCornerShape(20.dp),
+    // The flashcard, sheets and dialogs.
+    extraLarge = RoundedCornerShape(24.dp)
 )
 
-/** Harmonized text field colors for translucent coastal cards. */
-@Composable
-fun coastTextFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = Color.White,
-    unfocusedTextColor = Color.White,
-    focusedContainerColor = Color.White.copy(alpha = 0.04f),
-    unfocusedContainerColor = Color.White.copy(alpha = 0.02f),
-    focusedBorderColor = SandBeige,
-    unfocusedBorderColor = SandMuted.copy(alpha = 0.65f),
-    focusedLabelColor = SandBeige,
-    unfocusedLabelColor = MistWhite,
-    focusedPlaceholderColor = MistWhite.copy(alpha = 0.55f),
-    unfocusedPlaceholderColor = MistWhite.copy(alpha = 0.55f),
-    focusedLeadingIconColor = SandBeige,
-    unfocusedLeadingIconColor = SandMuted,
-    focusedTrailingIconColor = SandBeige,
-    unfocusedTrailingIconColor = SandMuted,
-    cursorColor = SandBeige
-)
+/** Translucent, so a chip reads as a step lighter on both the background and a card. */
+internal val ChipContainer = Color.White.copy(alpha = 0.06f)
 
 /**
  * The main theme wrapper for the Language Coast application.

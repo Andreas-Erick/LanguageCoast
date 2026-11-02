@@ -3,64 +3,46 @@ package com.andreaserick.languagecoast.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Custom "Language Coast" branding palette.
- * These colors define the aquatic, sunlit coastal aesthetic of the application.
+ * The "Language Coast" palette: deep water, a few lighter layers of it for surfaces, and one bright
+ * sunlit accent. The accent marks what to do next (the main action, due counts, the active tab), so
+ * everything else stays in the ocean tones.
  */
 
-/** The primary dark background color, representing the deep ocean. */
-val DeepOceanBlue = Color(0xFF133C55)
-/** A richer midnight ocean shade for the middle of the ocean gradient. */
-val MidnightOcean = Color(0xFF0F3147)
-/** A medium blue used for primary actions and highlights. */
-val WaveTeal = Color(0xFF386FA4)
-/** A softer blue used for secondary surfaces like island cards. */
-val SurfLightBlue = Color(0xFF59A5D8)
-/** A warm beige used for primary text and titles on dark backgrounds. */
-val SandBeige = Color(0xFFC2B280)
-/** A brighter golden sand accent for badges and highlights. */
-val SunlitSand = Color(0xFFD8C99B)
-/** A vibrant orange-red used for critical actions (e.g., Delete, Again). */
-val CoralAccent = Color(0xFFEE6C4D)
-/** Seafoam green used for positive status badges (installed, best match, success). */
-val SeafoamEmerald = Color(0xFF6CC5A1)
+/** The background of every screen. */
+val OceanGround = Color(0xFF0C2536)
 
-/** A very dark grey used for standard text on light surfaces. */
-val DarkCharcoal = Color(0xFF1E1E24)
+/** The bottom navigation bar, a step darker than [OceanGround]. */
+val NavGround = Color(0xFF0A1F2E)
 
-/** The bottom of the background gradient, a deeper shade of [DeepOceanBlue]. */
-val AbyssBlue = Color(0xFF0A2436)
+/** Cards, and fields directly on the background. */
+val SurfaceCard = Color(0xFF153449)
 
-/** [SandBeige] for secondary text on [DeepOceanBlue]; still meets the 4.5:1 contrast ratio for text. */
-val SandMuted = Color(0xFFB0A67C)
+/** One layer above [SurfaceCard]: icon tiles, menus and panels inside a card. */
+val SurfaceRaised = Color(0xFF1F4560)
 
-/** The background of grouped content (settings, streak, stats): a translucent glass wash over the ocean. */
-val CardWash = Color.White.copy(alpha = 0.07f)
+/** The selected part of a switch, secondary buttons and borders. Also the top layer: it works on any surface. */
+val SurfaceSelected = Color(0xFF24506E)
 
-/** A slightly stronger glass surface for nested cards and interactive panels. */
-val ElevatedCardWash = Color.White.copy(alpha = 0.11f)
+/** The one accent. [OceanGround] text on it has over 10:1 contrast, as does this as text on [OceanGround]. */
+val Sunlit = Color(0xFFF3C969)
 
-/** Subtle luminous border for glass cards on the ocean background. */
-val CardBorder = SandBeige.copy(alpha = 0.18f)
+/** Standard text and icons. */
+val TextPrimary = Color(0xFFF5F2EA)
 
-/**
- * Secondary text on [CardWash] cards. [SandMuted] drops below 4.5:1 on the lighter card
- * background, while this stays above 6:1.
- */
-val MistWhite = Color.White.copy(alpha = 0.78f)
+/** Supporting text and quiet icons; above 4.5:1 on every surface except [SurfaceSelected]. */
+val TextSecondary = Color(0xFFA9BDCB)
 
-/** A lighter [CoralAccent] for text on [DeepOceanBlue] (5.3:1 contrast; plain coral is only 3.8:1). */
-val CoralText = Color(0xFFF39882)
+/** "Again", errors and destructive actions, as text or icon on any surface (above 4.5:1). */
+val CoralText = Color(0xFFF5A28C)
 
-/**
- * Light tints for island and coast cards. All give at least 4.5:1 contrast for [DeepOceanBlue] text,
- * including secondary text at 85% opacity.
- */
-val CardTints = listOf(
-    Color(0xFF9FC3E7), // Sky
-    Color(0xFFA8D5BA), // Seafoam
-    Color(0xFFE3D3A4), // Dune
-    Color(0xFFF2B8A2)  // Shell
-)
+/** Success: installed, active, a correct answer. */
+val Seafoam = Color(0xFF7FD1AE)
 
-/** A stable tint for the card with [id], so each card keeps its colour across launches. */
-fun cardTint(id: Int): Color = CardTints[id.mod(CardTints.size)]
+/** Progress that isn't a call to action, such as islands explored this week. */
+val SurfBlue = Color(0xFF6FB3D9)
+
+/** The wave line under screen titles. */
+val WaveLineColor = Color(0xFF2C5C7C)
+
+/** A streak day that is today and not studied yet: stands out from other days without looking done. */
+val StreakToday = Color(0xFF4A7898)
