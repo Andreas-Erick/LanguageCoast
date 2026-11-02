@@ -22,10 +22,11 @@
         android:orientation="horizontal">
 
         <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="-4dp"
             android:importantForAccessibility="no"
-            android:src="@mipmap/logo_android_language_coast_round" />
+            android:src="@drawable/ic_launcher_foreground" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -35,7 +36,7 @@
             android:fontVariationSettings="'wght' 800"
             android:maxLines="1"
             android:text="@string/app_name"
-            android:textColor="@color/sand_beige"
+            android:textColor="@color/sunlit"
             android:textSize="16sp" />
     </LinearLayout>
 
@@ -77,7 +78,7 @@
                 android:fontVariationSettings="'wght' 800"
                 android:maxLines="1"
                 android:text="@string/widget_preview_streak"
-                android:textColor="@color/deep_ocean_blue"
+                android:textColor="@color/ocean_ground"
                 android:textSize="26sp" />
 
             <TextView
@@ -86,7 +87,7 @@
                 android:layout_height="wrap_content"
                 android:maxLines="1"
                 android:text="@string/widget_streak_label"
-                android:textColor="@color/deep_ocean_blue_secondary"
+                android:textColor="@color/ocean_ground_secondary"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -117,7 +118,7 @@
                 android:fontVariationSettings="'wght' 800"
                 android:maxLines="1"
                 android:text="@string/widget_preview_due"
-                android:textColor="@color/deep_ocean_blue"
+                android:textColor="@color/ocean_ground"
                 android:textSize="26sp" />
 
             <TextView
@@ -126,7 +127,7 @@
                 android:layout_height="wrap_content"
                 android:maxLines="1"
                 android:text="@string/widget_preview_due_label"
-                android:textColor="@color/deep_ocean_blue_secondary"
+                android:textColor="@color/ocean_ground_secondary"
                 android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>
@@ -140,6 +141,6 @@
         android:gravity="center"
         android:maxLines="1"
         android:text="@string/widget_preview_footer"
-        android:textColor="@color/mist_white"
+        android:textColor="@color/text_secondary"
         android:textSize="12sp" />
 </LinearLayout>

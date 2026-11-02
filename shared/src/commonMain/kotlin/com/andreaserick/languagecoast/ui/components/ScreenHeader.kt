@@ -21,6 +21,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -28,6 +32,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.OceanSurface
+import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import com.andreaserick.languagecoast.ui.theme.WaveLineColor
@@ -115,13 +121,28 @@ fun WaveLine(modifier: Modifier = Modifier) {
     }
 }
 
-/** The app background: plain deep water, so the content is what stands out. */
+/**
+ * The app background: deep water that is a little lighter at the top, with a faint sunlit glow in one
+ * corner. Enough depth for cards to sit on, not enough to compete with them.
+ */
 @Composable
 fun OceanBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(OceanGround),
+            .background(Brush.verticalGradient(listOf(OceanSurface, OceanGround)))
+            .drawBehind {
+                val center = Offset(size.width * 0.9f, -size.width * 0.2f)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Sunlit.copy(alpha = 0.10f), Color.Transparent),
+                        center = center,
+                        radius = size.width * 0.9f
+                    ),
+                    radius = size.width * 0.9f,
+                    center = center
+                )
+            },
         content = content
     )
 }

@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -46,7 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
@@ -60,8 +59,7 @@ import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.resources.Res
-import com.andreaserick.languagecoast.resources.logo_android_language_coast_foreground
-import com.andreaserick.languagecoast.resources.logo_language_coast
+import com.andreaserick.languagecoast.resources.logo_mark
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
@@ -145,15 +143,14 @@ private fun CreateContent(
         ScreenHeader(
             title = "Language Coast",
             leading = {
-                // The round emblem from the app icon; the full logo's wordmark is unreadable this small.
+                // The mark sits in the middle of its canvas, so it's drawn larger than it looks and pulled left.
                 Image(
-                    painter = painterResource(Res.drawable.logo_android_language_coast_foreground),
+                    painter = painterResource(Res.drawable.logo_mark),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
+                        .size(52.dp)
+                        .offset(x = (-8).dp)
                 )
-                Spacer(modifier = Modifier.width(10.dp))
             },
             actions = { if (uiState.streakCount > 0) StreakBadge(uiState.streakCount) }
         )
@@ -476,11 +473,10 @@ private fun StartCoastPrompt(onStartCoast: () -> Unit) {
             .padding(ScreenMargin)
     ) {
         Image(
-            painter = painterResource(Res.drawable.logo_language_coast),
+            painter = painterResource(Res.drawable.logo_mark),
             contentDescription = "Language Coast",
-            modifier = Modifier.size(160.dp)
+            modifier = Modifier.size(180.dp)
         )
-        Spacer(modifier = Modifier.height(16.dp))
         Text("Welcome!", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
         Spacer(modifier = Modifier.height(8.dp))
         Text(
