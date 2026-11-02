@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.ui.mycoast
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,9 +14,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -29,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -54,11 +58,11 @@ import com.andreaserick.languagecoast.ui.components.cardCountLabel
 import com.andreaserick.languagecoast.ui.components.dayOfWeekName
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
+import com.andreaserick.languagecoast.ui.theme.CardBorder
 import com.andreaserick.languagecoast.ui.theme.CardWash
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
 import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
-import com.andreaserick.languagecoast.ui.theme.SandMuted
 import com.andreaserick.languagecoast.ui.theme.cardTint
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -166,14 +170,17 @@ fun MyCoastScreen(
                         item(key = "new-coast") {
                             OutlinedButton(
                                 onClick = { showNewCoastDialog = true },
+                                border = BorderStroke(1.dp, SandBeige),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(bottom = 24.dp)
+                                    .height(50.dp)
+                                    .padding(bottom = 8.dp)
                                     .animateItem()
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                Text("New Coast")
+                                Text("New Coast", fontWeight = FontWeight.SemiBold)
                             }
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }
@@ -193,16 +200,24 @@ fun StreakCard(streakCount: Int, studyDays: Set<LocalDate>, today: LocalDate?, m
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = CardWash, contentColor = SandBeige),
+        border = BorderStroke(1.dp, CardBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = MaterialTheme.shapes.large
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (streakCount > 0) "🔥" else "⚓",
-                    fontSize = 36.sp,
-                    modifier = Modifier.padding(end = 16.dp)
-                )
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(52.dp)
+                        .background(SandBeige.copy(alpha = 0.14f), CircleShape)
+                ) {
+                    Text(
+                        text = if (streakCount > 0) "🔥" else "⚓",
+                        fontSize = 28.sp
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text(
                         text = when (streakCount) {
@@ -291,14 +306,32 @@ fun CoastCard(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = cardTint(coast.coastId), contentColor = onCard)
     ) {
         Column(modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 20.dp, end = 4.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f).padding(top = 4.dp)) {
-                    Text(text = coast.displayName, style = MaterialTheme.typography.titleLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = coast.displayName, style = MaterialTheme.typography.titleLarge)
+                        if (summary.dueCount > 0) {
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = DeepOceanBlue,
+                                contentColor = SandBeige
+                            ) {
+                                Text(
+                                    text = "${summary.dueCount} due",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                     if (nativeName != null) {
-                        Text(text = nativeName, fontSize = 14.sp, color = onCardSecondary)
+                        Text(text = nativeName, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = onCardSecondary)
                     }
                 }
                 IconButton(onClick = onDeleteClick) {

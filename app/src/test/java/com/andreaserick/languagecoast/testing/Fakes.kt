@@ -253,6 +253,15 @@ class FakeSettingsRepository : SettingsRepository {
     override val geminiModel = MutableStateFlow(SettingsDefaults.GEMINI_MODEL)
     override val openRouterKey = MutableStateFlow("")
     override val openRouterModel = MutableStateFlow(SettingsDefaults.OPENROUTER_MODEL)
+    override val localAiModel = MutableStateFlow(SettingsDefaults.LOCAL_AI_MODEL)
+    override val openAiKey = MutableStateFlow("")
+    override val openAiModel = MutableStateFlow(SettingsDefaults.OPENAI_MODEL)
+    override val claudeKey = MutableStateFlow("")
+    override val claudeModel = MutableStateFlow(SettingsDefaults.CLAUDE_MODEL)
+    override val groqKey = MutableStateFlow("")
+    override val groqModel = MutableStateFlow(SettingsDefaults.GROQ_MODEL)
+    override val deepSeekKey = MutableStateFlow("")
+    override val deepSeekModel = MutableStateFlow(SettingsDefaults.DEEPSEEK_MODEL)
     override val streakCount = MutableStateFlow(0)
     override val studyDays = MutableStateFlow<Set<LocalDate>>(emptySet())
     override val reminderSettings = MutableStateFlow(ReminderSettings())
@@ -270,6 +279,15 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setTranslationProvider(provider: TranslationProvider) { translationProvider.value = provider }
     override suspend fun setOpenRouterKey(key: String) { openRouterKey.value = key }
     override suspend fun setOpenRouterModel(model: String) { openRouterModel.value = model }
+    override suspend fun setLocalAiModel(modelId: String) { localAiModel.value = modelId }
+    override suspend fun setOpenAiKey(key: String) { openAiKey.value = key }
+    override suspend fun setOpenAiModel(model: String) { openAiModel.value = model }
+    override suspend fun setClaudeKey(key: String) { claudeKey.value = key }
+    override suspend fun setClaudeModel(model: String) { claudeModel.value = model }
+    override suspend fun setGroqKey(key: String) { groqKey.value = key }
+    override suspend fun setGroqModel(model: String) { groqModel.value = model }
+    override suspend fun setDeepSeekKey(key: String) { deepSeekKey.value = key }
+    override suspend fun setDeepSeekModel(model: String) { deepSeekModel.value = model }
     override suspend fun setReminderSettings(reminder: ReminderSettings) { reminderSettings.value = reminder }
     override suspend fun setStudyReversed(reversed: Boolean) { studyReversed.value = reversed }
 
@@ -287,6 +305,11 @@ class FakeSettingsRepository : SettingsRepository {
         translationProvider = translationProvider.value.name,
         geminiModel = geminiModel.value,
         openRouterModel = openRouterModel.value,
+        localAiModel = localAiModel.value,
+        openAiModel = openAiModel.value,
+        claudeModel = claudeModel.value,
+        groqModel = groqModel.value,
+        deepSeekModel = deepSeekModel.value,
         streakCount = streakCount.value,
         studyDays = studyDays.value.map { it.toString() }.sorted(),
         reminderEnabled = reminderSettings.value.enabled,
@@ -299,6 +322,11 @@ class FakeSettingsRepository : SettingsRepository {
         backup.translationProvider?.let { name -> translationProvider.value = TranslationProvider.valueOf(name) }
         backup.geminiModel?.let { geminiModel.value = it }
         backup.openRouterModel?.let { openRouterModel.value = it }
+        backup.localAiModel?.let { localAiModel.value = it }
+        backup.openAiModel?.let { openAiModel.value = it }
+        backup.claudeModel?.let { claudeModel.value = it }
+        backup.groqModel?.let { groqModel.value = it }
+        backup.deepSeekModel?.let { deepSeekModel.value = it }
         streakCount.value = backup.streakCount
         studyDays.value = backup.studyDays.mapTo(HashSet()) { LocalDate.parse(it) }
         reminderSettings.value = ReminderSettings(enabled = backup.reminderEnabled)

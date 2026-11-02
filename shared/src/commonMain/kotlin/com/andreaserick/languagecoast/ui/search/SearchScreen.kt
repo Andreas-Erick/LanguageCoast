@@ -40,6 +40,7 @@ import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
+import com.andreaserick.languagecoast.ui.theme.coastTextFieldColors
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -99,6 +100,7 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
                 }
             } else null,
             singleLine = true,
+            colors = coastTextFieldColors(),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             // Results update while typing, so the search key only makes room to see them.
             keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),

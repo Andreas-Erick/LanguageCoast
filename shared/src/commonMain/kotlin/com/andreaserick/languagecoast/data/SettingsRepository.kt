@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -60,6 +61,24 @@ interface SettingsRepository {
     val openRouterKey: Flow<String>
     /** The OpenRouter model used for translations. */
     val openRouterModel: Flow<String>
+    /** The selected Local AI model ID from [LocalAiCatalog]. */
+    val localAiModel: Flow<String> get() = flowOf(SettingsDefaults.LOCAL_AI_MODEL)
+    /** The OpenAI API key. */
+    val openAiKey: Flow<String> get() = flowOf("")
+    /** The OpenAI model used for translations. */
+    val openAiModel: Flow<String> get() = flowOf(SettingsDefaults.OPENAI_MODEL)
+    /** The Anthropic Claude API key. */
+    val claudeKey: Flow<String> get() = flowOf("")
+    /** The Anthropic Claude model used for translations. */
+    val claudeModel: Flow<String> get() = flowOf(SettingsDefaults.CLAUDE_MODEL)
+    /** The Groq API key. */
+    val groqKey: Flow<String> get() = flowOf("")
+    /** The Groq model used for translations. */
+    val groqModel: Flow<String> get() = flowOf(SettingsDefaults.GROQ_MODEL)
+    /** The DeepSeek API key. */
+    val deepSeekKey: Flow<String> get() = flowOf("")
+    /** The DeepSeek model used for translations. */
+    val deepSeekModel: Flow<String> get() = flowOf(SettingsDefaults.DEEPSEEK_MODEL)
     /** Consecutive days with a completed study session; [refreshStreak] resets it once a day is missed. */
     val streakCount: Flow<Int>
     /** Days with a completed study session; at least the current streak's days, plus recent days recorded since. */
@@ -83,6 +102,24 @@ interface SettingsRepository {
     suspend fun setOpenRouterKey(key: String)
     /** Stores the OpenRouter model used for translations. */
     suspend fun setOpenRouterModel(model: String)
+    /** Stores the active Local AI model ID. */
+    suspend fun setLocalAiModel(modelId: String) = Unit
+    /** Stores the OpenAI API key. */
+    suspend fun setOpenAiKey(key: String) = Unit
+    /** Stores the OpenAI model used for translations. */
+    suspend fun setOpenAiModel(model: String) = Unit
+    /** Stores the Anthropic Claude API key. */
+    suspend fun setClaudeKey(key: String) = Unit
+    /** Stores the Anthropic Claude model used for translations. */
+    suspend fun setClaudeModel(model: String) = Unit
+    /** Stores the Groq API key. */
+    suspend fun setGroqKey(key: String) = Unit
+    /** Stores the Groq model used for translations. */
+    suspend fun setGroqModel(model: String) = Unit
+    /** Stores the DeepSeek API key. */
+    suspend fun setDeepSeekKey(key: String) = Unit
+    /** Stores the DeepSeek model used for translations. */
+    suspend fun setDeepSeekModel(model: String) = Unit
     /** Stores whether and when the daily study reminder is shown. */
     suspend fun setReminderSettings(reminder: ReminderSettings)
     /** Stores whether cards are studied the other way round. */
@@ -132,6 +169,33 @@ class DataStoreSettingsRepository(
     override val openRouterModel: Flow<String> =
         dataStore.data.map { it[OPENROUTER_MODEL] ?: SettingsDefaults.OPENROUTER_MODEL }
 
+    override val localAiModel: Flow<String> =
+        dataStore.data.map { it[LOCAL_AI_MODEL] ?: SettingsDefaults.LOCAL_AI_MODEL }
+
+    override val openAiKey: Flow<String> =
+        dataStore.data.map { it[OPENAI_KEY] ?: "" }
+
+    override val openAiModel: Flow<String> =
+        dataStore.data.map { it[OPENAI_MODEL] ?: SettingsDefaults.OPENAI_MODEL }
+
+    override val claudeKey: Flow<String> =
+        dataStore.data.map { it[CLAUDE_KEY] ?: "" }
+
+    override val claudeModel: Flow<String> =
+        dataStore.data.map { it[CLAUDE_MODEL] ?: SettingsDefaults.CLAUDE_MODEL }
+
+    override val groqKey: Flow<String> =
+        dataStore.data.map { it[GROQ_KEY] ?: "" }
+
+    override val groqModel: Flow<String> =
+        dataStore.data.map { it[GROQ_MODEL] ?: SettingsDefaults.GROQ_MODEL }
+
+    override val deepSeekKey: Flow<String> =
+        dataStore.data.map { it[DEEPSEEK_KEY] ?: "" }
+
+    override val deepSeekModel: Flow<String> =
+        dataStore.data.map { it[DEEPSEEK_MODEL] ?: SettingsDefaults.DEEPSEEK_MODEL }
+
     override val streakCount: Flow<Int> =
         dataStore.data.map { it[STREAK_COUNT] ?: 0 }
 
@@ -161,6 +225,15 @@ class DataStoreSettingsRepository(
     override suspend fun setGeminiModel(model: String) = set(GEMINI_MODEL, model)
     override suspend fun setOpenRouterKey(key: String) = set(OPENROUTER_KEY, key)
     override suspend fun setOpenRouterModel(model: String) = set(OPENROUTER_MODEL, model)
+    override suspend fun setLocalAiModel(modelId: String) = set(LOCAL_AI_MODEL, modelId)
+    override suspend fun setOpenAiKey(key: String) = set(OPENAI_KEY, key)
+    override suspend fun setOpenAiModel(model: String) = set(OPENAI_MODEL, model)
+    override suspend fun setClaudeKey(key: String) = set(CLAUDE_KEY, key)
+    override suspend fun setClaudeModel(model: String) = set(CLAUDE_MODEL, model)
+    override suspend fun setGroqKey(key: String) = set(GROQ_KEY, key)
+    override suspend fun setGroqModel(model: String) = set(GROQ_MODEL, model)
+    override suspend fun setDeepSeekKey(key: String) = set(DEEPSEEK_KEY, key)
+    override suspend fun setDeepSeekModel(model: String) = set(DEEPSEEK_MODEL, model)
 
     override suspend fun setReminderSettings(reminder: ReminderSettings) {
         dataStore.edit { preferences ->
@@ -201,6 +274,11 @@ class DataStoreSettingsRepository(
             translationProvider = preferences[TRANSLATION_PROVIDER],
             geminiModel = preferences[GEMINI_MODEL],
             openRouterModel = preferences[OPENROUTER_MODEL],
+            localAiModel = preferences[LOCAL_AI_MODEL],
+            openAiModel = preferences[OPENAI_MODEL],
+            claudeModel = preferences[CLAUDE_MODEL],
+            groqModel = preferences[GROQ_MODEL],
+            deepSeekModel = preferences[DEEPSEEK_MODEL],
             streakCount = preferences[STREAK_COUNT] ?: 0,
             lastStudyDate = preferences[LAST_STUDY_DATE],
             studyDays = preferences[STUDY_DAYS].orEmpty().sorted(),
@@ -222,6 +300,11 @@ class DataStoreSettingsRepository(
             put(TRANSLATION_PROVIDER, backup.translationProvider?.takeIf { name -> TranslationProvider.entries.any { it.name == name } })
             put(GEMINI_MODEL, backup.geminiModel)
             put(OPENROUTER_MODEL, backup.openRouterModel)
+            put(LOCAL_AI_MODEL, backup.localAiModel)
+            put(OPENAI_MODEL, backup.openAiModel)
+            put(CLAUDE_MODEL, backup.claudeModel)
+            put(GROQ_MODEL, backup.groqModel)
+            put(DEEPSEEK_MODEL, backup.deepSeekModel)
             put(STREAK_COUNT, backup.streakCount)
             put(LAST_STUDY_DATE, backup.lastStudyDate)
             put(STUDY_DAYS, backup.studyDays.toSet())
@@ -244,6 +327,15 @@ class DataStoreSettingsRepository(
         val TRANSLATION_PROVIDER = stringPreferencesKey("translation_provider")
         val OPENROUTER_KEY = stringPreferencesKey("openrouter_api_key")
         val OPENROUTER_MODEL = stringPreferencesKey("openrouter_model")
+        val LOCAL_AI_MODEL = stringPreferencesKey("local_ai_model")
+        val OPENAI_KEY = stringPreferencesKey("openai_api_key")
+        val OPENAI_MODEL = stringPreferencesKey("openai_model")
+        val CLAUDE_KEY = stringPreferencesKey("claude_api_key")
+        val CLAUDE_MODEL = stringPreferencesKey("claude_model")
+        val GROQ_KEY = stringPreferencesKey("groq_api_key")
+        val GROQ_MODEL = stringPreferencesKey("groq_model")
+        val DEEPSEEK_KEY = stringPreferencesKey("deepseek_api_key")
+        val DEEPSEEK_MODEL = stringPreferencesKey("deepseek_model")
         val STREAK_COUNT = intPreferencesKey("streak_count")
         val LAST_STUDY_DATE = stringPreferencesKey("last_study_date")
         val STUDY_DAYS = stringSetPreferencesKey("study_days")

@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +47,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -75,19 +79,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.RecentCard
+import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.resources.Res
 import com.andreaserick.languagecoast.resources.logo_android_language_coast_foreground
 import com.andreaserick.languagecoast.resources.logo_language_coast
 import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.plural
+import com.andreaserick.languagecoast.ui.theme.CardBorder
 import com.andreaserick.languagecoast.ui.theme.CardWash
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
+import com.andreaserick.languagecoast.ui.theme.ElevatedCardWash
 import com.andreaserick.languagecoast.ui.theme.MistWhite
 import com.andreaserick.languagecoast.ui.theme.SandBeige
 import com.andreaserick.languagecoast.ui.theme.SandMuted
 import com.andreaserick.languagecoast.ui.theme.WaveTeal
+import com.andreaserick.languagecoast.ui.theme.coastTextFieldColors
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -95,8 +103,7 @@ import org.koin.compose.viewmodel.koinViewModel
 /**
  * The "Create" screen. Lets users create new flashcards from a native sentence, either
  * manually (providing their own translation and category) or with the translation provider picked
- * in Settings (on-device, Gemini or OpenRouter), which translates the sentence and, for the cloud
- * models, picks a category.
+ * in Settings (On-device, Local AI, Gemini, OpenAI, Claude, Groq, DeepSeek or OpenRouter).
  */
 @Composable
 fun CreateScreen(
@@ -158,7 +165,7 @@ private fun CreateContent(
                     painter = painterResource(Res.drawable.logo_android_language_coast_foreground),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -228,7 +235,8 @@ private const val RESULT_SCROLL_DELAY_MILLIS = 350L
 private fun StreakBadge(streak: Int) {
     Surface(
         shape = RoundedCornerShape(50),
-        color = CardWash,
+        color = ElevatedCardWash,
+        border = BorderStroke(1.dp, CardBorder),
         contentColor = SandBeige,
         modifier = Modifier
             .padding(end = 16.dp)
@@ -238,7 +246,7 @@ private fun StreakBadge(streak: Int) {
     }
 }
 
-/** A titled group on the home screen, styled like the cards in Settings. */
+/** A titled glassmorphic group on the home screen, styled like the cards in Settings. */
 @Composable
 private fun HomeCard(
     title: String,
@@ -248,13 +256,21 @@ private fun HomeCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = CardWash, contentColor = Color.White),
+        border = BorderStroke(1.dp, CardBorder),
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
-                Icon(icon, contentDescription = null, tint = SandBeige, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(10.dp))
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .background(SandBeige.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
+                ) {
+                    Icon(icon, contentDescription = null, tint = SandBeige, modifier = Modifier.size(19.dp))
+                }
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(title, style = MaterialTheme.typography.titleMedium, color = SandBeige, modifier = Modifier.weight(1f))
                 trailing()
             }
@@ -266,7 +282,26 @@ private fun HomeCard(
 /** How many cards are due today, with a button that starts reviewing them. */
 @Composable
 private fun TodayCard(dueCount: Int, dueCoastCount: Int, onStartReview: () -> Unit) {
-    HomeCard(title = "Today", icon = Icons.Default.WbSunny) {
+    HomeCard(
+        title = "Today",
+        icon = Icons.Default.WbSunny,
+        trailing = {
+            if (dueCount > 0) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = SandBeige.copy(alpha = 0.2f),
+                    contentColor = SandBeige
+                ) {
+                    Text(
+                        text = "$dueCount due",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    ) {
         Text(
             text = when {
                 dueCount == 0 -> "All caught up 🌴 Nothing to review right now."
@@ -283,7 +318,7 @@ private fun TodayCard(dueCount: Int, dueCoastCount: Int, onStartReview: () -> Un
                     .fillMaxWidth()
                     .height(50.dp)
             ) {
-                Text("Start reviewing", fontSize = 16.sp)
+                Text("Start reviewing", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(start = 8.dp))
             }
         }
@@ -322,13 +357,27 @@ private fun NewCardForm(
 
         ModeSelector(isManualMode = isManualMode, onManualModeChange = onManualModeChange)
 
-        Spacer(modifier = Modifier.height(16.dp))
+        if (!isManualMode) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = SandBeige, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Active translator: ${uiState.translationProvider.label} (${uiState.nativeLanguage} → ${selectedCoast.language})",
+                    color = MistWhite,
+                    fontSize = 12.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         OutlinedTextField(
             value = uiState.nativeSentence,
             onValueChange = onNativeSentenceChange,
             label = { Text("What do you want to say?") },
             placeholder = { Text("e.g., Where is the train station?") },
+            colors = coastTextFieldColors(),
             // Only a hint: the user may want a second card, e.g. on another island.
             supportingText = uiState.duplicate?.let { duplicate ->
                 {
@@ -349,6 +398,7 @@ private fun NewCardForm(
                 value = uiState.targetSentence,
                 onValueChange = onTargetSentenceChange,
                 label = { Text("${selectedCoast.language} Translation") },
+                colors = coastTextFieldColors(),
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2
             )
@@ -361,9 +411,37 @@ private fun NewCardForm(
             // Manual cards fall back to DEFAULT_MANUAL_CATEGORY; the AI picks one otherwise.
             label = { Text("Category (Optional)") },
             placeholder = { Text("e.g., Travel") },
+            colors = coastTextFieldColors(),
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
+
+        if (uiState.coastIslands.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                uiState.coastIslands.forEach { island ->
+                    val isSelected = uiState.category.equals(island.name, ignoreCase = true)
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            onCategoryChange(if (isSelected) "" else island.name)
+                        },
+                        label = { Text("${islandEmoji(island)} ${island.name}", fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.White.copy(alpha = 0.04f),
+                            labelColor = SandBeige,
+                            selectedContainerColor = SandBeige,
+                            selectedLabelColor = DeepOceanBlue
+                        )
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -376,12 +454,16 @@ private fun NewCardForm(
         ) {
             if (uiState.isSaving) {
                 // The button is disabled (dark) while saving, so the spinner needs a light color.
-                CircularProgressIndicator(color = SandBeige)
+                CircularProgressIndicator(
+                    color = SandBeige,
+                    strokeWidth = 2.5.dp,
+                    modifier = Modifier.size(22.dp)
+                )
             } else {
                 val icon = if (isManualMode) Icons.Default.Save else Icons.Default.AutoAwesome
                 val text = if (isManualMode) "Save Flashcard" else "Translate & Save"
                 Icon(icon, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                Text(text, fontSize = 18.sp)
+                Text(text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -392,13 +474,21 @@ private fun NewCardForm(
 private fun CoastPicker(coasts: List<Coast>, selected: Coast, onSelected: (Coast) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        TextButton(
-            onClick = { expanded = true },
-            contentPadding = PaddingValues(start = 12.dp, end = 4.dp),
-            modifier = Modifier.semantics { contentDescription = "Adding to ${selected.displayName}. Change coast" }
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = ElevatedCardWash,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
-            Text(selected.displayName, color = SandBeige, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = SandBeige)
+            TextButton(
+                onClick = { expanded = true },
+                contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 0.dp, bottom = 0.dp),
+                modifier = Modifier
+                    .height(34.dp)
+                    .semantics { contentDescription = "Adding to ${selected.displayName}. Change coast" }
+            ) {
+                Text(selected.displayName, color = SandBeige, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = SandBeige)
+            }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = WaveTeal) {
             coasts.forEach { coast ->
@@ -432,7 +522,14 @@ private fun RecentCards(cards: List<RecentCard>) {
         cards.forEachIndexed { index, recent ->
             if (index > 0) HorizontalDivider(color = SandBeige.copy(alpha = 0.12f), modifier = Modifier.padding(vertical = 10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(recent.emoji, fontSize = 22.sp)
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(ElevatedCardWash, CircleShape)
+                ) {
+                    Text(recent.emoji, fontSize = 18.sp)
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(recent.card.nativeText, color = MistWhite, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -445,7 +542,18 @@ private fun RecentCards(cards: List<RecentCard>) {
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(recent.islandName, color = MistWhite, fontSize = 12.sp, maxLines = 1)
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = ElevatedCardWash,
+                    contentColor = MistWhite
+                ) {
+                    Text(
+                        text = recent.islandName,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
             }
         }
     }
@@ -518,7 +626,7 @@ private fun StartCoastPrompt(onStartCoast: () -> Unit) {
                 .height(56.dp)
         ) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-            Text("Start a Coast", fontSize = 18.sp)
+            Text("Start a Coast", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -528,6 +636,7 @@ private fun StartCoastPrompt(onStartCoast: () -> Unit) {
 private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = WaveTeal, contentColor = Color.White),
+        border = BorderStroke(1.dp, SandBeige.copy(alpha = 0.35f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -567,7 +676,7 @@ private fun ErrorCard(message: String) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Error, contentDescription = null, tint = CoralText)
             Spacer(modifier = Modifier.width(12.dp))
-            Text(text = message, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(text = message, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp)
         }
     }
 }
