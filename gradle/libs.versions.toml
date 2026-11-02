@@ -29,6 +29,7 @@ coroutines = "1.10.2"
 splashscreen = "1.0.1"
 # On-device translation & Local AI (LiteRT-LM)
 mlkitTranslate = "17.0.3"
+mlkitTextRecognition = "16.0.1"
 litertlm = "0.18.0"
 kotlinxDatetime = "0.7.1"
 
@@ -85,6 +86,7 @@ koin-test = { group = "io.insert-koin", name = "koin-test" }
 
 # On-device translation
 mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref = "mlkitTranslate" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 
 # Splash screen
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
