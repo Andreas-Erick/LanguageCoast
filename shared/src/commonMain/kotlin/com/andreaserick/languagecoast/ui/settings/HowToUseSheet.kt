@@ -40,8 +40,9 @@ private val GUIDE = listOf(
         listOf(
             "On Create, type what you want to say in your own language and tap \"Translate & Save\".",
             "Tap the coast name to pick which coast the card goes to.",
-            "Choose \"I'll type it\" to enter the translation yourself instead.",
-            "Tap an existing island chip or type a category to choose the island yourself. Leave it empty and your AI provider picks one for you.",
+            "Choose \"I write it\" to write in the language you're learning: the AI fills in your language and corrects slips. \"Manual\" lets you type both sides.",
+            "\"Add many\" turns a pasted paragraph or a photo of a page into sentences to tick, one card each.",
+            "Tap an existing island chip or type a category to choose the island yourself. Leave it empty and your AI provider picks one for you. While you type, a likely island is suggested.",
             "If the coast already has that sentence, a line under the text box says which island it is on.",
             "Made a mistake? Tap \"Undo\" right after saving."
         )
@@ -60,10 +61,12 @@ private val GUIDE = listOf(
     GuideSection(
         "Studying",
         listOf(
-            "Open an island to study the cards that are due today. Spaced repetition decides when each card comes back.",
-            "Flip Cards: tap \"Show answer\", then grade yourself with Again, Hard, Good or Easy. " +
+            "\"Review\" on Create studies everything due today across your coasts. Open a coast or an island to study just that. Spaced repetition decides when each card comes back.",
+            "Flip: tap \"Show answer\", then grade yourself with Again, Hard, Good or Easy. " +
                 "You can also swipe left for Again and right for Good.",
-            "Active Type: type the translation and tap \"Check answer\". Capitals and punctuation don't matter, accents do.",
+            "Type: type the translation and tap \"Check answer\". Capitals and punctuation don't matter, accents do. A slip of a letter counts as Hard.",
+            "Fill gap: the translation has its key word blanked out. Type the missing word.",
+            "Leaky words on My Coasts gathers the cards you keep forgetting into one short session.",
             "Tap the languages under the switch (e.g. \"English → German\") to study the other way round: you see the translation and answer in your own language.",
             "The ⋮ menu during a session has Previous card, Skip card and all of the island's cards.",
             "Nothing due? You can still practice all cards of the island."
@@ -73,15 +76,16 @@ private val GUIDE = listOf(
         "On the back of a card",
         listOf(
             "Tap the speaker to hear the translation read aloud.",
-            "Tap any word to look it up in the dict.cc dictionary.",
+            "Tap any word to have your AI provider explain it, with a dict.cc link alongside.",
             "If a card has alternatives, tap \"alternatives\" to see other ways to say it, and \"Make main\" to swap one in."
         )
     ),
     GuideSection(
         "Streaks and reminders",
         listOfNotNull(
-            "Finish an island each day to keep your streak going.",
-            "Turn on the daily reminder here in Settings, at a fixed time or a surprise time.",
+            "Finish an island each day to keep your streak going. One missed day a week is covered by a streak freeze.",
+            "Pick a weekly island goal here in Settings; My Coasts shows how far along you are. The recap icon there sums up your month.",
+            "Turn on the daily reminder here in Settings, at a fixed time or a surprise time. A quoted card can be revealed and graded from the notification.",
             "Add the Language Coast widget to your home screen to see your streak and the cards due today."
                 .takeIf { homeScreenWidgetAvailable }
         )

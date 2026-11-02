@@ -39,8 +39,9 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 ## ✨ Features
 
 ### 🏠 Home screen
-- **Today at a glance**: how many cards are due across your coasts, and a *Review* button that opens the island with the most due cards.
+- **Today at a glance**: how many cards are due across your coasts, and a *Review* button that starts one session over all of them, with the coasts taking turns.
 - **Your streak** in the header, the **new card form** with a compact coast picker, and the **cards you added most recently** to that coast.
+- **Three-step onboarding**: the language you speak, your first coast, then your first sentence.
 
 ### 🤖 AI-powered card creation
 - **Translate however you like**, picked in Settings:
@@ -50,19 +51,25 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Auto-categorization**: the AI models sort each new card into an island such as *Travel*, *Restaurant* or *Greetings*, reusing your existing islands whenever one fits.
 - **Icelandic noun rule**: single Icelandic nouns are returned with their definite and plural forms (e.g. *hestur, hesturinn, hestar*).
 - **Island emojis**: the AI models also pick an emoji for each new island (🍽️ *Restaurant*, ✈️ *Travel*).
+- **Write it yourself**: switch to *I write it* and write the sentence in the coast's language. The AI fills in your language, corrects spelling and grammar slips, and the saved card shows what it changed.
 - **Manual mode**: you can skip the AI and enter your own translation and island.
-- **Instant preview with undo**: after saving you see the card that was created and can undo it right away.
+- **Add many at once**: paste a paragraph, or read the text off a photo of a page or a sign (Android, on the phone), tick the sentences you want and they become cards one after the other.
+- **Island suggestion**: while you type, the island whose cards share the most words with your sentence is suggested before the AI sees it.
+- **Instant preview with undo and edit**: after saving you see the card that was created, can undo it right away, or fix the translation in place with the pencil.
+- **Patient with local models**: the model is loaded as soon as Create opens, the button shows how long it has been thinking, and after two unreadable answers a cloud provider you have a key for is offered instead.
 - **Alternatives for longer sentences**: for sentences of 6 words or more, the AI models also suggest up to two other translations with a note on how they differ (e.g. formal vs. informal). They are saved with the card: after flipping it, *2 alternatives* opens a sheet with the note, a read-aloud button for each and *Make main* to swap one with the card's translation. Alternatives also count as correct in Active Type and are included in exports.
 
 ### 🏝️ My Coasts
 - **One coast per language**: study several languages side by side, each with its flag and its own islands. Pick which coast new cards go to right on the Create screen.
-- **Language Islands**: on each coast, your vocabulary is grouped into islands by category, each with its emoji, card count and how many cards are due. A coast with cards due offers to review its busiest island right away.
-- **Progress at a glance**: coasts show how many islands you explored this week.
+- **Language Islands**: on each coast, your vocabulary is grouped into islands by category, each with its emoji, card count and how many cards are due. A coast with cards due offers one session over all of its islands.
+- **Progress at a glance**: coasts show how many islands you explored this week, and the streak card tracks your **weekly island goal** (3, 5, 7 or 10, picked in Settings).
+- **Leaky words**: cards you have forgotten twice, or that the scheduler rates hard, are gathered into a short booster session of their own.
+- **Monthly recap**: days studied, cards reviewed, cards that stuck, new islands and each coast's share, as a page and as a picture to share (Android).
 - **Island card list**: *See cards* in an island's ⋮ menu (or *All cards* in the ⋮ menu while studying) shows every card with its translation, alternatives and when it is due next.
 - **Search**: the search icon on My Coasts finds cards on every coast by their native text, translation or alternatives, and shows which coast and island each is on.
 - **Duplicate hint**: while you type a new card, Create tells you if the coast already has that sentence and on which island.
 - **Edit cards**: fix a card's native text, translation or alternatives, or move it to another island, without losing its review progress.
-- **Daily streaks**: a streak counter and a bar for each day of the week track your study days.
+- **Daily streaks with a freeze**: a streak counter and a bar for each day of the week track your study days. One missed day a week is covered automatically by a streak freeze, shown on the bar.
 - **Undo instead of "Are you sure?"**: deleted coasts, islands and cards can be restored from the snackbar.
 - **Offline-first storage**: cards are stored locally with **Room**, and preferences with **Jetpack DataStore**.
 
@@ -70,15 +77,18 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Spaced repetition**: cards are scheduled with [FSRS](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm), the algorithm Anki uses, so each island only asks for the cards that are due. Islands and coasts show how many cards are due, and the daily reminder says how many are waiting. When nothing is due you can still practice all cards.
 - **Focus mode**: a study session takes the whole screen, with just a progress bar, the card and the grade buttons. Previous card, Skip card and the island's card list are in the ⋮ menu.
 - **Flip Cards**: classic flashcards with an animated flip. Grade each card *Again*, *Hard*, *Good* or *Easy* (each button shows when the card comes back), or swipe left for *Again* and right for *Good*. *Again* shows *Soon*: it moves the card to the end of the session, so you see it again before you finish.
-- **Active Type**: test your recall by typing the translation. Capitalization, punctuation and extra spaces don't count against you, accents do. A correct answer is graded like a flipped card; a wrong one counts as *Again* and the card comes back later in the session.
+- **Type**: test your recall by typing the translation. Capitalization, punctuation and extra spaces don't count against you, accents do. A correct answer is graded like a flipped card; a slip of a letter is *Almost!* and counts as *Hard*; a wrong one counts as *Again* and the card comes back later in the session.
+- **Fill gap**: the translation with its key word blanked out and the sentence in your language as the hint. Type the missing word.
 - **Read aloud**: a speaker button reads the translation in the coast's language, using the voices installed on your phone (free and offline). It only appears when the phone has a voice for that language.
 - **Study the other way round**: swap the direction under the mode switch to see the translation first and answer in your native language, training recognition instead of recall. Works with Flip Cards and Active Type, and is remembered for later sessions.
 - **Session summary**: finishing an island shows a short celebration with your stats and streak.
-- **Built-in dictionary**: tap any word on the back of a card to look it up on **dict.cc**. It uses your language pair when dict.cc has it (dict.cc pairs every language with English or German) and falls back to the English dictionary otherwise.
+- **Explain this word**: tap any word on the back of a card and your AI provider explains it as used in that sentence (meaning, form, one more example), with a **dict.cc** link alongside. dict.cc uses your language pair when it has it (it pairs every language with English or German) and falls back to the English dictionary otherwise.
+- **Feedback you can switch off**: a short buzz and a soft tone for flips and grades, each with its own switch in Settings.
 
 ### 🔔 Study reminders
 - A daily reminder, scheduled with **WorkManager**: at a surprise time between 9:00 and 21:00, or at a fixed time you pick in Settings. It can also be turned off. On iPhone the reminders are queued with the system's notifications instead, so they don't say how many cards are due.
 - **A different reminder every day**: how many cards are due, a due card quoted as a quick self-test (*"Where is the train station?" in German*), a streak that ends tonight, a milestone within reach (day 7, 30, 100, ...), or *All caught up*. Each has its own picture and wording, rotated so two days in a row never look the same.
+- **Answer from the notification** (Android): the quoted card has a *Reveal* button, and the revealed card *Got it* / *Forgot*, which grade it without opening the app.
 - **Home-screen widget** (Android): the cards due today and your streak, a gentler nudge than a notification. It refreshes every hour and whenever you leave the app, and tapping it opens the app.
 
 ### 📤 Export, import & backup
@@ -244,7 +254,7 @@ Without these secrets, the iOS workflow skips the upload.
 
 ## 🎨 Design
 
-Language Coast is deep water lit from above, with one sunlit accent:
+Language Coast is deep water lit from above, with one sunlit accent. A light theme (pale sand and sea mist, with deeper accents for contrast) can be picked in Settings, or the app can follow the phone:
 - **Ocean**: a dark blue ground with a gradient that lightens towards the top, and a few lighter layers of it for cards, tiles and selected controls.
 - **Sunlit**: a single warm gold, used only for what to do next: the main button, due counts, the active tab.
 - **Coral** for *Again* and errors, **seafoam** for success, and off-white and mist for text.

@@ -12,8 +12,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
@@ -39,9 +41,11 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             // System bar icons must stay readable over the chosen theme: light icons on the dark coast, dark on the light.
             val dark = isDarkPalette
-            LaunchedEffect(dark) {
-                val style = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
             }
             val scheduleReminders = { lifecycleScope.launch { reminderScheduler.ensureScheduled() } }
             val permissionLauncher = rememberLauncherForActivityResult(

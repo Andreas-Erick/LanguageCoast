@@ -13,8 +13,8 @@ object SettingsDefaults {
     /** Islands to study per week. */
     const val WEEKLY_GOAL = 5
 
-    /** "system", "dark" or "light". */
-    const val THEME_MODE = "system"
+    /** "system", "dark" or "light"; the coast is dark by default, as it always was. */
+    const val THEME_MODE = "dark"
     val THEME_MODES = listOf("system", "dark", "light")
     val WEEKLY_GOALS = listOf(3, 5, 7, 10)
 
