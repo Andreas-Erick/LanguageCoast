@@ -1,38 +1,32 @@
 package com.andreaserick.languagecoast.ui.mycoast
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Sailing
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,25 +39,30 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.CoastSummary
 import com.andreaserick.languagecoast.data.Languages
+import com.andreaserick.languagecoast.ui.components.ButtonHeight
+import com.andreaserick.languagecoast.ui.components.CoastButton
+import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
+import com.andreaserick.languagecoast.ui.components.ContentCard
+import com.andreaserick.languagecoast.ui.components.EmptyState
+import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
+import com.andreaserick.languagecoast.ui.components.Pill
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
-import com.andreaserick.languagecoast.ui.components.cardCountLabel
+import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.dayOfWeekName
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
-import com.andreaserick.languagecoast.ui.theme.CardBorder
-import com.andreaserick.languagecoast.ui.theme.CardWash
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.MistWhite
-import com.andreaserick.languagecoast.ui.theme.SandBeige
-import com.andreaserick.languagecoast.ui.theme.cardTint
+import com.andreaserick.languagecoast.ui.theme.StreakToday
+import com.andreaserick.languagecoast.ui.theme.SurfBlue
+import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
+import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
@@ -107,80 +106,67 @@ fun MyCoastScreen(
             actions = {
                 if (uiState.coasts.any { it.cardCount > 0 }) {
                     IconButton(onClick = onSearchClick) {
-                        Icon(Icons.Default.Search, contentDescription = "Search cards", tint = SandBeige)
+                        Icon(Icons.Default.Search, contentDescription = "Search cards", tint = TextPrimary)
                     }
                 }
             }
         )
 
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp)
-        ) {
-            item(key = "streak") {
-                StreakCard(
-                    streakCount = uiState.streakCount,
-                    studyDays = uiState.studyDays,
-                    today = uiState.today,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-            }
-
-            when {
-                // Show nothing while loading to avoid flashing the empty state.
-                uiState.isLoading -> Unit
-                uiState.coasts.isEmpty() -> item(key = "empty") {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
+        when {
+            // Show nothing while loading to avoid flashing the empty state.
+            uiState.isLoading -> Unit
+            uiState.coasts.isEmpty() -> EmptyState(
+                icon = Icons.Default.Sailing,
+                title = "No coasts yet",
+                body = "Pick a language to start your first one.",
+                action = {
+                    CoastButton(
+                        onClick = { showNewCoastDialog = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 48.dp)
+                            .height(ButtonHeight)
                     ) {
-                        Text("⛵", fontSize = 56.sp)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "You haven't started a coast yet. Pick a language to start your first one!",
-                            color = SandBeige,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Button(onClick = { showNewCoastDialog = true }) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                            Text("Start a Coast")
-                        }
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                        Text("Start a Coast")
                     }
                 }
-                else -> {
-                    items(uiState.coasts, key = { it.coast.coastId }) { summary ->
-                        CoastCard(
-                            summary = summary,
-                            today = uiState.today ?: return@items,
-                            onClick = { onCoastClick(summary.coast.coastId, summary.coast.displayName) },
-                            onDeleteClick = {
-                                viewModel.deleteCoast(summary.coast) { deleted ->
-                                    undoMessenger.show("${summary.coast.displayName} deleted") { viewModel.restore(deleted) }
-                                }
-                            },
-                            modifier = Modifier.animateItem()
-                        )
-                    }
-                    if (uiState.availableLanguages.isNotEmpty()) {
-                        item(key = "new-coast") {
-                            OutlinedButton(
-                                onClick = { showNewCoastDialog = true },
-                                border = BorderStroke(1.dp, SandBeige),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(50.dp)
-                                    .padding(bottom = 8.dp)
-                                    .animateItem()
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                Text("New Coast", fontWeight = FontWeight.SemiBold)
+            )
+            else -> LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                item(key = "streak") {
+                    StreakCard(
+                        streakCount = uiState.streakCount,
+                        studyDays = uiState.studyDays,
+                        today = uiState.today
+                    )
+                }
+                items(uiState.coasts, key = { it.coast.coastId }) { summary ->
+                    CoastCard(
+                        summary = summary,
+                        today = uiState.today ?: return@items,
+                        onClick = { onCoastClick(summary.coast.coastId, summary.coast.displayName) },
+                        onDeleteClick = {
+                            viewModel.deleteCoast(summary.coast) { deleted ->
+                                undoMessenger.show("${summary.coast.displayName} deleted") { viewModel.restore(deleted) }
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
+                        },
+                        modifier = Modifier.animateItem()
+                    )
+                }
+                if (uiState.availableLanguages.isNotEmpty()) {
+                    item(key = "new-coast") {
+                        CoastSecondaryButton(
+                            onClick = { showNewCoastDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(ButtonHeight)
+                                .animateItem()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                            Text("New Coast")
                         }
                     }
                 }
@@ -190,103 +176,81 @@ fun MyCoastScreen(
 }
 
 /**
- * The user's daily study streak, with a dot for each day of the current week.
+ * The user's daily study streak, with a bar for each day of the current week.
  *
  * @param streakCount The current number of consecutive study days.
  * @param studyDays Days with a completed study session.
  */
 @Composable
 fun StreakCard(streakCount: Int, studyDays: Set<LocalDate>, today: LocalDate?, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardWash, contentColor = SandBeige),
-        border = BorderStroke(1.dp, CardBorder),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = MaterialTheme.shapes.large
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(52.dp)
-                        .background(SandBeige.copy(alpha = 0.14f), CircleShape)
-                ) {
-                    Text(
-                        text = if (streakCount > 0) "🔥" else "⚓",
-                        fontSize = 28.sp
-                    )
-                }
-                Spacer(modifier = Modifier.width(16.dp))
+    ContentCard(modifier = modifier) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            if (streakCount > 0) {
+                Text("$streakCount", style = MaterialTheme.typography.headlineMedium, color = Sunlit)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "day streak",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 3.dp)
+                )
+            } else {
                 Column {
-                    Text(
-                        text = when (streakCount) {
-                            0 -> "Start your streak today"
-                            1 -> "1 day streak!"
-                            else -> "$streakCount day streak!"
-                        },
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Text(
-                        text = if (streakCount > 0) "Keep the momentum going!" else "Finish an island to light the fire.",
-                        fontSize = 14.sp,
-                        color = MistWhite
-                    )
+                    Text("Start your streak today", style = MaterialTheme.typography.titleMedium)
+                    Text("Finish an island to light the fire.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                 }
             }
-            if (today != null) {
-                Spacer(modifier = Modifier.height(16.dp))
-                WeekDots(studyDays = studyDays, today = today)
-            }
+        }
+        if (today != null) {
+            Spacer(modifier = Modifier.height(14.dp))
+            WeekBars(studyDays = studyDays, today = today)
         }
     }
 }
 
-/** A dot for each day from Monday to Sunday of the current week: filled if studied, outlined for today. */
+/** A bar for each day from Monday to Sunday of the current week: lit if studied, a step brighter for today. */
 @Composable
-private fun WeekDots(studyDays: Set<LocalDate>, today: LocalDate) {
+private fun WeekBars(studyDays: Set<LocalDate>, today: LocalDate) {
     val monday = today.minus(today.dayOfWeek.isoDayNumber - 1, DateTimeUnit.DAY)
-    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
         (0 until 7).map { monday.plus(it, DateTimeUnit.DAY) }.forEach { day ->
             val studied = day in studyDays
             val dayName = dayOfWeekName(day.dayOfWeek, narrow = false)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.semantics {
-                    contentDescription = "$dayName: ${if (studied) "studied" else "not studied"}"
-                }
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "$dayName: ${if (studied) "studied" else "not studied"}"
+                    }
             ) {
                 Text(
                     text = dayOfWeekName(day.dayOfWeek, narrow = true),
-                    fontSize = 12.sp,
-                    fontWeight = if (day == today) FontWeight.Bold else FontWeight.Normal,
-                    color = if (day == today) SandBeige else MistWhite
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (day == today) FontWeight.ExtraBold else FontWeight.Bold,
+                    color = if (day == today) TextPrimary else TextSecondary
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Box(
-                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(28.dp)
-                        .then(
-                            when {
-                                studied -> Modifier.background(SandBeige, CircleShape)
-                                day == today -> Modifier.border(2.dp, SandBeige, CircleShape)
-                                else -> Modifier.border(1.dp, MistWhite.copy(alpha = 0.4f), CircleShape)
-                            }
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .background(
+                            color = when {
+                                studied -> Sunlit
+                                day == today -> StreakToday
+                                else -> SurfaceRaised
+                            },
+                            shape = RoundedCornerShape(3.dp)
                         )
-                ) {
-                    if (studied) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = DeepOceanBlue, modifier = Modifier.size(16.dp))
-                    }
-                }
+                )
             }
         }
     }
 }
 
 /**
- * A card for one coast: its language (with the native name), counts, last study session
- * and how many islands were explored in the last week.
+ * A card for one coast: its language code and name (with the native name), how many cards are due,
+ * and how much of the coast was explored in the last week. Deleting is in its ⋮ menu.
  */
 @Composable
 fun CoastCard(
@@ -297,75 +261,79 @@ fun CoastCard(
     modifier: Modifier = Modifier
 ) {
     val coast = summary.coast
-    val nativeName = Languages.byName(coast.language)?.nativeName?.takeIf { it != coast.language }
-    val onCard = DeepOceanBlue
-    val onCardSecondary = DeepOceanBlue.copy(alpha = 0.85f)
+    val language = Languages.byName(coast.language)
+    val nativeName = language?.nativeName?.takeIf { it != coast.language }
+    val code = language?.code ?: coast.language.take(2)
+    // The islands are counted on the line under the progress bar, or here if there is no bar yet.
+    val counts = if (summary.islandCount > 0) plural(summary.cardCount, "card") else plural(summary.islandCount, "island")
 
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = cardTint(coast.coastId), contentColor = onCard)
+    ContentCard(
+        onClick = onClick,
+        modifier = modifier,
+        padding = PaddingValues(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 4.dp)
     ) {
-        Column(modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 20.dp, end = 4.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f).padding(top = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = coast.displayName, style = MaterialTheme.typography.titleLarge)
-                        if (summary.dueCount > 0) {
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = DeepOceanBlue,
-                                contentColor = SandBeige
-                            ) {
-                                Text(
-                                    text = "${summary.dueCount} due",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                    if (nativeName != null) {
-                        Text(text = nativeName, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = onCardSecondary)
-                    }
-                }
-                IconButton(onClick = onDeleteClick) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete ${coast.displayName}", tint = onCardSecondary)
-                }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconTile {
+                Text(code.uppercase(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "${plural(summary.islandCount, "island")} · ${cardCountLabel(summary.cardCount, summary.dueCount)} · " +
-                    lastStudiedLabel(summary.lastStudied, today),
-                fontSize = 14.sp,
-                color = onCardSecondary,
-                modifier = Modifier.padding(end = 16.dp)
-            )
-            if (summary.islandCount > 0) {
-                Spacer(modifier = Modifier.height(10.dp))
-                LinearProgressIndicator(
-                    progress = { summary.islandsStudiedRecently.toFloat() / summary.islandCount },
-                    color = DeepOceanBlue,
-                    trackColor = DeepOceanBlue.copy(alpha = 0.15f),
-                    strokeCap = StrokeCap.Round,
-                    drawStopIndicator = {},
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(end = 16.dp)
-                        .height(6.dp)
-                )
-                Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(coast.displayName, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = "${summary.islandsStudiedRecently} of ${plural(summary.islandCount, "island")} explored this week",
-                    fontSize = 12.sp,
-                    color = onCardSecondary
+                    text = listOfNotNull(nativeName, counts).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
                 )
             }
+            if (summary.dueCount > 0) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Pill("${summary.dueCount} due")
+            }
+            CoastMenu(coastName = coast.displayName, onDelete = onDeleteClick)
+        }
+        if (summary.islandCount > 0) {
+            Spacer(modifier = Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { summary.islandsStudiedRecently.toFloat() / summary.islandCount },
+                color = SurfBlue,
+                trackColor = SurfaceRaised,
+                strokeCap = StrokeCap.Round,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 12.dp)
+                    .height(4.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "${summary.islandsStudiedRecently} of ${plural(summary.islandCount, "island")} this week · " +
+                    lastStudiedLabel(summary.lastStudied, today),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(end = 12.dp)
+            )
+        }
+    }
+}
+
+/** The ⋮ menu of a coast card. Delete lives here so it can't be hit on the way to opening the coast. */
+@Composable
+private fun CoastMenu(coastName: String, onDelete: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Options for $coastName", tint = TextSecondary)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Delete coast") },
+                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    onDelete()
+                }
+            )
         }
     }
 }

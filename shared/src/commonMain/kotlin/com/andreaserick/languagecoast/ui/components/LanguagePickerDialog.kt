@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
@@ -24,7 +23,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,16 +36,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.search
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.SandBeige
+import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
 /**
  * A dialog for picking one language from a long list, with a search field that matches
@@ -76,26 +76,24 @@ fun LanguagePickerDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = DeepOceanBlue,
-            contentColor = Color.White
+            shape = MaterialTheme.shapes.extraLarge,
+            color = OceanGround,
         ) {
             Column(modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)) {
                 Text(
                     text = title,
-                    color = SandBeige,
-                    fontSize = 24.sp,
+                    style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(horizontal = 24.dp)
                 )
                 if (subtitle != null) {
                     Text(
                         text = subtitle,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp)
                     )
                 }
 
-                OutlinedTextField(
+                CoastTextField(
                     value = query,
                     onValueChange = { query = it },
                     placeholder = { Text("Search languages") },
@@ -113,13 +111,13 @@ fun LanguagePickerDialog(
                         .padding(horizontal = 24.dp, vertical = 16.dp)
                 )
 
-                HorizontalDivider(color = SandBeige.copy(alpha = 0.2f))
+                HorizontalDivider(color = SurfaceRaised)
 
                 Box(modifier = Modifier.heightIn(min = 120.dp, max = 360.dp)) {
                     if (results.isEmpty()) {
                         Text(
                             text = if (languages.isEmpty()) "No languages left to pick." else "No languages match \"$query\".",
-                            color = Color.White.copy(alpha = 0.7f),
+                            color = TextSecondary,
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .align(Alignment.Center)
@@ -138,7 +136,7 @@ fun LanguagePickerDialog(
                     }
                 }
 
-                HorizontalDivider(color = SandBeige.copy(alpha = 0.2f))
+                HorizontalDivider(color = SurfaceRaised)
 
                 TextButton(
                     onClick = onDismiss,
@@ -146,7 +144,7 @@ fun LanguagePickerDialog(
                         .align(Alignment.End)
                         .padding(end = 12.dp, top = 4.dp)
                 ) {
-                    Text("Cancel", color = SandBeige)
+                    Text("Cancel", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -179,7 +177,7 @@ fun LanguageField(
         interactionSource.interactions.collect { if (it is PressInteraction.Release) showPicker = true }
     }
 
-    OutlinedTextField(
+    CoastTextField(
         value = language,
         onValueChange = {},
         readOnly = true,
@@ -216,9 +214,9 @@ private fun LanguageRow(language: Language, isSelected: Boolean, onClick: () -> 
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = language.name,
-                fontSize = 17.sp,
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (isSelected) SandBeige else Color.White
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                color = TextPrimary
             )
             val details = listOfNotNull(
                 language.nativeName.takeIf { it != language.name },
@@ -228,13 +226,13 @@ private fun LanguageRow(language: Language, isSelected: Boolean, onClick: () -> 
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = details.joinToString(" · "),
-                    fontSize = 13.sp,
-                    color = Color.White.copy(alpha = 0.6f)
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
                 )
             }
         }
         if (isSelected) {
-            Icon(Icons.Default.Check, contentDescription = "Selected", tint = SandBeige, modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.Check, contentDescription = "Selected", tint = Sunlit, modifier = Modifier.size(20.dp))
         }
     }
 }

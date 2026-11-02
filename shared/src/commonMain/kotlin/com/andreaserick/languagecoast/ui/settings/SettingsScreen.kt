@@ -1,9 +1,7 @@
 package com.andreaserick.languagecoast.ui.settings
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -18,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
@@ -43,30 +40,22 @@ import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
-import androidx.compose.material3.TimePickerDefaults
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,7 +64,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalUriHandler
@@ -83,7 +71,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.DeviceHardwareProfile
@@ -99,30 +86,36 @@ import com.andreaserick.languagecoast.data.onDeviceLanguage
 import com.andreaserick.languagecoast.data.onDeviceTranslationAvailable
 import com.andreaserick.languagecoast.notifications.RANDOM_WINDOW_END_HOUR
 import com.andreaserick.languagecoast.notifications.RANDOM_WINDOW_START_HOUR
+import com.andreaserick.languagecoast.ui.components.ButtonHeight
+import com.andreaserick.languagecoast.ui.components.CoastButton
+import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
+import com.andreaserick.languagecoast.ui.components.CoastTextField
+import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.LanguageField
+import com.andreaserick.languagecoast.ui.components.Pill
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
+import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.SelectionDropdown
 import com.andreaserick.languagecoast.ui.components.appVersion
+import com.andreaserick.languagecoast.ui.components.coastChipBorder
+import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.formatTime
 import com.andreaserick.languagecoast.ui.components.is24HourClock
-import com.andreaserick.languagecoast.ui.theme.CardBorder
-import com.andreaserick.languagecoast.ui.theme.CardWash
 import com.andreaserick.languagecoast.ui.theme.CoralText
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.ElevatedCardWash
-import com.andreaserick.languagecoast.ui.theme.MistWhite
-import com.andreaserick.languagecoast.ui.theme.SandBeige
-import com.andreaserick.languagecoast.ui.theme.SandMuted
-import com.andreaserick.languagecoast.ui.theme.SeafoamEmerald
-import com.andreaserick.languagecoast.ui.theme.SunlitSand
-import com.andreaserick.languagecoast.ui.theme.WaveTeal
-import com.andreaserick.languagecoast.ui.theme.coastTextFieldColors
+import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.Seafoam
+import com.andreaserick.languagecoast.ui.theme.SurfBlue
+import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
+import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import kotlin.math.roundToInt
 import kotlinx.datetime.LocalTime
 import org.koin.compose.viewmodel.koinViewModel
-import kotlin.math.roundToInt
 
 /**
- * The "Settings" screen, grouped into glassmorphic cards: languages, AI & translation hub
+ * The "Settings" screen, grouped into cards: languages, AI & translation hub
  * (with Local AI hardware scanner & model installer plus multi-cloud providers),
  * study reminders, exporting / importing cards, backup, how-to-use guide and app info.
  */
@@ -138,11 +131,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
         )
 
         Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .padding(horizontal = ScreenMargin, vertical = 12.dp)
         ) {
             SettingsCard(title = "Languages", icon = Icons.Default.Translate) {
                 FieldLabel("Native language")
@@ -180,31 +173,29 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
             }
 
             SettingsCard(title = "Help", icon = Icons.AutoMirrored.Filled.HelpOutline) {
-                OutlinedButton(
+                CoastSecondaryButton(
                     onClick = { showHowToUse = true },
-                    border = BorderStroke(1.dp, SandBeige),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp)
+                        .height(ButtonHeight)
                 ) {
                     Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.size(8.dp))
-                    Text("How to use", fontSize = 16.sp)
+                    Text("How to use")
                 }
                 Hint("A short guide to coasts, creating cards, AI providers and studying.")
             }
 
             SettingsCard(title = "About", icon = Icons.Default.Info) {
-                Text("Language Coast ${appVersion()}", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("Language Coast ${appVersion()}", color = TextPrimary, fontWeight = FontWeight.SemiBold)
                 Hint("Powered by Local LiteRT-LM, Google Gemini, OpenAI, Claude, Groq, DeepSeek & OpenRouter · Dictionary lookups by dict.cc")
                 val uriHandler = LocalUriHandler.current
                 TextButton(
                     onClick = { runCatching { uriHandler.openUri(PRIVACY_POLICY_URL) } },
-                    colors = ButtonDefaults.textButtonColors(contentColor = SandBeige),
+                    colors = ButtonDefaults.textButtonColors(contentColor = Sunlit),
                     contentPadding = PaddingValues(0.dp)
                 ) {
-                    Text("Privacy policy")
+                    Text("Privacy policy", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -217,63 +208,30 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
 private const val PRIVACY_POLICY_URL =
     "https://github.com/Andreas-Erick/LanguageCoast/blob/main/docs/privacy-policy.md"
 
-/** A titled glassmorphic group of settings. */
+/** A titled group of settings. */
 @Composable
 private fun SettingsCard(title: String, icon: ImageVector, content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = CardWash, contentColor = Color.White),
-        border = BorderStroke(1.dp, CardBorder),
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(34.dp)
-                        .background(SandBeige.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
-                ) {
-                    Icon(icon, contentDescription = null, tint = SandBeige, modifier = Modifier.size(19.dp))
-                }
-                Spacer(modifier = Modifier.size(12.dp))
-                Text(title, style = MaterialTheme.typography.titleMedium, color = SandBeige)
-            }
-            content()
+    ContentCard(padding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 18.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 14.dp)) {
+            Icon(icon, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.size(10.dp))
+            Text(title, style = MaterialTheme.typography.titleMedium)
         }
+        content()
     }
 }
 
 /** A small label above a settings field. */
 @Composable
 internal fun FieldLabel(text: String) {
-    Text(text, color = MistWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 6.dp))
+    Text(text, color = TextSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 6.dp))
 }
 
 /** A short explanation below a settings field. */
 @Composable
 internal fun Hint(text: String) {
-    Text(text, color = MistWhite, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 8.dp))
+    Text(text, color = TextSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
 }
-
-/** Switch colors matching the app's sand and ocean theme. */
-@Composable
-internal fun coastSwitchColors() = SwitchDefaults.colors(
-    checkedThumbColor = DeepOceanBlue,
-    checkedTrackColor = SandBeige,
-    uncheckedThumbColor = SandMuted,
-    uncheckedTrackColor = Color.Transparent,
-    uncheckedBorderColor = SandMuted
-)
-
-/** Filter chip colors matching the app's sand and ocean theme. */
-@Composable
-internal fun coastChipColors() = FilterChipDefaults.filterChipColors(
-    containerColor = Color.White.copy(alpha = 0.03f),
-    labelColor = SandBeige,
-    selectedContainerColor = SandBeige,
-    selectedLabelColor = DeepOceanBlue
-)
 
 /**
  * An API key field with a "saved" status chip and a Save button.
@@ -296,34 +254,21 @@ private fun ApiKeySection(
     val isSaved = savedKey.isNotEmpty() && currentInput.trim() == savedKey
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(title, color = MistWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        AssistChip(
-            onClick = {},
-            enabled = false,
-            label = {
-                Text(
-                    when {
-                        isSaved -> "Key saved"
-                        savedKey.isEmpty() -> "No key yet"
-                        else -> "Unsaved changes"
-                    }
-                )
+        Text(title, color = TextSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+        Pill(
+            text = when {
+                isSaved -> "Key saved"
+                savedKey.isEmpty() -> "No key yet"
+                else -> "Unsaved changes"
             },
-            leadingIcon = if (isSaved) {
-                { Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp)) }
-            } else null,
-            colors = AssistChipDefaults.assistChipColors(
-                disabledContainerColor = if (isSaved) SandBeige else Color.Transparent,
-                disabledLabelColor = if (isSaved) DeepOceanBlue else SandBeige,
-                disabledLeadingIconContentColor = DeepOceanBlue
-            ),
-            border = if (isSaved) null else AssistChipDefaults.assistChipBorder(enabled = false, disabledBorderColor = SandMuted)
+            container = SurfaceRaised,
+            content = if (isSaved) Seafoam else TextSecondary
         )
     }
     Hint(hint)
     Spacer(modifier = Modifier.height(12.dp))
 
-    OutlinedTextField(
+    CoastTextField(
         value = currentInput,
         onValueChange = {
             currentInput = it
@@ -332,7 +277,6 @@ private fun ApiKeySection(
         label = { Text("API Key") },
         placeholder = { Text(placeholder) },
         singleLine = true,
-        colors = coastTextFieldColors(),
         modifier = Modifier.fillMaxWidth(),
         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
         leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
@@ -348,14 +292,14 @@ private fun ApiKeySection(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    Button(
+    CoastButton(
         onClick = { onSave(currentInput) },
         enabled = !isSaved && currentInput.isNotBlank(),
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(ButtonHeight)
     ) {
-        Text(if (justSaved) "Saved" else "Save API Key", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (justSaved) "Saved" else "Save API Key")
     }
 }
 
@@ -382,8 +326,10 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
             FilterChip(
                 selected = provider == uiState.translationProvider,
                 onClick = { viewModel.setTranslationProvider(provider) },
-                label = { Text(provider.label, fontWeight = if (provider == uiState.translationProvider) FontWeight.Bold else FontWeight.Medium) },
-                colors = coastChipColors()
+                label = { Text(provider.label, style = MaterialTheme.typography.labelMedium) },
+                colors = coastChipColors(),
+                border = coastChipBorder(enabled = true, selected = provider == uiState.translationProvider),
+                shape = MaterialTheme.shapes.small
             )
         }
     }
@@ -502,7 +448,7 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
             Spacer(modifier = Modifier.height(8.dp))
             FieldLabel("Model")
             var model by remember(uiState.openRouterModel) { mutableStateOf(uiState.openRouterModel) }
-            OutlinedTextField(
+            CoastTextField(
                 value = model,
                 onValueChange = {
                     model = it
@@ -510,7 +456,6 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
                 },
                 placeholder = { Text(SettingsDefaults.OPENROUTER_MODEL) },
                 singleLine = true,
-                colors = coastTextFieldColors(),
                 modifier = Modifier.fillMaxWidth()
             )
             Hint("\"${SettingsDefaults.OPENROUTER_MODEL}\" picks a model for you. Find other model IDs on openrouter.ai/models.")
@@ -547,17 +492,15 @@ private fun LocalAiHubSection(uiState: SettingsUiState, viewModel: SettingsViewM
             onRescan = viewModel::scanHardware
         )
     } else {
-        OutlinedButton(
+        CoastSecondaryButton(
             onClick = viewModel::scanHardware,
-            border = BorderStroke(1.dp, SandBeige),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
         ) {
             Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Scan Phone Hardware", fontWeight = FontWeight.SemiBold)
+            Text("Scan Phone Hardware")
         }
     }
 
@@ -590,44 +533,32 @@ private fun HardwareProfileCard(
     onRescan: () -> Unit
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = ElevatedCardWash, contentColor = Color.White),
-        border = BorderStroke(1.dp, SandBeige.copy(alpha = 0.28f)),
+        colors = CardDefaults.cardColors(containerColor = SurfaceRaised, contentColor = TextPrimary),
         shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = SandBeige, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = profile.deviceName,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 15.sp
+                        color = TextPrimary,
+                        style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
                         text = "${profile.socOrProcessor} · ${profile.cpuCores} cores (${profile.primaryAbi})",
-                        color = MistWhite,
-                        fontSize = 12.sp
+                        color = TextSecondary,
+                        style = MaterialTheme.typography.labelSmall
                     )
                 }
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = SandBeige.copy(alpha = 0.18f),
-                    contentColor = SunlitSand
-                ) {
-                    Text(
-                        text = profile.tier.label,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
+                Pill(text = profile.tier.label, container = SurfaceSelected, content = TextPrimary)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = CardBorder)
+            HorizontalDivider(color = SurfaceSelected)
             Spacer(modifier = Modifier.height(12.dp))
 
             val ramRatio = if (profile.totalRamMb > 0) {
@@ -635,20 +566,21 @@ private fun HardwareProfileCard(
             } else 0.5f
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Memory, contentDescription = null, tint = SandBeige, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Memory, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "RAM: ${profile.availableRamGbText} free of ${profile.totalRamGbText}",
-                    fontSize = 12.sp,
-                    color = MistWhite,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
                     modifier = Modifier.weight(1f)
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
             LinearProgressIndicator(
                 progress = { ramRatio },
-                color = SandBeige,
-                trackColor = Color.White.copy(alpha = 0.12f),
+                color = SurfBlue,
+                trackColor = SurfaceSelected,
+                gapSize = 0.dp,
                 strokeCap = StrokeCap.Round,
                 drawStopIndicator = {},
                 modifier = Modifier
@@ -658,25 +590,25 @@ private fun HardwareProfileCard(
 
             Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Storage, contentDescription = null, tint = SandBeige, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Storage, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Free storage: ${profile.freeStorageGbText}",
-                    fontSize = 12.sp,
-                    color = MistWhite,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 Icon(
                     Icons.Default.Speed,
                     contentDescription = null,
-                    tint = if (profile.gpuAccelerationSupported) SeafoamEmerald else SandMuted,
+                    tint = if (profile.gpuAccelerationSupported) Seafoam else TextSecondary,
                     modifier = Modifier.size(15.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = if (profile.gpuAccelerationSupported) "OpenCL GPU Ready" else "CPU Inference",
-                    fontSize = 12.sp,
-                    color = if (profile.gpuAccelerationSupported) SeafoamEmerald else MistWhite,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (profile.gpuAccelerationSupported) Seafoam else TextSecondary,
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -689,8 +621,8 @@ private fun HardwareProfileCard(
             ) {
                 Text(
                     text = profile.tier.summary,
-                    fontSize = 12.sp,
-                    color = SandMuted,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
@@ -698,9 +630,9 @@ private fun HardwareProfileCard(
                     enabled = !isScanning,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    Icon(Icons.Default.Radar, contentDescription = null, tint = SandBeige, modifier = Modifier.size(15.dp))
+                    Icon(Icons.Default.Radar, contentDescription = null, tint = Sunlit, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isScanning) "Scanning..." else "Re-scan", color = SandBeige, fontSize = 12.sp)
+                    Text(if (isScanning) "Scanning..." else "Re-scan", color = Sunlit, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -721,35 +653,15 @@ private fun ModelRecommendationCard(
     val model = recommendation.model
     val isBestMatch = recommendation.fitLevel == ModelFitLevel.BEST_MATCH
     val isInstalled = installStatus is ModelInstallStatus.Installed
-    val borderColor = when {
-        isActive && isInstalled -> SeafoamEmerald.copy(alpha = 0.7f)
-        isBestMatch -> SandBeige.copy(alpha = 0.65f)
-        else -> CardBorder
-    }
 
     Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (isBestMatch) ElevatedCardWash else Color.White.copy(alpha = 0.04f),
-            contentColor = Color.White
-        ),
-        border = BorderStroke(if (isBestMatch || (isActive && isInstalled)) 1.5.dp else 1.dp, borderColor),
+        colors = CardDefaults.cardColors(containerColor = SurfaceRaised, contentColor = TextPrimary),
+        border = if (isActive && isInstalled) BorderStroke(1.5.dp, Seafoam) else null,
         shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                FitBadge(fitLevel = recommendation.fitLevel)
-                Text(
-                    text = "${model.parameterCount} · ${model.sizeLabel} · ${model.minRamLabel}",
-                    color = SandMuted,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+            FitBadge(fitLevel = recommendation.fitLevel)
 
             Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -757,12 +669,12 @@ private fun ModelRecommendationCard(
                     Text(
                         text = model.name,
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White
+                        color = TextPrimary
                     )
                     Text(
-                        text = "${model.family} · ${recommendation.recommendedBackend}",
-                        color = SandBeige,
-                        fontSize = 12.sp,
+                        text = "${model.family} · ${recommendation.recommendedBackend} · ${model.parameterCount} · ${model.sizeLabel} · ${model.minRamLabel}",
+                        color = TextSecondary,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -780,38 +692,32 @@ private fun ModelRecommendationCard(
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = model.summary,
-                color = MistWhite,
-                fontSize = 13.sp,
-                lineHeight = 18.sp
+                color = TextSecondary,
+                style = MaterialTheme.typography.bodySmall
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = recommendation.reason,
-                color = if (recommendation.fitLevel == ModelFitLevel.NOT_RECOMMENDED) CoralText else SandBeige,
-                fontSize = 12.sp,
-                lineHeight = 16.sp
+                color = if (recommendation.fitLevel == ModelFitLevel.NOT_RECOMMENDED) CoralText else TextSecondary,
+                style = MaterialTheme.typography.labelSmall
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
             when (installStatus) {
                 is ModelInstallStatus.NotInstalled -> {
-                    Button(
+                    CoastButton(
                         onClick = onInstall,
                         enabled = recommendation.hasEnoughStorage,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isBestMatch) SandBeige else WaveTeal,
-                            contentColor = if (isBestMatch) DeepOceanBlue else Color.White
-                        ),
+                        colors = if (isBestMatch) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(containerColor = SurfaceSelected, contentColor = TextPrimary),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(44.dp)
+                            .height(48.dp)
                     ) {
                         Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (recommendation.hasEnoughStorage) "Download & Install (${model.sizeLabel})" else "Not Enough Free Storage",
-                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -827,15 +733,15 @@ private fun ModelRecommendationCard(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(
-                                    color = SandBeige,
+                                    color = Sunlit,
                                     strokeWidth = 2.dp,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "Installing... $downloadedMb / $totalMb MB ($percent%)",
-                                    color = SandBeige,
-                                    fontSize = 12.sp,
+                                    color = TextPrimary,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
@@ -845,14 +751,15 @@ private fun ModelRecommendationCard(
                             ) {
                                 Icon(Icons.Default.Close, contentDescription = null, tint = CoralText, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Cancel", color = CoralText, fontSize = 12.sp)
+                                Text("Cancel", color = CoralText, style = MaterialTheme.typography.labelSmall)
                             }
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         LinearProgressIndicator(
                             progress = { installStatus.progress.coerceIn(0f, 1f) },
-                            color = SandBeige,
-                            trackColor = Color.White.copy(alpha = 0.15f),
+                            color = Sunlit,
+                            trackColor = SurfaceSelected,
+                            gapSize = 0.dp,
                             strokeCap = StrokeCap.Round,
                             drawStopIndicator = {},
                             modifier = Modifier
@@ -864,9 +771,8 @@ private fun ModelRecommendationCard(
                 is ModelInstallStatus.Installed -> {
                     if (isActive) {
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = SeafoamEmerald.copy(alpha = 0.18f),
-                            border = BorderStroke(1.dp, SeafoamEmerald.copy(alpha = 0.6f)),
+                            shape = MaterialTheme.shapes.small,
+                            color = SurfaceSelected,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -874,28 +780,25 @@ private fun ModelRecommendationCard(
                                 horizontalArrangement = Arrangement.Center,
                                 modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp)
                             ) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SeafoamEmerald, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Seafoam, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "Installed & Active for Local AI",
-                                    color = SeafoamEmerald,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
+                                    color = Seafoam,
+                                    style = MaterialTheme.typography.labelMedium
                                 )
                             }
                         }
                     } else {
-                        OutlinedButton(
+                        CoastSecondaryButton(
                             onClick = onSelect,
-                            border = BorderStroke(1.dp, SandBeige),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(44.dp)
+                                .height(48.dp)
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Use This Installed Model", fontWeight = FontWeight.SemiBold)
+                            Text("Use This Installed Model")
                         }
                     }
                 }
@@ -903,19 +806,18 @@ private fun ModelRecommendationCard(
                     Text(
                         text = installStatus.message,
                         color = CoralText,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    Button(
+                    CoastButton(
                         onClick = onInstall,
-                        colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(44.dp)
+                            .height(48.dp)
                     ) {
                         Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Retry Install (${model.sizeLabel})", fontWeight = FontWeight.SemiBold)
+                        Text("Retry Install (${model.sizeLabel})")
                     }
                 }
             }
@@ -925,25 +827,13 @@ private fun ModelRecommendationCard(
 
 @Composable
 private fun FitBadge(fitLevel: ModelFitLevel) {
-    val (bg, fg) = when (fitLevel) {
-        ModelFitLevel.BEST_MATCH -> SandBeige to DeepOceanBlue
-        ModelFitLevel.GREAT_FIT -> SeafoamEmerald.copy(alpha = 0.2f) to SeafoamEmerald
-        ModelFitLevel.HEAVY_FIT -> WaveTeal.copy(alpha = 0.35f) to Color.White
-        ModelFitLevel.NOT_RECOMMENDED -> CoralText.copy(alpha = 0.2f) to CoralText
+    val (container, content) = when (fitLevel) {
+        ModelFitLevel.BEST_MATCH -> Sunlit to OceanGround
+        ModelFitLevel.GREAT_FIT -> SurfaceSelected to Seafoam
+        ModelFitLevel.HEAVY_FIT -> SurfaceSelected to TextPrimary
+        ModelFitLevel.NOT_RECOMMENDED -> SurfaceSelected to CoralText
     }
-    val prefix = if (fitLevel == ModelFitLevel.BEST_MATCH) "★ " else ""
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = bg,
-        contentColor = fg
-    ) {
-        Text(
-            text = prefix + fitLevel.label,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-        )
-    }
+    Pill(text = fitLevel.label, container = container, content = content)
 }
 
 /** Turns the daily reminder on or off, and picks a random time ("Surprise me") or a fixed one. */
@@ -959,18 +849,18 @@ private fun ReminderSection(
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("Daily reminder", color = Color.White, fontWeight = FontWeight.Medium)
+            Text("Daily reminder", style = MaterialTheme.typography.titleSmall)
             Text(
                 text = when {
                     !reminder.enabled -> "Off"
                     time == null -> "At a surprise time between $RANDOM_WINDOW_START_HOUR:00 and ${RANDOM_WINDOW_END_HOUR + 1}:00"
                     else -> "Every day at ${formatTime(time)}"
                 },
-                color = MistWhite,
-                fontSize = 13.sp
+                color = TextSecondary,
+                style = MaterialTheme.typography.bodySmall
             )
         }
-        Switch(checked = reminder.enabled, onCheckedChange = onEnabledChange, colors = coastSwitchColors())
+        Switch(checked = reminder.enabled, onCheckedChange = onEnabledChange)
     }
 
     if (reminder.enabled) {
@@ -980,14 +870,18 @@ private fun ReminderSection(
             FilterChip(
                 selected = reminder.time == null,
                 onClick = { onTimeChange(null) },
-                label = { Text("Surprise me") },
-                colors = chipColors
+                label = { Text("Surprise me", style = MaterialTheme.typography.labelMedium) },
+                colors = chipColors,
+                border = coastChipBorder(enabled = true, selected = reminder.time == null),
+                shape = MaterialTheme.shapes.small
             )
             FilterChip(
                 selected = reminder.time != null,
                 onClick = { showTimePicker = true },
-                label = { Text(reminder.time?.let { formatTime(it) } ?: "Pick a time") },
-                colors = chipColors
+                label = { Text(reminder.time?.let { formatTime(it) } ?: "Pick a time", style = MaterialTheme.typography.labelMedium) },
+                colors = chipColors,
+                border = coastChipBorder(enabled = true, selected = reminder.time != null),
+                shape = MaterialTheme.shapes.small
             )
         }
     }
@@ -1001,38 +895,18 @@ private fun ReminderSection(
         )
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
-            containerColor = DeepOceanBlue,
-            titleContentColor = SandBeige,
             title = { Text("Reminder time") },
             text = {
-                TimePicker(
-                    state = state,
-                    colors = TimePickerDefaults.colors(
-                        clockDialColor = WaveTeal,
-                        clockDialSelectedContentColor = DeepOceanBlue,
-                        clockDialUnselectedContentColor = Color.White,
-                        selectorColor = SandBeige,
-                        containerColor = DeepOceanBlue,
-                        periodSelectorBorderColor = SandMuted,
-                        periodSelectorSelectedContainerColor = SandBeige,
-                        periodSelectorSelectedContentColor = DeepOceanBlue,
-                        periodSelectorUnselectedContainerColor = Color.Transparent,
-                        periodSelectorUnselectedContentColor = SandBeige,
-                        timeSelectorSelectedContainerColor = SandBeige,
-                        timeSelectorSelectedContentColor = DeepOceanBlue,
-                        timeSelectorUnselectedContainerColor = WaveTeal,
-                        timeSelectorUnselectedContentColor = Color.White
-                    )
-                )
+                TimePicker(state = state)
             },
             confirmButton = {
                 TextButton(onClick = {
                     onTimeChange(LocalTime(state.hour, state.minute))
                     showTimePicker = false
-                }) { Text("Set", color = SandBeige) }
+                }) { Text("Set", color = Sunlit, style = MaterialTheme.typography.labelMedium) }
             },
             dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) { Text("Cancel", color = SandBeige) }
+                TextButton(onClick = { showTimePicker = false }) { Text("Cancel", color = TextPrimary, style = MaterialTheme.typography.labelMedium) }
             }
         )
     }

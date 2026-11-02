@@ -11,12 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -27,16 +25,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.islandEmoji
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.MistWhite
-import com.andreaserick.languagecoast.ui.theme.SandBeige
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
 /**
  * A bottom sheet to fix a card: its native text, translation, alternatives (one per line) and the
@@ -67,8 +62,6 @@ fun EditCardSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = DeepOceanBlue,
-        contentColor = Color.White
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -78,24 +71,24 @@ fun EditCardSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text("Edit card", style = MaterialTheme.typography.titleLarge, color = SandBeige)
-            OutlinedTextField(
+            Text("Edit card", style = MaterialTheme.typography.titleLarge)
+            CoastTextField(
                 value = nativeText,
                 onValueChange = { nativeText = it },
                 label = { Text(nativeLanguage) },
                 modifier = Modifier.fillMaxWidth()
             )
-            OutlinedTextField(
+            CoastTextField(
                 value = targetText,
                 onValueChange = { targetText = it },
                 label = { Text("$targetLanguage Translation") },
                 modifier = Modifier.fillMaxWidth()
             )
-            OutlinedTextField(
+            CoastTextField(
                 value = alternatives,
                 onValueChange = { alternatives = it },
                 label = { Text("Alternatives (Optional)") },
-                supportingText = { Text("Other correct translations, one per line", color = MistWhite) },
+                supportingText = { Text("Other correct translations, one per line", color = TextSecondary) },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2
             )
@@ -112,12 +105,12 @@ fun EditCardSheet(
             }
             Spacer(modifier = Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = SandBeige)) {
-                    Text("Cancel", fontSize = 16.sp)
+                TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = TextPrimary)) {
+                    Text("Cancel")
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Button(onClick = { edit?.let(onSave) }, enabled = edit != null) {
-                    Text("Save", fontSize = 16.sp)
+                CoastButton(onClick = { edit?.let(onSave) }, enabled = edit != null) {
+                    Text("Save")
                 }
             }
         }

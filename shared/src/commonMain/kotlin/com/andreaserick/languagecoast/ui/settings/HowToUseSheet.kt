@@ -16,22 +16,19 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.localAiAvailable
 import com.andreaserick.languagecoast.data.onDeviceTranslationAvailable
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.MistWhite
-import com.andreaserick.languagecoast.ui.theme.SandBeige
+import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
-/** One topic of the guide: an emoji, a title and a few short tips. */
-private class GuideSection(val emoji: String, val title: String, val tips: List<String>)
+/** One topic of the guide: a title and a few short tips. */
+private class GuideSection(val title: String, val tips: List<String>)
 
 private val GUIDE = listOf(
     GuideSection(
-        "🏝️", "Coasts and islands",
+        "Coasts and islands",
         listOf(
             "Each language you learn gets its own coast. Start one from My Coasts with \"New Coast\".",
             "On a coast, your cards are grouped into islands by topic, like Travel or Restaurant.",
@@ -39,7 +36,7 @@ private val GUIDE = listOf(
         )
     ),
     GuideSection(
-        "✍️", "Creating cards",
+        "Creating cards",
         listOf(
             "On Create, type what you want to say in your own language and tap \"Translate & Save\".",
             "Tap the coast name to pick which coast the card goes to.",
@@ -50,7 +47,7 @@ private val GUIDE = listOf(
         )
     ),
     GuideSection(
-        "🤖", "AI & Translation Providers",
+        "AI & Translation Providers",
         listOfNotNull(
             "On-device translation is free, private and works offline. It needs no setup."
                 .takeIf { onDeviceTranslationAvailable },
@@ -61,18 +58,19 @@ private val GUIDE = listOf(
         )
     ),
     GuideSection(
-        "🧠", "Studying",
+        "Studying",
         listOf(
             "Open an island to study the cards that are due today. Spaced repetition decides when each card comes back.",
             "Flip Cards: tap \"Show answer\", then grade yourself with Again, Hard, Good or Easy. " +
                 "You can also swipe left for Again and right for Good.",
             "Active Type: type the translation and tap \"Check answer\". Capitals and punctuation don't matter, accents do.",
-            "Tap the languages under the tabs (e.g. \"English → German\") to study the other way round: you see the translation and answer in your own language.",
+            "Tap the languages under the switch (e.g. \"English → German\") to study the other way round: you see the translation and answer in your own language.",
+            "The ⋮ menu during a session has Previous card, Skip card and all of the island's cards.",
             "Nothing due? You can still practice all cards of the island."
         )
     ),
     GuideSection(
-        "🔊", "On the back of a card",
+        "On the back of a card",
         listOf(
             "Tap the speaker to hear the translation read aloud.",
             "Tap any word to look it up in the dict.cc dictionary.",
@@ -80,7 +78,7 @@ private val GUIDE = listOf(
         )
     ),
     GuideSection(
-        "🔥", "Streaks and reminders",
+        "Streaks and reminders",
         listOfNotNull(
             "Finish an island each day to keep your streak going.",
             "Turn on the daily reminder here in Settings, at a fixed time or a surprise time.",
@@ -89,7 +87,7 @@ private val GUIDE = listOf(
         )
     ),
     GuideSection(
-        "📤", "Your cards",
+        "Your cards",
         listOfNotNull(
             "Tap the search icon on My Coasts to find a card on any coast by its native text, translation or alternatives.",
             "Tap ⋮ on an island and \"See cards\" to list its cards with when each is due next.",
@@ -110,29 +108,24 @@ private val GUIDE = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HowToUseSheet(onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = DeepOceanBlue, contentColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = OceanGround) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text("How to use Language Coast", style = MaterialTheme.typography.titleLarge, color = SandBeige)
+            Text("How to use Language Coast", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Build your coast, one word at a time.", color = MistWhite, fontSize = 14.sp)
+            Text("Build your coast, one word at a time.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             GUIDE.forEach { section ->
-                HorizontalDivider(color = SandBeige.copy(alpha = 0.15f), modifier = Modifier.padding(vertical = 12.dp))
-                Text(
-                    "${section.emoji}  ${section.title}",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = SandBeige
-                )
+                HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 12.dp))
+                Text(section.title, style = MaterialTheme.typography.titleMedium)
                 section.tips.forEach { tip ->
                     Row(modifier = Modifier.padding(top = 6.dp)) {
-                        Text("•", color = MistWhite)
+                        Text("•", color = TextSecondary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(tip, color = Color.White, fontSize = 15.sp)
+                        Text(tip, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                     }
                 }
             }

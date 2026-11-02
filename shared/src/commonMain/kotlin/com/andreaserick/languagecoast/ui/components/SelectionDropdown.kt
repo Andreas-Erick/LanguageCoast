@@ -9,7 +9,6 @@ import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,9 +16,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import com.andreaserick.languagecoast.ui.theme.WaveTeal
+import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
 
 /**
  * A read-only dropdown for picking one value from [options].
@@ -47,7 +46,7 @@ fun <T> SelectionDropdown(
         onExpandedChange = { expanded = it },
         modifier = modifier
     ) {
-        OutlinedTextField(
+        CoastTextField(
             value = selected?.let(optionLabel) ?: "",
             onValueChange = {},
             readOnly = true,
@@ -56,27 +55,25 @@ fun <T> SelectionDropdown(
             modifier = Modifier
                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                 .fillMaxWidth(),
-            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
         )
 
         ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            containerColor = WaveTeal
+            containerColor = SurfaceSelected
         ) {
             options.forEach { option ->
                 val isSelected = option == selected
                 DropdownMenuItem(
-                    // White text on Wave Teal (5.3:1); sand would only reach 2.5:1, so selection is shown with a check.
                     text = {
                         Text(
                             optionLabel(option),
-                            color = Color.White,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            color = TextPrimary,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                         )
                     },
                     trailingIcon = if (isSelected) {
-                        { Icon(Icons.Default.Check, contentDescription = "Selected", tint = Color.White) }
+                        { Icon(Icons.Default.Check, contentDescription = "Selected", tint = TextPrimary) }
                     } else null,
                     onClick = {
                         onSelected(option)
