@@ -45,6 +45,25 @@ class LanguagesTest {
     }
 
     @Test
+    fun flagIsTheCountryNotTheLanguageCode() {
+        assertEquals("🇩🇪", Languages.byName("German")?.flag)
+        assertEquals("🇯🇵", Languages.byName("Japanese")?.flag) // JP, not JA
+        assertEquals("🇬🇧", Languages.byName("English")?.flag) // GB, not EN
+    }
+
+    @Test
+    fun onlyEsperantoHasNoFlag() {
+        assertEquals(listOf("Esperanto"), Languages.ALL.filter { it.flag == null }.map { it.name })
+    }
+
+    @Test
+    fun flagCountriesAreTwoCapitalLetters() {
+        Languages.ALL.mapNotNull { it.flagCountry }.forEach { country ->
+            assertTrue(country.length == 2 && country.all { it in 'A'..'Z' }, country)
+        }
+    }
+
+    @Test
     fun everyLanguageOfferedBeforeIsStillAvailable() {
         // Coasts and settings store these names, so removing one would orphan existing data.
         listOf("English", "Spanish", "French", "German", "Italian", "Japanese", "Korean", "Icelandic", "Norwegian")

@@ -6,14 +6,31 @@ package com.andreaserick.languagecoast.data
  * @property name English name; this is what coasts and settings store, so it must never change.
  * @property nativeName The language's name for itself (e.g. "Deutsch"), shown and searchable in the picker.
  * @property code ISO 639-1 code, as used by dict.cc subdomains.
+ * @property flagCountry ISO 3166 code of the country whose flag stands for this language. It's often not the
+ *     same as [code] (Japanese is "ja", Japan is "JP"). Null for a language no country stands for, like Esperanto.
  * @property onDictCc Whether dict.cc has dictionaries for this language.
  */
 data class Language(
     val name: String,
     val nativeName: String,
     val code: String,
+    val flagCountry: String? = null,
     val onDictCc: Boolean = true
-)
+) {
+    /** The flag as an emoji, or null if it has none (see [flagCountry]). */
+    val flag: String? get() = flagCountry?.let(::flagEmoji)
+}
+
+/**
+ * The flag emoji for a two-letter country code. A flag is the code's letters written as a pair of
+ * "regional indicator" symbols, which take two UTF-16 chars each.
+ */
+private fun flagEmoji(country: String): String = buildString {
+    country.forEach { letter ->
+        append(Char(0xD83C))
+        append(Char(0xDDE6 + (letter - 'A')))
+    }
+}
 
 object Languages {
 
@@ -22,36 +39,36 @@ object Languages {
      * Gemini translates well but dict.cc doesn't cover. Sorted by English name.
      */
     val ALL: List<Language> = listOf(
-        Language("Albanian", "Shqip", "sq"),
-        Language("Bosnian", "Bosanski", "bs"),
-        Language("Bulgarian", "Български", "bg"),
-        Language("Croatian", "Hrvatski", "hr"),
-        Language("Czech", "Čeština", "cs"),
-        Language("Danish", "Dansk", "da"),
-        Language("Dutch", "Nederlands", "nl"),
-        Language("English", "English", "en"),
+        Language("Albanian", "Shqip", "sq", flagCountry = "AL"),
+        Language("Bosnian", "Bosanski", "bs", flagCountry = "BA"),
+        Language("Bulgarian", "Български", "bg", flagCountry = "BG"),
+        Language("Croatian", "Hrvatski", "hr", flagCountry = "HR"),
+        Language("Czech", "Čeština", "cs", flagCountry = "CZ"),
+        Language("Danish", "Dansk", "da", flagCountry = "DK"),
+        Language("Dutch", "Nederlands", "nl", flagCountry = "NL"),
+        Language("English", "English", "en", flagCountry = "GB"),
         Language("Esperanto", "Esperanto", "eo"),
-        Language("Finnish", "Suomi", "fi"),
-        Language("French", "Français", "fr"),
-        Language("German", "Deutsch", "de"),
-        Language("Greek", "Ελληνικά", "el"),
-        Language("Hungarian", "Magyar", "hu"),
-        Language("Icelandic", "Íslenska", "is"),
-        Language("Italian", "Italiano", "it"),
-        Language("Japanese", "日本語", "ja", onDictCc = false),
-        Language("Korean", "한국어", "ko", onDictCc = false),
-        Language("Latin", "Latina", "la"),
-        Language("Norwegian", "Norsk", "no"),
-        Language("Polish", "Polski", "pl"),
-        Language("Portuguese", "Português", "pt"),
-        Language("Romanian", "Română", "ro"),
-        Language("Russian", "Русский", "ru"),
-        Language("Serbian", "Српски", "sr"),
-        Language("Slovak", "Slovenčina", "sk"),
-        Language("Spanish", "Español", "es"),
-        Language("Swedish", "Svenska", "sv"),
-        Language("Turkish", "Türkçe", "tr"),
-        Language("Ukrainian", "Українська", "uk")
+        Language("Finnish", "Suomi", "fi", flagCountry = "FI"),
+        Language("French", "Français", "fr", flagCountry = "FR"),
+        Language("German", "Deutsch", "de", flagCountry = "DE"),
+        Language("Greek", "Ελληνικά", "el", flagCountry = "GR"),
+        Language("Hungarian", "Magyar", "hu", flagCountry = "HU"),
+        Language("Icelandic", "Íslenska", "is", flagCountry = "IS"),
+        Language("Italian", "Italiano", "it", flagCountry = "IT"),
+        Language("Japanese", "日本語", "ja", flagCountry = "JP", onDictCc = false),
+        Language("Korean", "한국어", "ko", flagCountry = "KR", onDictCc = false),
+        Language("Latin", "Latina", "la", flagCountry = "VA"),
+        Language("Norwegian", "Norsk", "no", flagCountry = "NO"),
+        Language("Polish", "Polski", "pl", flagCountry = "PL"),
+        Language("Portuguese", "Português", "pt", flagCountry = "PT"),
+        Language("Romanian", "Română", "ro", flagCountry = "RO"),
+        Language("Russian", "Русский", "ru", flagCountry = "RU"),
+        Language("Serbian", "Српски", "sr", flagCountry = "RS"),
+        Language("Slovak", "Slovenčina", "sk", flagCountry = "SK"),
+        Language("Spanish", "Español", "es", flagCountry = "ES"),
+        Language("Swedish", "Svenska", "sv", flagCountry = "SE"),
+        Language("Turkish", "Türkçe", "tr", flagCountry = "TR"),
+        Language("Ukrainian", "Українська", "uk", flagCountry = "UA")
     )
 
     private val byName = ALL.associateBy { it.name }
