@@ -113,7 +113,7 @@ class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
             dueCount = dueCards.size,
             streak = settings.streakCount.first(),
             studiedToday = today in settings.studyDays.first(),
-            teaser = teaser?.let { ReminderCard(it.card.nativeText, it.language, it.islandName, it.emoji) },
+            teaser = teaser?.let { ReminderCard(it.card.nativeText, it.language, it.islandName, it.emoji, it.card.cardId, it.card.targetText) },
             day = today
         )
         NotificationHelper.showStudyNotification(applicationContext, message)

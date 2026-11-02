@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
+import com.andreaserick.languagecoast.ui.theme.isDarkPalette
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -29,7 +30,6 @@ class MainActivity : ComponentActivity() {
     /** Sets up the splash screen and edge-to-edge drawing, then shows the app. */
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
-        // The app is always dark, so use light system bar icons over a transparent background.
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
@@ -37,6 +37,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val context = LocalContext.current
+            // System bar icons must stay readable over the chosen theme: light icons on the dark coast, dark on the light.
+            val dark = isDarkPalette
+            LaunchedEffect(dark) {
+                val style = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
             val scheduleReminders = { lifecycleScope.launch { reminderScheduler.ensureScheduled() } }
             val permissionLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.RequestPermission(),

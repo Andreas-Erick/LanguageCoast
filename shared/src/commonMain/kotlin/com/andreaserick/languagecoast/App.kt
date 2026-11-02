@@ -29,7 +29,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
+import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.navigation.RecapScreenRoute
+import com.andreaserick.languagecoast.ui.recap.RecapScreen
+import com.andreaserick.languagecoast.ui.theme.ThemeMode
 import com.andreaserick.languagecoast.ui.components.LocalFeedback
 import com.andreaserick.languagecoast.ui.components.rememberFeedback
 import org.koin.compose.koinInject
@@ -95,7 +99,7 @@ private val topLevelDestinations = listOf(
         label = "My Coasts",
         selectedIcon = Icons.Filled.Sailing,
         unselectedIcon = Icons.Outlined.Sailing
-    ) { it.hasRoute<MyCoastScreenRoute>() || it.hasRoute<CoastScreenRoute>() },
+    ) { it.hasRoute<MyCoastScreenRoute>() || it.hasRoute<CoastScreenRoute>() || it.hasRoute<RecapScreenRoute>() },
     TopLevelDestination(
         route = SettingsScreenRoute,
         label = "Settings",
@@ -109,7 +113,9 @@ private const val TRANSITION_MILLIS = 300
 /** The whole app: bottom navigation and the screens, in the app's theme. Each platform shows it in its own window. */
 @Composable
 fun LanguageCoastApp() {
-    LanguageCoastTheme {
+    val settings = koinInject<SettingsRepository>()
+    val themeMode by settings.themeMode.collectAsState(initial = SettingsDefaults.THEME_MODE)
+    LanguageCoastTheme(mode = ThemeMode.fromKey(themeMode)) {
         AppContent()
     }
 }
@@ -204,8 +210,16 @@ private fun AppContent() {
                             onCoastClick = { id, name ->
                                 navController.navigate(CoastScreenRoute(coastId = id, coastName = name))
                             },
-                            onSearchClick = { navController.navigate(SearchScreenRoute) }
+                            onSearchClick = { navController.navigate(SearchScreenRoute) },
+                            onLeakyClick = { navController.navigate(StudyScreenRoute.Leaky) },
+                            onRecapClick = { navController.navigate(RecapScreenRoute) }
                         )
+                    }
+                    composable<RecapScreenRoute>(
+                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
+                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                    ) {
+                        RecapScreen(onNavigateBack = { navController.popBackStack() })
                     }
                     composable<SearchScreenRoute>(
                         enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },

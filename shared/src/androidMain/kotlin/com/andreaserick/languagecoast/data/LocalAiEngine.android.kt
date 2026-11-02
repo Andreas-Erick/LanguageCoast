@@ -3,6 +3,7 @@ package com.andreaserick.languagecoast.data
 import android.app.ActivityManager
 import android.app.DownloadManager
 import android.content.Context
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
 import android.os.StatFs
@@ -82,6 +83,9 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
 
     private val _hardwareProfile = MutableStateFlow<DeviceHardwareProfile?>(null)
     override val hardwareProfile: StateFlow<DeviceHardwareProfile?> = _hardwareProfile.asStateFlow()
+
+    override fun isOnMeteredNetwork(): Boolean =
+        (context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)?.isActiveNetworkMetered == true
 
     private val _isScanning = MutableStateFlow(false)
     override val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()

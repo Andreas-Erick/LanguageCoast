@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.ui.theme.CardEdge
 import com.andreaserick.languagecoast.ui.theme.ChipContainer
-import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.SurfaceCard
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
@@ -180,7 +180,7 @@ fun coastChipColors() = FilterChipDefaults.filterChipColors(
     containerColor = ChipContainer,
     labelColor = TextPrimary,
     selectedContainerColor = Sunlit,
-    selectedLabelColor = OceanGround
+    selectedLabelColor = OnSunlit
 )
 
 /** A chip border that only exists to satisfy the API: chips are told apart by their fill. */
@@ -222,7 +222,7 @@ fun Pill(
     text: String,
     modifier: Modifier = Modifier,
     container: Color = Sunlit,
-    content: Color = OceanGround
+    content: Color = OnSunlit
 ) {
     Surface(shape = RoundedCornerShape(50), color = container, contentColor = content, modifier = modifier) {
         Text(

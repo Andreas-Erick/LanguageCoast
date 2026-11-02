@@ -16,15 +16,28 @@ enum class ReminderKind {
     CaughtUp
 }
 
-/** A card the reminder can quote, with where it lives. */
-data class ReminderCard(val nativeText: String, val language: String, val islandName: String, val emoji: String)
+/**
+ * A card the reminder can quote, with where it lives.
+ *
+ * @property cardId The card, so the reminder's buttons can grade it; 0 if unknown.
+ * @property targetText The answer, shown when the reminder is asked to reveal it.
+ */
+data class ReminderCard(
+    val nativeText: String,
+    val language: String,
+    val islandName: String,
+    val emoji: String,
+    val cardId: Int = 0,
+    val targetText: String = ""
+)
 
 /**
  * A study reminder's content.
  *
  * @property emoji Stands for the reminder where the platform shows a picture next to it.
+ * @property teaser The card a [ReminderKind.Teaser] quotes, for its Reveal and grade buttons.
  */
-data class ReminderMessage(val kind: ReminderKind, val title: String, val text: String, val emoji: String)
+data class ReminderMessage(val kind: ReminderKind, val title: String, val text: String, val emoji: String, val teaser: ReminderCard? = null)
 
 /** Streak lengths worth a reminder of their own, reached by studying today. */
 private val MILESTONES = setOf(3, 7, 14, 30, 50, 100, 150, 200, 365, 500, 730, 1000)
@@ -79,7 +92,8 @@ fun reminderMessage(dueCount: Int, streak: Int, studiedToday: Boolean, teaser: R
                 kind = kind,
                 title = titles[variant % titles.size],
                 text = "“${teaser.nativeText}” in ${teaser.language} · ${teaser.emoji} ${teaser.islandName}",
-                emoji = teaser.emoji
+                emoji = teaser.emoji,
+                teaser = teaser
             )
         }
         ReminderKind.StreakAtRisk -> {

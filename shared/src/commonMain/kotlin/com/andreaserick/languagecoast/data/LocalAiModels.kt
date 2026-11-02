@@ -375,6 +375,9 @@ interface LocalModelController {
 
     /** Returns the absolute file path of the installed model [modelId], or null if not installed. */
     fun resolveInstalledModelPath(modelId: String): String?
+
+    /** Whether downloads would go over mobile data (or another metered connection) right now. */
+    fun isOnMeteredNetwork(): Boolean
 }
 
 /** Default no-op implementation used when platform local model management is not active. */
@@ -389,4 +392,5 @@ class NoOpLocalModelController : LocalModelController {
     override fun deleteModel(modelId: String) = Unit
     override fun registerExternalModelFile(modelId: String, absolutePath: String) = Unit
     override fun resolveInstalledModelPath(modelId: String): String? = null
+    override fun isOnMeteredNetwork(): Boolean = false
 }

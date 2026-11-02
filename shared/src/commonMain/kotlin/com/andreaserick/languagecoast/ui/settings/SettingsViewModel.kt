@@ -19,7 +19,10 @@ import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.nativeLanguageOptions
 import com.andreaserick.languagecoast.data.recommendModelsForHardware
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
+import com.andreaserick.languagecoast.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -62,7 +65,14 @@ data class SettingsUiState(
     /** The saved Hugging Face token, which gated local models are downloaded with. */
     val savedHuggingFaceToken: String = "",
     val huggingFaceTokenSaved: Boolean = false,
-    val reminder: ReminderSettings = ReminderSettings()
+    val reminder: ReminderSettings = ReminderSettings(),
+    val themeMode: ThemeMode = ThemeMode.System,
+    val hapticsEnabled: Boolean = true,
+    val soundsEnabled: Boolean = true,
+    /** Islands to study per week. */
+    val weeklyGoal: Int = SettingsDefaults.WEEKLY_GOAL,
+    /** A model whose download is waiting for the user to accept that it goes over mobile data. */
+    val meteredWarningModelId: String? = null
 )
 
 private fun defaultRecommendations(): List<ModelRecommendation> =
@@ -80,6 +90,12 @@ private fun defaultRecommendations(): List<ModelRecommendation> =
 /** Time suggested when switching reminders from "any time" to a fixed time. */
 val DEFAULT_REMINDER_TIME = LocalTime(18, 0)
 
+/** Downloads at least this large ask before going over mobile data. */
+const val METERED_WARNING_MB = 300L
+
+/** How long picking a model waits for the hardware scan. */
+private const val HARDWARE_SCAN_WAIT_MILLIS = 5_000L
+
 class SettingsViewModel(
     private val settings: SettingsRepository,
     private val flashcards: FlashcardRepository,
@@ -94,6 +110,24 @@ class SettingsViewModel(
     private val groqSaved = MutableStateFlow(false)
     private val deepSeekSaved = MutableStateFlow(false)
     private val huggingFaceTokenSaved = MutableStateFlow(false)
+    private val meteredWarning = MutableStateFlow<String?>(null)
+
+    /** The look-and-feel and goal preferences. */
+    private data class Preferences(
+        val themeMode: ThemeMode,
+        val hapticsEnabled: Boolean,
+        val soundsEnabled: Boolean,
+        val weeklyGoal: Int,
+        val meteredWarningModelId: String?
+    )
+
+    private val preferences = combine(
+        settings.themeMode,
+        settings.hapticsEnabled,
+        settings.soundsEnabled,
+        settings.weeklyGoal,
+        meteredWarning
+    ) { theme, haptics, sounds, goal, metered -> Preferences(ThemeMode.fromKey(theme), haptics, sounds, goal, metered) }
 
     private data class CloudProviderState(
         val geminiModel: String,
@@ -173,9 +207,9 @@ class SettingsViewModel(
         combine(settings.nativeLanguage, flashcards.observeCoasts(), ::Pair),
         cloudState,
         localAiState,
-        settings.translationProvider,
-        settings.reminderSettings
-    ) { (native, coasts), cloud, local, provider, reminder ->
+        combine(settings.translationProvider, settings.reminderSettings, ::Pair),
+        preferences
+    ) { (native, coasts), cloud, local, (provider, reminder), prefs ->
         val recommendations = local.hardwareProfile?.let(::recommendModelsForHardware) ?: defaultRecommendations()
         SettingsUiState(
             nativeLanguage = native,
@@ -206,7 +240,12 @@ class SettingsViewModel(
             modelInstallStates = local.installStates,
             savedHuggingFaceToken = local.huggingFaceToken.first,
             huggingFaceTokenSaved = local.huggingFaceToken.second,
-            reminder = reminder
+            reminder = reminder,
+            themeMode = prefs.themeMode,
+            hapticsEnabled = prefs.hapticsEnabled,
+            soundsEnabled = prefs.soundsEnabled,
+            weeklyGoal = prefs.weeklyGoal,
+            meteredWarningModelId = prefs.meteredWarningModelId
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -218,9 +257,46 @@ class SettingsViewModel(
         }
     }
 
-    /** Changes where translations come from. */
+    /** Changes where translations come from. Picking Local AI also picks the model that fits the phone best. */
     fun setTranslationProvider(provider: TranslationProvider) {
-        viewModelScope.launch { settings.setTranslationProvider(provider) }
+        viewModelScope.launch {
+            settings.setTranslationProvider(provider)
+            if (provider == TranslationProvider.LocalAi) pickBestLocalModel()
+        }
+    }
+
+    /**
+     * Makes the model that fits the phone best the active one, unless an installed model is already
+     * active. Prefers an installed model that fits over one that would need downloading.
+     */
+    private suspend fun pickBestLocalModel() {
+        val current = settings.localAiModel.first()
+        if (localModels.resolveInstalledModelPath(current) != null) return
+        if (localModels.hardwareProfile.value == null) localModels.scanHardware()
+        val profile = withTimeoutOrNull(HARDWARE_SCAN_WAIT_MILLIS) { localModels.hardwareProfile.filterNotNull().first() } ?: return
+        val fitting = recommendModelsForHardware(profile).filter { it.fitLevel != ModelFitLevel.NOT_RECOMMENDED }
+        val pick = fitting.firstOrNull { localModels.resolveInstalledModelPath(it.model.id) != null }
+            ?: fitting.firstOrNull { it.fitLevel == ModelFitLevel.BEST_MATCH }
+            ?: return
+        settings.setLocalAiModel(pick.model.id)
+    }
+
+    /** Sets whether the app is dark, light or follows the phone. */
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { settings.setThemeMode(mode.key) }
+    }
+
+    fun setHapticsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settings.setHapticsEnabled(enabled) }
+    }
+
+    fun setSoundsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settings.setSoundsEnabled(enabled) }
+    }
+
+    /** Sets how many islands the user aims to study each week. */
+    fun setWeeklyGoal(islands: Int) {
+        viewModelScope.launch { settings.setWeeklyGoal(islands) }
     }
 
     /** Scans or re-scans the user's phone hardware to recommend compatible local AI models. */
@@ -228,12 +304,26 @@ class SettingsViewModel(
         localModels.scanHardware()
     }
 
-    /** Downloads and installs a local `.litertlm` model and sets it as the active Local AI model. */
-    fun installLocalModel(modelId: String) {
+    /**
+     * Downloads and installs a local `.litertlm` model and sets it as the active Local AI model. Over mobile
+     * data a large download first asks (see [SettingsUiState.meteredWarningModelId]), unless [allowMetered].
+     */
+    fun installLocalModel(modelId: String, allowMetered: Boolean = false) {
+        val size = LocalAiCatalog.byId(modelId)?.sizeMb ?: 0L
+        if (!allowMetered && size >= METERED_WARNING_MB && localModels.isOnMeteredNetwork()) {
+            meteredWarning.value = modelId
+            return
+        }
+        meteredWarning.value = null
         viewModelScope.launch {
             localModels.installModel(modelId, settings.huggingFaceToken.first().trim().ifEmpty { null })
             settings.setLocalAiModel(modelId)
         }
+    }
+
+    /** Closes the mobile-data warning without downloading. */
+    fun dismissMeteredWarning() {
+        meteredWarning.value = null
     }
 
     /** Saves the Hugging Face token that gated local models are downloaded with. */

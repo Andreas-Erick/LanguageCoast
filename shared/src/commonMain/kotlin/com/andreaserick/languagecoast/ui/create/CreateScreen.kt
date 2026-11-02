@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -93,7 +94,7 @@ import com.andreaserick.languagecoast.ui.components.coastChipBorder
 import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
-import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
@@ -472,7 +473,7 @@ private fun NewCardForm(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp)
-                .height(ButtonHeight),
+                .heightIn(min = ButtonHeight),
             enabled = !uiState.isSaving && uiState.nativeSentence.isNotBlank() && !uiState.isSameLanguage
         ) {
             if (uiState.isSaving) {
@@ -653,7 +654,7 @@ private fun Onboarding(
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
-            CoastButton(onClick = { step = 2 }, modifier = Modifier.fillMaxWidth().height(ButtonHeight)) {
+            CoastButton(onClick = { step = 2 }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
                 Text("Continue")
             }
         } else {
@@ -668,13 +669,13 @@ private fun Onboarding(
             CoastButton(
                 onClick = onStartCoast,
                 enabled = availableLanguages.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth().height(ButtonHeight)
+                modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                 Text("Start a Coast")
             }
             Spacer(modifier = Modifier.height(10.dp))
-            CoastSecondaryButton(onClick = { step = 1 }, modifier = Modifier.fillMaxWidth().height(ButtonHeight)) {
+            CoastSecondaryButton(onClick = { step = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
                 Text("Back")
             }
         }
@@ -809,7 +810,7 @@ private fun BatchSheet(
                         minLines = 4
                     )
                     if (readPhoto != null) {
-                        CoastSecondaryButton(onClick = readPhoto, modifier = Modifier.fillMaxWidth().height(ButtonHeight)) {
+                        CoastSecondaryButton(onClick = readPhoto, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
                             Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                             Text("Read from a photo")
                         }
@@ -817,14 +818,14 @@ private fun BatchSheet(
                     CoastButton(
                         onClick = { onStartBatch(text) },
                         enabled = text.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth().height(ButtonHeight)
+                        modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
                     ) {
                         Text("Split into sentences")
                     }
                 }
                 batch.sentences.isEmpty() -> {
                     Text("No sentences were found in that text.", color = TextSecondary)
-                    CoastSecondaryButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(ButtonHeight)) { Text("Close") }
+                    CoastSecondaryButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) { Text("Close") }
                 }
                 else -> {
                     val picked = batch.sentences.count { it.checked }
@@ -844,7 +845,7 @@ private fun BatchSheet(
                                     checked = sentence.checked,
                                     onCheckedChange = { onToggle(index) },
                                     enabled = batch.saved == null,
-                                    colors = CheckboxDefaults.colors(checkedColor = Sunlit, checkmarkColor = OceanGround, uncheckedColor = TextSecondary)
+                                    colors = CheckboxDefaults.colors(checkedColor = Sunlit, checkmarkColor = OnSunlit, uncheckedColor = TextSecondary)
                                 )
                                 Text(sentence.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                             }
@@ -857,7 +858,7 @@ private fun BatchSheet(
                                 text = if (batch.failed == 0) "${plural(saved, "card")} added." else "${plural(saved, "card")} added, ${batch.failed} couldn't be translated.",
                                 style = MaterialTheme.typography.titleMedium
                             )
-                            CoastButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(ButtonHeight)) { Text("Done") }
+                            CoastButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) { Text("Done") }
                         }
                         batch.isSaving -> {
                             LinearProgressIndicator(
@@ -874,7 +875,7 @@ private fun BatchSheet(
                         else -> CoastButton(
                             onClick = onSave,
                             enabled = picked > 0,
-                            modifier = Modifier.fillMaxWidth().height(ButtonHeight)
+                            modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
                         ) {
                             Text("Add ${plural(picked, "card")}")
                         }

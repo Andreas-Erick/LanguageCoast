@@ -268,6 +268,11 @@ class FakeSettingsRepository : SettingsRepository {
     override val studyDays = MutableStateFlow<Set<LocalDate>>(emptySet())
     override val reminderSettings = MutableStateFlow(ReminderSettings())
     override val studyReversed = MutableStateFlow(false)
+    override val weeklyGoal = MutableStateFlow(SettingsDefaults.WEEKLY_GOAL)
+    override val freezeUsedOn = MutableStateFlow<LocalDate?>(null)
+    override val themeMode = MutableStateFlow(SettingsDefaults.THEME_MODE)
+    override val hapticsEnabled = MutableStateFlow(true)
+    override val soundsEnabled = MutableStateFlow(true)
 
     var studySessionsRecorded = 0
         private set
@@ -292,6 +297,10 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setDeepSeekModel(model: String) { deepSeekModel.value = model }
     override suspend fun setReminderSettings(reminder: ReminderSettings) { reminderSettings.value = reminder }
     override suspend fun setStudyReversed(reversed: Boolean) { studyReversed.value = reversed }
+    override suspend fun setWeeklyGoal(islands: Int) { weeklyGoal.value = islands }
+    override suspend fun setThemeMode(mode: String) { themeMode.value = mode }
+    override suspend fun setHapticsEnabled(enabled: Boolean) { hapticsEnabled.value = enabled }
+    override suspend fun setSoundsEnabled(enabled: Boolean) { soundsEnabled.value = enabled }
 
     override suspend fun recordStudySession() {
         studySessionsRecorded++

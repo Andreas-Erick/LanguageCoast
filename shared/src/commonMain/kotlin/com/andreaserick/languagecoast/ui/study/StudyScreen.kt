@@ -107,7 +107,7 @@ import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
-import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfBlue
 import com.andreaserick.languagecoast.ui.theme.SurfaceCard
@@ -653,7 +653,7 @@ internal fun GradeButtons(intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) 
                 contentPadding = PaddingValues(horizontal = 4.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isGood) Sunlit else SurfaceCard,
-                    contentColor = if (isGood) OceanGround else TextPrimary
+                    contentColor = if (isGood) OnSunlit else TextPrimary
                 )
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -669,7 +669,7 @@ internal fun GradeButtons(intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) 
                         Text(
                             it,
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (isGood) OceanGround else TextSecondary,
+                            color = if (isGood) OnSunlit else TextSecondary,
                             maxLines = 1
                         )
                     }
@@ -770,7 +770,7 @@ fun TypeStudyView(
                 enabled = userInput.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(ButtonHeight)
+                    .heightIn(min = ButtonHeight)
             ) {
                 Text("Check answer")
             }
@@ -932,7 +932,7 @@ fun SessionCompleteView(
                     .scale(markScale.value)
                     .background(Sunlit, CircleShape)
             ) {
-                Icon(Icons.Default.Check, contentDescription = null, tint = OceanGround, modifier = Modifier.size(40.dp))
+                Icon(Icons.Default.Check, contentDescription = null, tint = OnSunlit, modifier = Modifier.size(40.dp))
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
@@ -973,7 +973,7 @@ private fun SessionEndButtons(scope: StudyScope, onPracticeAll: () -> Unit, onBa
         onClick = onBack,
         modifier = Modifier
             .fillMaxWidth()
-            .height(ButtonHeight)
+            .heightIn(min = ButtonHeight)
     ) {
         Text(backLabel(scope))
     }
@@ -984,7 +984,7 @@ private fun SessionEndButtons(scope: StudyScope, onPracticeAll: () -> Unit, onBa
         onClick = onPracticeAll,
         modifier = Modifier
             .fillMaxWidth()
-            .height(ButtonHeight)
+            .heightIn(min = ButtonHeight)
     ) {
         Text("Practice all cards")
     }

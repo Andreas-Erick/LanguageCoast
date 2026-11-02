@@ -14,6 +14,8 @@ import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import com.andreaserick.languagecoast.ui.coast.CoastViewModel
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastViewModel
 import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
+import com.andreaserick.languagecoast.ui.theme.ThemeMode
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -234,5 +236,42 @@ class SettingsAndMyCoastViewModelTest {
 
         assertTrue(flashcards.islands.value.isEmpty())
         assertTrue(flashcards.cards.value.isEmpty())
+    }
+
+    @Test
+    fun myCoastCountsTheWeeklyGoalFreezeAndLeakyWords() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        flashcards.seed(islandId = 1, cardCount = 2, coastId = 1)
+        flashcards.seed(islandId = 2, cardCount = 1, coastId = 1)
+        // TEST_CLOCK is Friday 2026-10-09; Monday the 5th starts the week.
+        flashcards.markIslandStudied(1, TEST_CLOCK.now().toEpochMilliseconds())
+        flashcards.markIslandStudied(2, (TEST_CLOCK.now() - 6.days).toEpochMilliseconds())
+        flashcards.cards.update { all -> all.map { if (it.islandId == 1 && it.nativeText == "n1") it.copy(lapses = 3) else it } }
+        settings.weeklyGoal.value = 3
+        settings.freezeUsedOn.value = LocalDate(2026, 10, 7)
+
+        val viewModel = MyCoastViewModel(flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        val state = viewModel.uiState.value
+        assertEquals(3, state.weeklyGoal)
+        assertEquals(1, state.islandsThisWeek)
+        assertEquals(LocalDate(2026, 10, 7), state.freezeUsedOn)
+        assertEquals(1, state.leakyCount)
+    }
+
+    @Test
+    fun lookAndFeelAndGoalSettingsAreSaved() = runTest {
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler)
+
+        viewModel.setThemeMode(ThemeMode.Light)
+        viewModel.setHapticsEnabled(false)
+        viewModel.setSoundsEnabled(false)
+        viewModel.setWeeklyGoal(7)
+
+        assertEquals("light", settings.themeMode.value)
+        assertFalse(settings.hapticsEnabled.value)
+        assertFalse(settings.soundsEnabled.value)
+        assertEquals(7, settings.weeklyGoal.value)
     }
 }
