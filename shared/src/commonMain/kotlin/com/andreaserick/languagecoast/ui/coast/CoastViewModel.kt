@@ -20,6 +20,7 @@ import kotlinx.datetime.todayIn
 import kotlin.time.Clock
 
 data class CoastUiState(
+    val coastId: Int = 0,
     val coastName: String = "",
     /** The coast language's name for itself (e.g. "Íslenska"), if it differs from the English name. */
     val nativeName: String? = null,
@@ -45,13 +46,14 @@ class CoastViewModel(
     val uiState: StateFlow<CoastUiState> =
         combine(flashcards.observeCoast(coastId), flashcards.observeIslandSummaries(coastId, now = clock.now().toEpochMilliseconds())) { coast, islands ->
             CoastUiState(
+                coastId = coastId,
                 coastName = coast?.displayName ?: coastName,
                 nativeName = coast?.let { Languages.byName(it.language) }?.nativeName?.takeIf { it != coast?.language },
                 islands = islands,
                 today = clock.todayIn(timeZone),
                 isLoading = false
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoastUiState(coastName = coastName))
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoastUiState(coastId = coastId, coastName = coastName))
 
     init {
         viewModelScope.launch { settings.setActiveCoastId(coastId) }

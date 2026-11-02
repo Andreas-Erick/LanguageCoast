@@ -19,7 +19,7 @@ import kotlin.time.Clock
 /** The app's Room database: coasts, their islands, and the islands' flashcards. */
 @Database(
     entities = [Coast::class, LanguageIsland::class, Flashcard::class],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -108,6 +108,13 @@ abstract class AppDatabase : RoomDatabase() {
                 connection.execSQL("ALTER TABLE `flashcards` ADD COLUMN `note` TEXT")
             }
         }
+
+        /** v7 counts how often each card was forgotten (graded Again); existing cards start at none. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `flashcards` ADD COLUMN `lapses` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
     }
 }
 
@@ -129,7 +136,8 @@ fun buildAppDatabase(builder: RoomDatabase.Builder<AppDatabase>, settings: DataS
             AppDatabase.migration2To3 { runBlocking { settings.readLegacyTargetLanguage() } },
             AppDatabase.MIGRATION_3_4,
             AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6
+            AppDatabase.MIGRATION_5_6,
+            AppDatabase.MIGRATION_6_7
         )
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()

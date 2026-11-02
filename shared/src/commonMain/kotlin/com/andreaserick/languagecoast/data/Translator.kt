@@ -7,7 +7,39 @@ interface Translator {
      * Never throws; failures are reported through [TranslationResult.isSuccess].
      */
     suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult
+
+    /**
+     * Answers [prompt] with [engine] as plain text, e.g. to explain a word. Never throws. Providers that
+     * only translate (on-device ML Kit) can't, and say so in [Completion.errorMessage].
+     */
+    suspend fun complete(engine: TranslationEngine, prompt: String): Completion =
+        Completion.failure("This provider only translates. Pick an AI provider in Settings to get explanations.")
+
+    /** Gets [engine] ready ahead of its first request (loads a local model); a no-op for most providers. */
+    suspend fun prepare(engine: TranslationEngine) = Unit
 }
+
+/** A model's free-form answer to a prompt, or why there is none. */
+data class Completion(val text: String?, val errorMessage: String? = null) {
+    val isSuccess: Boolean get() = text != null
+
+    companion object {
+        fun failure(message: String) = Completion(null, message)
+    }
+}
+
+/**
+ * The prompt that explains [word] as used in [sentence] (in [targetLanguage]) to a learner whose language is
+ * [nativeLanguage]: meaning, grammar and one more example, kept short enough for a sheet.
+ */
+fun buildExplainPrompt(word: String, sentence: String, targetLanguage: String, nativeLanguage: String): String = """
+    You are a friendly $targetLanguage teacher. A learner whose native language is $nativeLanguage is studying this $targetLanguage sentence:
+    "$sentence"
+    Explain the word "$word" as it is used there, in $nativeLanguage, in at most 90 words and plain text (no markdown, no headings):
+    1. What it means here and its dictionary form (for a noun its gender and plural, for a verb its infinitive).
+    2. Why it takes this form in the sentence (case, tense, agreement) if that matters.
+    3. One more short example sentence in $targetLanguage with its $nativeLanguage translation.
+""".trimIndent()
 
 /** Where translations come from, as picked in Settings. */
 enum class TranslationProvider(
@@ -58,6 +90,8 @@ sealed interface TranslationEngine {
  * @property targetLanguage The language to translate the sentence into.
  * @property userCategory An optional category suggested by the user (may be blank).
  * @property existingCategories Already created categories, to help the AI stay consistent.
+ * @property writtenInTarget The user wrote [nativeSentence] in [targetLanguage] themselves: the model translates it
+ *     back into [nativeLanguage] and corrects mistakes (see [TranslationResult.corrected]).
  */
 data class TranslationRequest(
     val engine: TranslationEngine,
@@ -65,11 +99,13 @@ data class TranslationRequest(
     val nativeLanguage: String,
     val targetLanguage: String,
     val userCategory: String,
-    val existingCategories: List<String>
+    val existingCategories: List<String>,
+    val writtenInTarget: Boolean = false
 )
 
 /** Builds the prompt AI models (Gemini, OpenAI, Claude, Groq, DeepSeek, OpenRouter, Local AI) get for [request]. */
 fun buildTranslationPrompt(request: TranslationRequest): String = with(request) {
+    if (writtenInTarget) return buildReversePrompt(request)
     // Never leave the label empty: a small model copies "User Category:" back as "(empty)".
     val userCategoryText = if (userCategory.isBlank()) "The user did not choose a category." else "The user chose this category; use it: $userCategory"
     val categoryText = if (existingCategories.isEmpty()) {
@@ -124,6 +160,42 @@ fun buildTranslationPrompt(request: TranslationRequest): String = with(request) 
     "$instructions$alternativesText\n\n$format"
 }
 
+/**
+ * The prompt for a sentence the user wrote in the target language themselves: translate it back into their
+ * language, and correct it if it has mistakes.
+ */
+private fun buildReversePrompt(request: TranslationRequest): String = with(request) {
+    val userCategoryText = if (userCategory.isBlank()) "The user did not choose a category." else "The user chose this category; use it: $userCategory"
+    val categoryText = if (existingCategories.isEmpty()) {
+        "You have no existing categories yet. Generate a brand new, single-word category (the name of the category should be in English)."
+    } else {
+        "CRITICAL RULE: Prioritize choosing from this list of existing categories: ${existingCategories.joinToString(", ")}. " +
+            "Only create a brand new category (with the name of the category in English) if none of these fit."
+    }
+    """
+        You are a patient $targetLanguage teacher for a flashcard app.
+        A learner whose native language is $nativeLanguage tried to write this in $targetLanguage:
+
+        Learner's text: $nativeSentence
+
+        First, translate what the learner meant into natural $nativeLanguage.
+        Then check the learner's $targetLanguage for mistakes in spelling, grammar, word choice or word order. If it has any, give the corrected $targetLanguage sentence (keep the learner's wording wherever it is right) and one short sentence in $nativeLanguage saying what was wrong. If it is already correct and natural, write NONE for both.
+
+        $userCategoryText
+
+        $categoryText
+
+        Also pick a single emoji that pictures the category.
+
+        Format your EXACT response like this (do not add any other text):
+        TRANSLATION: [the meaning in $nativeLanguage]
+        CORRECTED: [the corrected $targetLanguage sentence, or NONE]
+        NOTE: [what was wrong, in $nativeLanguage, or NONE]
+        CATEGORY: [the category]
+        EMOJI: [one emoji]
+    """.trimIndent()
+}
+
 /** Inputs with at least this many words get alternative translations (see [buildTranslationPrompt]). */
 const val ALTERNATIVES_MIN_WORDS = 6
 
@@ -131,7 +203,7 @@ const val ALTERNATIVES_MIN_WORDS = 6
 internal fun wantsAlternatives(sentence: String): Boolean =
     sentence.split(Regex("\\s+")).count { it.isNotBlank() } >= ALTERNATIVES_MIN_WORDS
 
-private val KNOWN_LABELS = listOf("TRANSLATION", "CATEGORY", "EMOJI", "ALTERNATIVES", "NOTE")
+private val KNOWN_LABELS = listOf("TRANSLATION", "CATEGORY", "EMOJI", "ALTERNATIVES", "NOTE", "CORRECTED")
 
 /**
  * Parses a model response of the form `TRANSLATION: ... CATEGORY: ... EMOJI: ...`, optionally followed by
@@ -158,7 +230,7 @@ fun parseTranslationResponse(responseText: String, fallbackCategory: String? = n
         .replace(Regex("```[a-zA-Z]*"), "")
         .replace("```", "")
         .replace("**", "")
-        .replace(Regex("(?m)^\\s*[-*•#]+\\s*(?=(?:translation|category|emoji|alternatives|note)\\s*:)", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("(?m)^\\s*[-*•#]+\\s*(?=(?:translation|category|emoji|alternatives|note|corrected)\\s*:)", RegexOption.IGNORE_CASE), "")
 
     val normalized = KNOWN_LABELS.fold(cleaned) { acc, label ->
         acc.replace(Regex("(?i)\\b$label\\s*:"), "$label:")
@@ -209,8 +281,11 @@ fun parseTranslationResponse(responseText: String, fallbackCategory: String? = n
         .filter { it.isNotEmpty() && !it.equals("NONE", ignoreCase = true) && it != translation }
         .distinct()
         .take(2)
+    val corrected = extractField("CORRECTED", singleLineOnly = true)
+        .takeIf { it.isNotEmpty() && !it.equals("NONE", ignoreCase = true) }
+    // A note explains the alternatives, or what was corrected; without either there is nothing to explain.
     val note = extractField("NOTE", singleLineOnly = true)
-        .takeIf { it.isNotEmpty() && !it.equals("NONE", ignoreCase = true) && alternatives.isNotEmpty() }
+        .takeIf { it.isNotEmpty() && !it.equals("NONE", ignoreCase = true) && (alternatives.isNotEmpty() || corrected != null) }
 
     return if (translation.isNotEmpty() && category.isNotEmpty()) {
         TranslationResult(
@@ -219,7 +294,8 @@ fun parseTranslationResponse(responseText: String, fallbackCategory: String? = n
             isSuccess = true,
             emoji = emoji.takeIf(::looksLikeEmoji),
             alternatives = alternatives,
-            note = note
+            note = note,
+            corrected = corrected
         )
     } else {
         TranslationResult.FAILURE
@@ -249,7 +325,9 @@ private fun looksLikeEmoji(text: String): Boolean =
  * @property emoji An emoji picturing the category, if the model gave a usable one.
  * @property errorMessage Why the translation failed, worded for the user, if known.
  * @property alternatives Other correct translations of a longer sentence (at most two), for the user to pick from.
- * @property note How [alternatives] differ from the translation (e.g. formal vs. informal), if there are any.
+ * @property note How [alternatives] differ from the translation (e.g. formal vs. informal), or what [corrected] fixed.
+ * @property corrected For a sentence the user wrote in the target language ([TranslationRequest.writtenInTarget]):
+ *     the corrected sentence if theirs had mistakes, or null if it was right.
  */
 data class TranslationResult(
     val translatedText: String,
@@ -258,7 +336,8 @@ data class TranslationResult(
     val emoji: String? = null,
     val errorMessage: String? = null,
     val alternatives: List<String> = emptyList(),
-    val note: String? = null
+    val note: String? = null,
+    val corrected: String? = null
 ) {
     companion object {
         val FAILURE = TranslationResult("Error: Could not translate", "Error", isSuccess = false)

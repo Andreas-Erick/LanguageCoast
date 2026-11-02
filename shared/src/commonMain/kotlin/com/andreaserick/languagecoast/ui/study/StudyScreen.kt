@@ -42,12 +42,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BeachAccess
-import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -79,11 +76,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -92,8 +86,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andreaserick.languagecoast.data.AnswerMatch
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Grade
+import com.andreaserick.languagecoast.data.checkAnswer
 import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CardOptionsMenu
@@ -103,11 +99,12 @@ import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.EditCardSheet
 import com.andreaserick.languagecoast.ui.components.EmptyState
+import com.andreaserick.languagecoast.ui.components.FeedbackKind
 import com.andreaserick.languagecoast.ui.components.IconTile
+import com.andreaserick.languagecoast.ui.components.LocalFeedback
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
-import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.OceanGround
@@ -127,21 +124,29 @@ import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
- * The main screen for studying flashcards within a specific "Language Island" (category).
- * Provides two modes of study: "Flip Cards" (standard flashcard) and "Active Type" (writing practice).
- * A running session is a focus mode: the app hides its bottom navigation, and everything that isn't
- * answering the current card is tucked into the ⋮ menu.
- * The island is taken from the navigation arguments by [StudyViewModel].
+ * The main screen for a study session: an island, a coast, today's cards across coasts or the leaky words
+ * (see [StudyScope]). Cards can be flipped, typed in full or completed in a gap. A running session is a
+ * focus mode: the app hides its bottom navigation, and everything that isn't answering the current card
+ * is tucked into the ⋮ menu. The scope is taken from the navigation arguments by [StudyViewModel].
  *
  * @param onNavigateBack Callback to navigate back to the previous screen.
- * @param onShowCards Called to open the list of the island's cards.
+ * @param onShowCards Opens the list of the island's cards; null for sessions that span islands.
  */
 @Composable
-fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: StudyViewModel = koinViewModel()) {
+fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewModel: StudyViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentCard = uiState.currentCard
+    val currentPlaced = uiState.currentPlaced
     val undoMessenger = LocalUndoMessenger.current
     var editingCard by remember { mutableStateOf<Flashcard?>(null) }
+
+    uiState.explanation?.let { explanation ->
+        WordSheet(
+            explanation = explanation,
+            dictionaryUrl = dictCcSearchUrl(explanation.word, uiState.nativeLanguage, uiState.targetLanguage),
+            onDismiss = viewModel::dismissExplanation
+        )
+    }
 
     editingCard?.let { card ->
         EditCardSheet(
@@ -179,7 +184,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                 title = uiState.islandName,
                 onBack = onNavigateBack,
                 actions = {
-                    if (uiState.hasCards) {
+                    if (uiState.hasCards && onShowCards != null) {
                         IconButton(onClick = onShowCards) {
                             Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = "All cards", tint = TextPrimary)
                         }
@@ -192,26 +197,30 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
             uiState.isLoading -> Unit
             !uiState.hasCards -> EmptyState(icon = Icons.Default.Waves, title = "No flashcards here yet")
             uiState.isCaughtUp -> CaughtUpView(
+                scope = uiState.scope,
                 nextDueInDays = uiState.nextDueInDays,
                 onPracticeAll = viewModel::practiceAll,
                 onBack = onNavigateBack
             )
             uiState.isSessionComplete -> SessionCompleteView(
+                scope = uiState.scope,
                 reviewedCount = uiState.totalCards,
                 againCount = uiState.againCount,
                 streakCount = uiState.streakCount,
                 onPracticeAll = viewModel::practiceAll,
                 onBack = onNavigateBack
             )
-            currentCard != null -> {
+            currentCard != null && currentPlaced != null -> {
                 StudyModeRow(
-                    isTypingMode = uiState.isTypingMode,
-                    onModeChange = viewModel::setTypingMode,
+                    mode = uiState.mode,
+                    onModeChange = viewModel::setMode,
                     nativeLanguage = uiState.nativeLanguage,
                     targetLanguage = uiState.targetLanguage,
                     isReversed = uiState.isReversed,
                     onReversedChange = viewModel::setReversed
                 )
+                val cloze = uiState.cloze
+                val scrolls = uiState.mode != StudyMode.Flip
 
                 // Typing mode scrolls when it doesn't fit (short screens, or with the keyboard open);
                 // Flip mode sizes its card to the space instead.
@@ -221,7 +230,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(
-                                if (uiState.isTypingMode) Modifier.verticalScroll(scrollState).heightIn(min = maxHeight)
+                                if (scrolls) Modifier.verticalScroll(scrollState).heightIn(min = maxHeight)
                                 else Modifier.fillMaxHeight()
                             )
                             .padding(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 20.dp),
@@ -230,29 +239,38 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                         // key(cardId) resets per-card state (flip state, typed answer)
                         // when we move to a different card.
                         key(currentCard.cardId) {
-                            if (uiState.isTypingMode) {
-                                TypeStudyView(
+                            when {
+                                uiState.mode == StudyMode.Cloze && cloze != null -> ClozeStudyView(
                                     currentCard = currentCard,
-                                    nativeLang = uiState.nativeLanguage,
-                                    isReversed = uiState.isReversed,
+                                    cloze = cloze,
                                     intervals = uiState.gradeIntervals,
                                     onGrade = viewModel::onGrade,
                                     onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak }
                                 )
-                            } else {
-                                FlipStudyView(
+                                // A one-word card has no gap to fill, so it is typed in full.
+                                uiState.mode != StudyMode.Flip -> TypeStudyView(
+                                    currentCard = currentCard,
+                                    nativeLang = uiState.nativeLanguage,
+                                    isReversed = uiState.isReversed && uiState.mode == StudyMode.Type,
+                                    intervals = uiState.gradeIntervals,
+                                    onGrade = viewModel::onGrade,
+                                    onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak }
+                                )
+                                else -> FlipStudyView(
                                     currentCard = currentCard,
                                     nativeLang = uiState.nativeLanguage,
                                     targetLang = uiState.targetLanguage,
                                     isReversed = uiState.isReversed,
-                                    islandName = uiState.islandName,
+                                    // Across islands the card says where it is from, as the title doesn't.
+                                    islandName = if (uiState.scope == StudyScope.Island) uiState.islandName else "${currentPlaced.emoji} ${currentPlaced.islandName}",
                                     // Swiping is worth a reminder, but not on every card.
                                     showSwipeHint = uiState.sessionCards.size == uiState.totalCards,
                                     intervals = uiState.gradeIntervals,
                                     onGrade = viewModel::onGrade,
                                     onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak },
                                     onSpeakText = viewModel::speak.takeIf { uiState.canSpeak },
-                                    onMakeMain = viewModel::makeMainTranslation
+                                    onMakeMain = viewModel::makeMainTranslation,
+                                    onExplain = viewModel::explainWord
                                 )
                             }
                         }
@@ -271,7 +289,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
 private fun SessionTopBar(
     uiState: StudyUiState,
     onClose: () -> Unit,
-    onShowCards: () -> Unit,
+    onShowCards: (() -> Unit)?,
     onPrevious: () -> Unit,
     onSkip: () -> Unit,
     onEdit: () -> Unit,
@@ -331,57 +349,18 @@ private fun SessionTopBar(
                         }
                     )
                 }
-                DropdownMenuItem(
-                    text = { Text("All cards") },
-                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null) },
-                    onClick = {
-                        dismiss()
-                        onShowCards()
-                    }
-                )
+                if (onShowCards != null) {
+                    DropdownMenuItem(
+                        text = { Text("All cards") },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null) },
+                        onClick = {
+                            dismiss()
+                            onShowCards()
+                        }
+                    )
+                }
             }
         )
-    }
-}
-
-/**
- * The switch between "Flip Cards" and "Active Type", next to which way cards are studied ("English → German").
- * Tapping the direction swaps it: from the native language trains recall, from the coast's language
- * trains recognition.
- */
-@Composable
-private fun StudyModeRow(
-    isTypingMode: Boolean,
-    onModeChange: (Boolean) -> Unit,
-    nativeLanguage: String,
-    targetLanguage: String,
-    isReversed: Boolean,
-    onReversedChange: (Boolean) -> Unit
-) {
-    val (from, to) = if (isReversed) targetLanguage to nativeLanguage else nativeLanguage to targetLanguage
-    Column(
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = ScreenMargin, end = ScreenMargin, top = 8.dp)
-    ) {
-        SegmentedSwitch(
-            options = listOf("Flip Cards", "Active Type"),
-            selectedIndex = if (isTypingMode) 1 else 0,
-            onSelect = { onModeChange(it == 1) },
-            modifier = Modifier.fillMaxWidth()
-        )
-        TextButton(
-            onClick = { onReversedChange(!isReversed) },
-            colors = ButtonDefaults.textButtonColors(contentColor = TextSecondary),
-            contentPadding = PaddingValues(horizontal = 8.dp),
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .semantics { contentDescription = "Studying $from to $to. Tap to swap." }
-        ) {
-            Text("$from → $to", style = MaterialTheme.typography.labelMedium, maxLines = 1)
-            Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(18.dp))
-        }
     }
 }
 
@@ -406,6 +385,7 @@ private val GradeRowHeight = 68.dp
  * @param onSpeak Reads the translation aloud; null hides the speaker button (no voice for the language).
  * @param onSpeakText Reads an alternative aloud; null hides those speaker buttons.
  * @param onMakeMain Makes an alternative the card's translation.
+ * @param onExplain Explains a word of the translation (see [WordSheet]); null leaves the words plain.
  */
 @Composable
 fun FlipStudyView(
@@ -419,19 +399,18 @@ fun FlipStudyView(
     showSwipeHint: Boolean = false,
     onSpeak: (() -> Unit)? = null,
     onSpeakText: ((String) -> Unit)? = null,
-    onMakeMain: (String) -> Unit = {}
+    onMakeMain: (String) -> Unit = {},
+    onExplain: ((String) -> Unit)? = null
 ) {
     // Keyed on the card's ID, not the card: changing its translation must not flip it back.
     var isFlipped by remember(currentCard.cardId) { mutableStateOf(false) }
     var showAlternatives by remember(currentCard.cardId) { mutableStateOf(false) }
-    val uriHandler = LocalUriHandler.current
-    val undoMessenger = LocalUndoMessenger.current
-    val haptics = LocalHapticFeedback.current
+    val feedback = LocalFeedback.current
     val scope = rememberCoroutineScope()
     val offsetX = remember(currentCard.cardId) { Animatable(0f) }
     val thresholdPx = with(LocalDensity.current) { SWIPE_THRESHOLD_DP.dp.toPx() }
-    // Reversed, the translation is the question, so looking its words up would give the answer away.
-    val hasDictionary = !isReversed && dictCcSearchUrl("", nativeLang, targetLang) != null
+    // Reversed, the translation is the question, so explaining its words would give the answer away.
+    val hasDictionary = !isReversed && onExplain != null
 
     // A new card settles into place rather than just appearing, which makes the change easy to notice.
     val arrival = remember(currentCard.cardId) { Animatable(0f) }
@@ -439,7 +418,7 @@ fun FlipStudyView(
 
     // Again re-queues the card, so with one card left the same card comes back: reset it explicitly.
     fun grade(grade: Grade) {
-        haptics.performHapticFeedback(if (grade == Grade.Again) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
+        feedback.play(if (grade == Grade.Again) FeedbackKind.Failure else FeedbackKind.Success)
         scope.launch {
             offsetX.snapTo(0f)
             isFlipped = false
@@ -448,7 +427,7 @@ fun FlipStudyView(
     }
 
     fun flip() {
-        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+        feedback.play(FeedbackKind.Tap)
         isFlipped = !isFlipped
     }
 
@@ -553,16 +532,8 @@ fun FlipStudyView(
                             if (isFlipped) {
                                 Text(question, style = MaterialTheme.typography.titleMedium, color = TextSecondary)
                                 HorizontalDivider(color = SurfaceSelected, modifier = Modifier.padding(vertical = 16.dp))
-                                if (hasDictionary) {
-                                    ClickableWordSentence(
-                                        sentence = answer,
-                                        onWordClick = { word ->
-                                            dictCcSearchUrl(word, nativeLang, targetLang)?.let { url ->
-                                                runCatching { uriHandler.openUri(url) }
-                                                    .onFailure { undoMessenger.showMessage("No browser found to open dict.cc") }
-                                            }
-                                        }
-                                    )
+                                if (hasDictionary && onExplain != null) {
+                                    ClickableWordSentence(sentence = answer, onWordClick = onExplain)
                                 } else {
                                     Text(answer, style = MaterialTheme.typography.headlineLarge)
                                 }
@@ -595,8 +566,8 @@ fun FlipStudyView(
         ) {
             val hint = when {
                 !isFlipped -> ""
-                hasDictionary && showSwipeHint -> "Tap a word to look it up · Swipe ← Again, Good →"
-                hasDictionary -> "Tap a word to look it up"
+                hasDictionary && showSwipeHint -> "Tap a word to explain it · Swipe ← Again, Good →"
+                hasDictionary -> "Tap a word to explain it"
                 showSwipeHint -> "Swipe ← Again, Good →"
                 else -> ""
             }
@@ -664,7 +635,7 @@ private fun SwipeLabel(offset: Float, thresholdPx: Float) {
  * "Good" is the usual choice, so it alone gets the accent; "Again" is told apart by its label's colour.
  */
 @Composable
-private fun GradeButtons(intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) {
+internal fun GradeButtons(intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
@@ -719,7 +690,7 @@ internal fun intervalLabel(days: Int): String = when {
 /**
  * A study view that requires the user to type the translation of the native text, or with [isReversed]
  * the native text for the translation. A correct answer is graded with the grade buttons like in Flip mode;
- * a wrong one counts as "Again".
+ * one with a slip of a letter counts as "Hard", and a wrong one as "Again" (see [checkAnswer]).
  *
  * @param currentCard The [Flashcard] data to test against.
  * @param nativeLang The user's native language, the one answers are typed in when [isReversed].
@@ -738,22 +709,21 @@ fun TypeStudyView(
     onSpeak: (() -> Unit)? = null
 ) {
     var userInput by remember(currentCard) { mutableStateOf("") }
-    var hasChecked by remember(currentCard) { mutableStateOf(false) }
-    var isCorrect by remember(currentCard) { mutableStateOf(false) }
-    val haptics = LocalHapticFeedback.current
+    var match by remember(currentCard) { mutableStateOf<AnswerMatch?>(null) }
+    val feedback = LocalFeedback.current
     val question = if (isReversed) currentCard.targetText else currentCard.nativeText
     val answer = if (isReversed) currentCard.nativeText else currentCard.targetText
     // On short screens the result doesn't fit under the question, so it scrolls into view once checked.
     val result = remember { BringIntoViewRequester() }
-    LaunchedEffect(hasChecked) {
-        if (hasChecked) result.bringIntoView()
+    LaunchedEffect(match) {
+        if (match != null) result.bringIntoView()
     }
 
-    fun checkAnswer() {
+    fun check() {
         if (userInput.isBlank()) return
-        isCorrect = isCorrectAnswer(userInput, currentCard, isReversed)
-        hasChecked = true
-        haptics.performHapticFeedback(if (isCorrect) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
+        val outcome = matchAnswer(userInput, currentCard, isReversed)
+        match = outcome
+        feedback.play(if (outcome == AnswerMatch.Wrong) FeedbackKind.Failure else FeedbackKind.Success)
     }
 
     Column(
@@ -785,18 +755,18 @@ fun TypeStudyView(
             value = userInput,
             onValueChange = {
                 userInput = it
-                hasChecked = false // Hide feedback if they start typing again
+                match = null // Hide feedback if they start typing again
             },
             label = { Text(if (isReversed && nativeLang.isNotEmpty()) "Type it in $nativeLang..." else "Type the translation...") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { checkAnswer() }),
+            keyboardActions = KeyboardActions(onDone = { check() }),
             modifier = Modifier.fillMaxWidth()
         )
 
-        if (!hasChecked) {
-            CoastButton(
-                onClick = ::checkAnswer,
+        when (val outcome = match) {
+            null -> CoastButton(
+                onClick = ::check,
                 enabled = userInput.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -804,87 +774,36 @@ fun TypeStudyView(
             ) {
                 Text("Check answer")
             }
-        } else Column(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .bringIntoViewRequester(result)
-        ) {
-            ContentCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        if (isCorrect) Icons.Default.CheckCircle else Icons.Default.Cancel,
-                        contentDescription = null,
-                        tint = if (isCorrect) Seafoam else CoralText
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (isCorrect) "Perfect!" else "Not quite",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.weight(1f)
-                    )
+            else -> Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(result)
+            ) {
+                // The other correct translations: besides the one typed, or besides the answer shown.
+                val others = when {
+                    isReversed -> emptyList()
+                    outcome == AnswerMatch.Exact -> (listOf(currentCard.targetText) + currentCard.alternatives).filterNot { answerMatches(userInput, it) }
+                    else -> currentCard.alternatives
                 }
-                if (!isCorrect) {
-                    Text(
-                        "Correct answer",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(top = 12.dp)
-                    )
-                    Text(answer, style = MaterialTheme.typography.titleLarge)
-                }
-                // The other correct translations: besides the one typed, or besides the answer shown above.
-                val others = if (isCorrect) {
-                    (listOf(currentCard.targetText) + currentCard.alternatives).filterNot { answerMatches(userInput, it) }
-                } else {
-                    currentCard.alternatives
-                }
-                if (!isReversed && currentCard.alternatives.isNotEmpty() && others.isNotEmpty()) {
-                    Text(
-                        text = "Also correct: ${others.joinToString(" · ")}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-                // Reversed, the translation was the question and has its own speaker button.
-                if (!isReversed && onSpeak != null) {
-                    TextButton(
-                        onClick = onSpeak,
-                        colors = ButtonDefaults.textButtonColors(contentColor = Sunlit),
-                        contentPadding = PaddingValues(horizontal = 0.dp),
-                        modifier = Modifier.padding(top = 4.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, modifier = Modifier.padding(end = 6.dp))
-                        Text("Listen", style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-            }
-            if (isCorrect) {
-                GradeButtons(
-                    intervals = intervals,
-                    onGrade = { grade ->
-                        haptics.performHapticFeedback(if (grade == Grade.Again) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
-                        onGrade(grade)
-                    }
+                AnswerVerdict(
+                    outcome = outcome,
+                    expected = (outcome as? AnswerMatch.Almost)?.expected ?: answer,
+                    alsoCorrect = if (currentCard.alternatives.isNotEmpty()) others else emptyList(),
+                    // Reversed, the translation was the question and has its own speaker button.
+                    onSpeak = onSpeak.takeIf { !isReversed }
                 )
-            } else {
-                // A wrong answer means the card wasn't remembered, so there is nothing to grade: it's "Again".
-                CoastButton(
-                    onClick = { onGrade(Grade.Again) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(ButtonHeight)
-                ) {
-                    Text("Continue")
+                when (outcome) {
+                    AnswerMatch.Exact -> GradeButtons(
+                        intervals = intervals,
+                        onGrade = { grade ->
+                            feedback.play(if (grade == Grade.Again) FeedbackKind.Failure else FeedbackKind.Success)
+                            onGrade(grade)
+                        }
+                    )
+                    is AnswerMatch.Almost -> HardContinue(onGrade = onGrade)
+                    AnswerMatch.Wrong -> AgainContinue(onGrade = onGrade)
                 }
-                Text(
-                    text = "This card comes back later in this session.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         }
     }
@@ -937,12 +856,18 @@ private fun AlternativesSheet(
 }
 
 /**
+ * How [typed] compares with [card]'s translation or one of its alternatives (see [checkAnswer]),
+ * or with its native text when studying [reversed].
+ */
+internal fun matchAnswer(typed: String, card: Flashcard, reversed: Boolean = false): AnswerMatch =
+    checkAnswer(typed, if (reversed) listOf(card.nativeText) else listOf(card.targetText) + card.alternatives)
+
+/**
  * Whether [typed] matches [card]'s translation or one of its alternatives (see [answerMatches]),
  * or its native text when studying [reversed].
  */
 internal fun isCorrectAnswer(typed: String, card: Flashcard, reversed: Boolean = false): Boolean =
-    if (reversed) answerMatches(typed, card.nativeText)
-    else (listOf(card.targetText) + card.alternatives).any { answerMatches(typed, it) }
+    matchAnswer(typed, card, reversed) == AnswerMatch.Exact
 
 /**
  * Whether a typed answer matches the card's translation, ignoring case, punctuation and extra spaces
@@ -958,16 +883,12 @@ internal fun answerMatches(typed: String, expected: String): Boolean = isSameSen
  * @param onBack Callback to navigate back to the previous screen.
  */
 @Composable
-fun CaughtUpView(nextDueInDays: Int?, onPracticeAll: () -> Unit, onBack: () -> Unit) {
+fun CaughtUpView(nextDueInDays: Int?, onPracticeAll: () -> Unit, onBack: () -> Unit, scope: StudyScope = StudyScope.Island) {
     EmptyState(
         icon = Icons.Default.BeachAccess,
-        title = "All caught up",
-        body = when (nextDueInDays) {
-            null -> "No cards are due on this island right now."
-            1 -> "The next cards are due tomorrow."
-            else -> "The next cards are due in $nextDueInDays days."
-        },
-        action = { SessionEndButtons(onPracticeAll = onPracticeAll, onBack = onBack) }
+        title = if (scope == StudyScope.Leaky) "Nothing leaking" else "All caught up",
+        body = caughtUpBody(scope, nextDueInDays),
+        action = { SessionEndButtons(scope = scope, onPracticeAll = onPracticeAll, onBack = onBack) }
     )
 }
 
@@ -986,7 +907,8 @@ fun SessionCompleteView(
     againCount: Int,
     streakCount: Int,
     onPracticeAll: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    scope: StudyScope = StudyScope.Island
 ) {
     val markScale = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
@@ -1014,7 +936,7 @@ fun SessionCompleteView(
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Island explored!",
+                text = completionTitle(scope),
                 style = MaterialTheme.typography.headlineLarge,
                 color = TextPrimary,
                 textAlign = TextAlign.Center
@@ -1039,21 +961,21 @@ fun SessionCompleteView(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            SessionEndButtons(onPracticeAll = onPracticeAll, onBack = onBack)
+            SessionEndButtons(scope = scope, onPracticeAll = onPracticeAll, onBack = onBack)
         }
     }
 }
 
 /** "Back to islands" and "Practice all cards", shared by the session end screens. Going back is the usual next step. */
 @Composable
-private fun SessionEndButtons(onPracticeAll: () -> Unit, onBack: () -> Unit) {
+private fun SessionEndButtons(scope: StudyScope, onPracticeAll: () -> Unit, onBack: () -> Unit) {
     CoastButton(
         onClick = onBack,
         modifier = Modifier
             .fillMaxWidth()
             .height(ButtonHeight)
     ) {
-        Text("Back to islands")
+        Text(backLabel(scope))
     }
 
     Spacer(modifier = Modifier.height(10.dp))

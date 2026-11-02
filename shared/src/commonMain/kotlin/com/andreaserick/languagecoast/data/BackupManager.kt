@@ -37,7 +37,8 @@ class BackupManager(
                     lastReviewed = it.lastReviewed,
                     due = it.due,
                     alternatives = it.alternatives,
-                    note = it.note
+                    note = it.note,
+                    lapses = it.lapses
                 )
             }
         )
@@ -60,5 +61,6 @@ private fun Flashcard.toBackup() = BackupCard(
     lastReviewed = lastReviewed,
     due = due,
     alternatives = alternatives,
-    note = note
+    note = note,
+    lapses = lapses
 )

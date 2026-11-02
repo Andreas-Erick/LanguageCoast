@@ -44,4 +44,30 @@ class StreakTest {
         assertFalse(isStreakBroken(lastStudy = today.minus(1, DateTimeUnit.DAY), today = today))
         assertTrue(isStreakBroken(lastStudy = today.minus(2, DateTimeUnit.DAY), today = today))
     }
+
+    @Test
+    fun freezeOnYesterdayKeepsStreakAcrossOneMissedDay() {
+        val yesterday = today.minus(1, DateTimeUnit.DAY)
+        val refreshed = refreshedStreak(lastStudy = today.minus(2, DateTimeUnit.DAY), streak = 4, freezeUsedOn = null, today = today)
+        assertEquals(RefreshedStreak(4, yesterday), refreshed)
+        assertEquals(5, nextStreak(lastStudy = today.minus(2, DateTimeUnit.DAY), currentStreak = 4, today = today, freezeUsedOn = yesterday))
+    }
+
+    @Test
+    fun freezeIsOnlyAvailableOnceAWeek() {
+        val recent = today.minus(3, DateTimeUnit.DAY)
+        assertEquals(RefreshedStreak(0, recent), refreshedStreak(today.minus(2, DateTimeUnit.DAY), streak = 4, freezeUsedOn = recent, today = today))
+        val weekAgo = today.minus(FREEZE_EVERY_DAYS, DateTimeUnit.DAY)
+        assertEquals(RefreshedStreak(4, today.minus(1, DateTimeUnit.DAY)), refreshedStreak(today.minus(2, DateTimeUnit.DAY), streak = 4, freezeUsedOn = weekAgo, today = today))
+    }
+
+    @Test
+    fun freezeDoesNotCoverTwoMissedDays() {
+        assertEquals(RefreshedStreak(0, null), refreshedStreak(today.minus(3, DateTimeUnit.DAY), streak = 4, freezeUsedOn = null, today = today))
+    }
+
+    @Test
+    fun refreshWithoutMissedDayKeepsEverything() {
+        assertEquals(RefreshedStreak(4, null), refreshedStreak(today.minus(1, DateTimeUnit.DAY), streak = 4, freezeUsedOn = null, today = today))
+    }
 }

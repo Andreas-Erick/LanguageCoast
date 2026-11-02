@@ -89,6 +89,14 @@ interface SettingsRepository {
     val reminderSettings: Flow<ReminderSettings>
     /** Whether cards are studied the other way round: from the coast's language to the native language. */
     val studyReversed: Flow<Boolean>
+    /** How many islands the user aims to study each week. */
+    val weeklyGoal: Flow<Int> get() = flowOf(SettingsDefaults.WEEKLY_GOAL)
+    /** The day a streak freeze last stood in for a missed day, or null if none was ever used. */
+    val freezeUsedOn: Flow<LocalDate?> get() = flowOf(null)
+    /** "system", "dark" or "light". */
+    val themeMode: Flow<String> get() = flowOf(SettingsDefaults.THEME_MODE)
+    val hapticsEnabled: Flow<Boolean> get() = flowOf(true)
+    val soundsEnabled: Flow<Boolean> get() = flowOf(true)
 
     /** Stores [language] as the user's native language. */
     suspend fun setNativeLanguage(language: String)
@@ -128,11 +136,18 @@ interface SettingsRepository {
     suspend fun setReminderSettings(reminder: ReminderSettings)
     /** Stores whether cards are studied the other way round. */
     suspend fun setStudyReversed(reversed: Boolean)
+    suspend fun setWeeklyGoal(islands: Int) = Unit
+    suspend fun setThemeMode(mode: String) = Unit
+    suspend fun setHapticsEnabled(enabled: Boolean) = Unit
+    suspend fun setSoundsEnabled(enabled: Boolean) = Unit
 
     /** Records a completed study session for today and updates the streak. */
     suspend fun recordStudySession()
 
-    /** Resets the streak if more than a full day has passed since the last session. */
+    /**
+     * Resets the streak if more than a full day has passed since the last session. One missed day a
+     * week is covered by a streak freeze, which keeps the streak alive (see [refreshedStreak]).
+     */
     suspend fun refreshStreak()
 
     /** Everything stored here except the API keys, for a [Backup]. */
@@ -224,8 +239,22 @@ class DataStoreSettingsRepository(
 
     override val studyReversed: Flow<Boolean> = dataStore.data.map { it[STUDY_REVERSED] ?: false }
 
+    override val weeklyGoal: Flow<Int> = dataStore.data.map { it[WEEKLY_GOAL] ?: SettingsDefaults.WEEKLY_GOAL }
+
+    override val freezeUsedOn: Flow<LocalDate?> = dataStore.data.map { preferences -> preferences[FREEZE_USED_ON]?.let { LocalDate.parse(it) } }
+
+    override val themeMode: Flow<String> = dataStore.data.map { it[THEME_MODE] ?: SettingsDefaults.THEME_MODE }
+
+    override val hapticsEnabled: Flow<Boolean> = dataStore.data.map { it[HAPTICS_ENABLED] ?: true }
+
+    override val soundsEnabled: Flow<Boolean> = dataStore.data.map { it[SOUNDS_ENABLED] ?: true }
+
     override suspend fun setNativeLanguage(language: String) = set(NATIVE_LANG, language)
     override suspend fun setStudyReversed(reversed: Boolean) = set(STUDY_REVERSED, reversed)
+    override suspend fun setWeeklyGoal(islands: Int) = set(WEEKLY_GOAL, islands)
+    override suspend fun setThemeMode(mode: String) = set(THEME_MODE, mode)
+    override suspend fun setHapticsEnabled(enabled: Boolean) = set(HAPTICS_ENABLED, enabled)
+    override suspend fun setSoundsEnabled(enabled: Boolean) = set(SOUNDS_ENABLED, enabled)
     override suspend fun setActiveCoastId(coastId: Int) = set(ACTIVE_COAST_ID, coastId)
     override suspend fun setTranslationProvider(provider: TranslationProvider) = set(TRANSLATION_PROVIDER, provider.name)
     override suspend fun setApiKey(key: String) = set(API_KEY, key)
@@ -256,7 +285,8 @@ class DataStoreSettingsRepository(
         dataStore.edit { preferences ->
             val today = clock.todayIn(timeZone)
             val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) }
-            preferences[STREAK_COUNT] = nextStreak(lastStudy, preferences[STREAK_COUNT] ?: 0, today)
+            val freezeUsedOn = preferences[FREEZE_USED_ON]?.let { LocalDate.parse(it) }
+            preferences[STREAK_COUNT] = nextStreak(lastStudy, preferences[STREAK_COUNT] ?: 0, today, freezeUsedOn)
             preferences[LAST_STUDY_DATE] = today.toString()
             // Keep a few weeks of study days for the weekly overview.
             val cutoff = today.minus(STUDY_DAYS_KEPT, DateTimeUnit.DAY)
@@ -268,9 +298,10 @@ class DataStoreSettingsRepository(
     override suspend fun refreshStreak() {
         dataStore.edit { preferences ->
             val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) } ?: return@edit
-            if (isStreakBroken(lastStudy, clock.todayIn(timeZone))) {
-                preferences[STREAK_COUNT] = 0
-            }
+            val freezeUsedOn = preferences[FREEZE_USED_ON]?.let { LocalDate.parse(it) }
+            val refreshed = refreshedStreak(lastStudy, preferences[STREAK_COUNT] ?: 0, freezeUsedOn, clock.todayIn(timeZone))
+            preferences[STREAK_COUNT] = refreshed.streak
+            if (refreshed.freezeUsedOn == null) preferences.remove(FREEZE_USED_ON) else preferences[FREEZE_USED_ON] = refreshed.freezeUsedOn.toString()
         }
     }
 
@@ -292,7 +323,12 @@ class DataStoreSettingsRepository(
             studyDays = preferences[STUDY_DAYS].orEmpty().sorted(),
             reminderEnabled = preferences[REMINDER_ENABLED] ?: true,
             reminderMinuteOfDay = preferences[REMINDER_MINUTE_OF_DAY],
-            studyReversed = preferences[STUDY_REVERSED] ?: false
+            studyReversed = preferences[STUDY_REVERSED] ?: false,
+            weeklyGoal = preferences[WEEKLY_GOAL],
+            freezeUsedOn = preferences[FREEZE_USED_ON],
+            themeMode = preferences[THEME_MODE],
+            hapticsEnabled = preferences[HAPTICS_ENABLED] ?: true,
+            soundsEnabled = preferences[SOUNDS_ENABLED] ?: true
         )
     }
 
@@ -319,6 +355,11 @@ class DataStoreSettingsRepository(
             put(REMINDER_ENABLED, backup.reminderEnabled)
             put(REMINDER_MINUTE_OF_DAY, backup.reminderMinuteOfDay)
             put(STUDY_REVERSED, backup.studyReversed)
+            put(WEEKLY_GOAL, backup.weeklyGoal)
+            put(FREEZE_USED_ON, backup.freezeUsedOn)
+            put(THEME_MODE, backup.themeMode)
+            put(HAPTICS_ENABLED, backup.hapticsEnabled)
+            put(SOUNDS_ENABLED, backup.soundsEnabled)
         }
     }
 
@@ -352,6 +393,11 @@ class DataStoreSettingsRepository(
         val REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val REMINDER_MINUTE_OF_DAY = intPreferencesKey("reminder_minute_of_day")
         val STUDY_REVERSED = booleanPreferencesKey("study_reversed")
+        val WEEKLY_GOAL = intPreferencesKey("weekly_goal")
+        val FREEZE_USED_ON = stringPreferencesKey("freeze_used_on")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
+        val HAPTICS_ENABLED = booleanPreferencesKey("haptics_enabled")
+        val SOUNDS_ENABLED = booleanPreferencesKey("sounds_enabled")
         const val STUDY_DAYS_KEPT = 28
     }
 }
@@ -368,16 +414,42 @@ internal suspend fun DataStore<Preferences>.readLegacyTargetLanguage(): String =
     data.first()[stringPreferencesKey("target_language")] ?: "Spanish"
 
 /**
- * Streak after completing a session [today]: unchanged if already studied today,
- * incremented if the last session was yesterday, otherwise restarted at 1.
+ * Streak after completing a session [today]: unchanged if already studied today, incremented if the
+ * last session was yesterday (or the day before, with a streak freeze on yesterday), otherwise restarted at 1.
  */
-internal fun nextStreak(lastStudy: LocalDate?, currentStreak: Int, today: LocalDate): Int = when {
-    lastStudy == null -> 1
-    lastStudy == today -> currentStreak
-    lastStudy == today.minus(1, DateTimeUnit.DAY) -> currentStreak + 1
-    else -> 1
+internal fun nextStreak(lastStudy: LocalDate?, currentStreak: Int, today: LocalDate, freezeUsedOn: LocalDate? = null): Int {
+    val yesterday = today.minus(1, DateTimeUnit.DAY)
+    return when {
+        lastStudy == null -> 1
+        lastStudy == today -> currentStreak
+        lastStudy == yesterday -> currentStreak + 1
+        lastStudy == yesterday.minus(1, DateTimeUnit.DAY) && freezeUsedOn == yesterday -> currentStreak + 1
+        else -> 1
+    }
 }
 
 /** A streak is broken once a full calendar day passes without a session. */
 internal fun isStreakBroken(lastStudy: LocalDate, today: LocalDate): Boolean =
     lastStudy < today.minus(1, DateTimeUnit.DAY)
+
+/** The streak after a refresh, and the day the freeze now covers (unchanged if none was used). */
+data class RefreshedStreak(val streak: Int, val freezeUsedOn: LocalDate?)
+
+/** A freeze can stand in for one missed day this often. */
+const val FREEZE_EVERY_DAYS = 7
+
+/**
+ * The streak as of [today]: kept while no full day was missed; kept with a freeze on the one missed day
+ * (yesterday) if the last freeze was at least [FREEZE_EVERY_DAYS] ago; otherwise lost.
+ */
+internal fun refreshedStreak(lastStudy: LocalDate, streak: Int, freezeUsedOn: LocalDate?, today: LocalDate): RefreshedStreak {
+    if (!isStreakBroken(lastStudy, today)) return RefreshedStreak(streak, freezeUsedOn)
+    val yesterday = today.minus(1, DateTimeUnit.DAY)
+    val missedOnlyYesterday = lastStudy == yesterday.minus(1, DateTimeUnit.DAY)
+    return when {
+        missedOnlyYesterday && freezeUsedOn == yesterday -> RefreshedStreak(streak, freezeUsedOn)
+        missedOnlyYesterday && streak > 0 && (freezeUsedOn == null || freezeUsedOn <= today.minus(FREEZE_EVERY_DAYS, DateTimeUnit.DAY)) ->
+            RefreshedStreak(streak, yesterday)
+        else -> RefreshedStreak(0, freezeUsedOn)
+    }
+}

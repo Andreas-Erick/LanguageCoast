@@ -17,9 +17,11 @@ import kotlinx.serialization.json.Json
  */
 class MultiCloudTranslator(private val client: HttpClient) : Translator {
 
-    override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
-        val prompt = buildTranslationPrompt(request)
-        return when (val engine = request.engine) {
+    override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult =
+        complete(request.engine, buildTranslationPrompt(request)).toTranslation()
+
+    override suspend fun complete(engine: TranslationEngine, prompt: String): Completion {
+        return when (engine) {
             is TranslationEngine.OpenAI -> callOpenAiCompatible(
                 providerName = "OpenAI",
                 endpoint = OPENAI_ENDPOINT,
@@ -46,7 +48,7 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
                 model = engine.model.trim().ifBlank { SettingsDefaults.CLAUDE_MODEL },
                 prompt = prompt
             )
-            else -> TranslationResult.FAILURE
+            else -> Completion.failure("This provider can't answer here.")
         }
     }
 
@@ -56,9 +58,9 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
         apiKey: String,
         model: String,
         prompt: String
-    ): TranslationResult {
+    ): Completion {
         if (apiKey.isBlank()) {
-            return TranslationResult.failure("Please enter a $providerName API key in Settings first!")
+            return Completion.failure("Please enter a $providerName API key in Settings first!")
         }
         return try {
             val response = client.post(endpoint) {
@@ -66,12 +68,12 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
                 contentType(ContentType.Application.Json)
                 setBody(openRouterRequestBody(model, prompt))
             }
-            parseCloudChatResponse(providerName, response.status.value, response.bodyAsText())
+            cloudChatAnswer(providerName, response.status.value, response.bodyAsText())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logError(TAG, "$providerName translation request failed", e)
-            TranslationResult.failure("Couldn't reach $providerName. Check your internet connection and try again.")
+            Completion.failure("Couldn't reach $providerName. Check your internet connection and try again.")
         }
     }
 
@@ -79,9 +81,9 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
         apiKey: String,
         model: String,
         prompt: String
-    ): TranslationResult {
+    ): Completion {
         if (apiKey.isBlank()) {
-            return TranslationResult.failure("Please enter an Anthropic Claude API key in Settings first!")
+            return Completion.failure("Please enter an Anthropic Claude API key in Settings first!")
         }
         return try {
             val response = client.post(CLAUDE_ENDPOINT) {
@@ -90,12 +92,12 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
                 contentType(ContentType.Application.Json)
                 setBody(claudeRequestBody(model, prompt))
             }
-            parseClaudeResponse(response.status.value, response.bodyAsText())
+            claudeAnswer(response.status.value, response.bodyAsText())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logError(TAG, "Claude translation request failed", e)
-            TranslationResult.failure("Couldn't reach Anthropic Claude. Check your internet connection and try again.")
+            Completion.failure("Couldn't reach Anthropic Claude. Check your internet connection and try again.")
         }
     }
 
@@ -125,7 +127,8 @@ private data class CloudChatMessage(val content: String? = null)
 @Serializable
 private data class CloudApiError(val message: String? = null, val type: String? = null)
 
-internal fun parseCloudChatResponse(providerName: String, status: Int, body: String): TranslationResult {
+/** [parseCloudChatResponse] without reading the answer as a translation. */
+internal fun cloudChatAnswer(providerName: String, status: Int, body: String): Completion {
     val parsed = try {
         cloudJson.decodeFromString(CloudChatResponse.serializer(), body)
     } catch (e: SerializationException) {
@@ -142,15 +145,27 @@ internal fun parseCloudChatResponse(providerName: String, status: Int, body: Str
             429 -> "$providerName rate limit reached. Wait a moment and try again."
             else -> "$providerName: ${errMsg ?: "request failed (HTTP $status)"}"
         }
-        return TranslationResult.failure(message)
+        return Completion.failure(message)
     }
     val rawContent = parsed?.choices?.firstOrNull()?.message?.content
         ?.replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "")
         ?.trim()
-        ?: return TranslationResult.failure("$providerName sent an empty answer. Try again or pick another model.")
-    return parseTranslationResponse(rawContent).let {
-        if (it.isSuccess) it else TranslationResult.failure("The model's answer couldn't be read. Try again or pick another model.")
-    }
+        ?.takeIf { it.isNotEmpty() }
+        ?: return Completion.failure("$providerName sent an empty answer. Try again or pick another model.")
+    return Completion(rawContent)
+}
+
+/** Reads an OpenAI-style chat completion from [providerName] into a [TranslationResult]. */
+internal fun parseCloudChatResponse(providerName: String, status: Int, body: String): TranslationResult =
+    cloudChatAnswer(providerName, status, body).toTranslation()
+
+/**
+ * This answer read as a translation: [parseTranslationResponse] of its text, or the failure it already is.
+ * An answer that doesn't parse is reported with [unreadable].
+ */
+internal fun Completion.toTranslation(unreadable: String = "The model's answer couldn't be read. Try again or pick another model."): TranslationResult {
+    val answer = text ?: return TranslationResult.failure(errorMessage ?: "The model sent no answer.")
+    return parseTranslationResponse(answer).let { if (it.isSuccess) it else TranslationResult.failure(unreadable) }
 }
 
 @Serializable
@@ -178,7 +193,8 @@ internal fun claudeRequestBody(model: String, prompt: String): String =
         ClaudeRequest(model = model, max_tokens = 512, messages = listOf(ClaudeMessage("user", prompt)))
     )
 
-internal fun parseClaudeResponse(status: Int, body: String): TranslationResult {
+/** [parseClaudeResponse] without reading the answer as a translation. */
+internal fun claudeAnswer(status: Int, body: String): Completion {
     val parsed = try {
         cloudJson.decodeFromString(ClaudeResponse.serializer(), body)
     } catch (e: SerializationException) {
@@ -194,15 +210,17 @@ internal fun parseClaudeResponse(status: Int, body: String): TranslationResult {
             429, 529 -> "Claude is busy or rate-limited. Wait a moment and try again."
             else -> "Claude: ${errMsg ?: "request failed (HTTP $status)"}"
         }
-        return TranslationResult.failure(message)
+        return Completion.failure(message)
     }
     val text = parsed?.content
         ?.filter { it.type == null || it.type == "text" }
         ?.mapNotNull { it.text }
         ?.joinToString("")
         ?.takeIf { it.isNotBlank() }
-        ?: return TranslationResult.failure("Claude returned an empty answer. Try again.")
-    return parseTranslationResponse(text).let {
-        if (it.isSuccess) it else TranslationResult.failure("Claude's answer couldn't be read. Try again.")
-    }
+        ?: return Completion.failure("Claude returned an empty answer. Try again.")
+    return Completion(text.trim())
 }
+
+/** Reads a Claude messages response into a [TranslationResult]. */
+internal fun parseClaudeResponse(status: Int, body: String): TranslationResult =
+    claudeAnswer(status, body).toTranslation("Claude's answer couldn't be read. Try again.")

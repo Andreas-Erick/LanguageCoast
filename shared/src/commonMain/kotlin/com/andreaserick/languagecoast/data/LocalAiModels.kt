@@ -10,6 +10,8 @@ expect val localAiAvailable: Boolean
 /** Runs an installed `.litertlm` model on the device for full offline translation and categorization. */
 expect class LocalAiTranslator() : Translator {
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult
+    override suspend fun complete(engine: TranslationEngine, prompt: String): Completion
+    override suspend fun prepare(engine: TranslationEngine)
 }
 
 /** Classification of a phone's capability for running on-device generative AI models. */

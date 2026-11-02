@@ -4,23 +4,39 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.CardEdit
+import com.andreaserick.languagecoast.data.Cloze
 import com.andreaserick.languagecoast.data.DeletedContent
+import com.andreaserick.languagecoast.data.EngineChoice
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.data.LanguageIsland
+import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.Translator
+import com.andreaserick.languagecoast.data.buildExplainPrompt
+import com.andreaserick.languagecoast.data.clozeOf
+import com.andreaserick.languagecoast.data.currentEngine
+import com.andreaserick.languagecoast.data.interleaveByCoast
 import com.andreaserick.languagecoast.data.isDue
+import com.andreaserick.languagecoast.data.isLeaky
 import com.andreaserick.languagecoast.data.reviewOutcomes
+import com.andreaserick.languagecoast.navigation.StudyScreenRoute
 import com.andreaserick.languagecoast.speech.Speaker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -29,21 +45,51 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
 import kotlin.time.Instant
 
+/** What a study session covers; see [StudyScreenRoute.scope]. */
+enum class StudyScope(val key: String) {
+    Island(StudyScreenRoute.SCOPE_ISLAND),
+    Coast(StudyScreenRoute.SCOPE_COAST),
+    /** Today's due cards on every coast, with the coasts taking turns. */
+    Today(StudyScreenRoute.SCOPE_TODAY),
+    /** The cards the user keeps forgetting (see [isLeaky]), due or not. */
+    Leaky(StudyScreenRoute.SCOPE_LEAKY);
+
+    companion object {
+        fun fromKey(key: String?): StudyScope = entries.firstOrNull { it.key == key } ?: Island
+    }
+}
+
+/** How a card is answered: flipped, typed in full, or typed into a gap in the translation. */
+enum class StudyMode { Flip, Type, Cloze }
+
+/** An explanation of a word on the current card, asked from the AI provider. */
+data class WordExplanation(
+    val word: String,
+    val sentence: String,
+    val providerLabel: String,
+    val text: String? = null,
+    val error: String? = null
+) {
+    val isLoading: Boolean get() = text == null && error == null
+}
+
 data class StudyUiState(
+    /** The island's name, or the session's title for the other scopes ("Today's review"). */
     val islandName: String = "",
+    val scope: StudyScope = StudyScope.Island,
     val isLoading: Boolean = true,
-    /** Whether the island has any cards in the database at all. */
+    /** Whether the session's scope has any cards in the database at all. */
     val hasCards: Boolean = false,
     /** Cards still left in this session, in study order. */
-    val sessionCards: List<Flashcard> = emptyList(),
+    val sessionCards: List<PlacedCard> = emptyList(),
     /** Number of cards the session started with. */
     val totalCards: Int = 0,
     val currentIndex: Int = 0,
-    val isTypingMode: Boolean = false,
+    val mode: StudyMode = StudyMode.Flip,
     val isSessionComplete: Boolean = false,
-    /** The island has cards, but none were due when the session started. */
+    /** The scope has cards, but none were due (or leaky) when the session started. */
     val isCaughtUp: Boolean = false,
-    /** Days until the island's next card is due, or null if none is scheduled. */
+    /** Days until the scope's next card is due, or null if none is scheduled. */
     val nextDueInDays: Int? = null,
     /** Days until the current card would be due again after each grade. */
     val gradeIntervals: Map<Grade, Int> = emptyMap(),
@@ -51,113 +97,163 @@ data class StudyUiState(
     val againCount: Int = 0,
     val streakCount: Int = 0,
     val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
-    /** The language of the coast this island is on. */
-    val targetLanguage: String = "",
-    /** Whether the phone has a voice to read [targetLanguage] aloud. */
-    val canSpeak: Boolean = false,
-    /** The islands on this island's coast, which a card can be moved to when editing it. */
-    val coastIslands: List<LanguageIsland> = emptyList(),
-    /** Cards are shown in [targetLanguage] and answered in [nativeLanguage], training recognition instead of recall. */
-    val isReversed: Boolean = false
+    /** The language of the scope's coast, for sessions on one coast; blank across coasts. */
+    val scopeLanguage: String = "",
+    /** Languages the phone has a voice for. */
+    val spokenLanguages: Set<String> = emptySet(),
+    /** Every island, so a card can be moved to another island on its coast when editing it. */
+    val allIslands: List<LanguageIsland> = emptyList(),
+    /** Cards are shown in the coast's language and answered in [nativeLanguage], training recognition instead of recall. */
+    val isReversed: Boolean = false,
+    /** An explanation being shown (or fetched) for a word on the current card. */
+    val explanation: WordExplanation? = null
 ) {
-    val currentCard: Flashcard? get() = sessionCards.getOrNull(currentIndex)
+    val currentPlaced: PlacedCard? get() = sessionCards.getOrNull(currentIndex)
+    val currentCard: Flashcard? get() = currentPlaced?.card
     val canGoBack: Boolean get() = currentIndex > 0
     val canGoForward: Boolean get() = currentIndex < sessionCards.size - 1
+    val isTypingMode: Boolean get() = mode == StudyMode.Type
+
+    /** The language of the current card's coast (or of the scope's coast before the first card). */
+    val targetLanguage: String get() = currentPlaced?.language ?: scopeLanguage
+
+    /** Whether the phone has a voice to read [targetLanguage] aloud. */
+    val canSpeak: Boolean get() = targetLanguage in spokenLanguages
+
+    /** The islands on the current card's coast, which the card can be moved to when editing it. */
+    val coastIslands: List<LanguageIsland> get() = currentPlaced?.let { placed -> allIslands.filter { it.coastId == placed.coastId } }.orEmpty()
+
+    /** The current card's translation with its key word blanked, in [StudyMode.Cloze]; null when it is a single word. */
+    val cloze: Cloze? get() = if (mode == StudyMode.Cloze) currentCard?.let { clozeOf(it.targetText) } else null
 
     /** Share of the session's cards already passed (graded anything but "Again"), from 0 to 1. */
     val progress: Float get() = if (totalCards == 0) 0f else (totalCards - sessionCards.size).toFloat() / totalCards
 }
 
 /**
- * Runs a study session for one island's due cards (see [isDue]). Every grade reschedules the card
- * with [reviewOutcomes]; "Again" also moves it to the end of the session, any other grade removes it.
+ * Runs a study session over the cards in its [StudyScope]: an island's or a coast's due cards, today's
+ * due cards across every coast, or the leaky words. Every grade reschedules the card with
+ * [reviewOutcomes]; "Again" also moves it to the end of the session, any other grade removes it.
  * The session is complete once no cards are left.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class StudyViewModel(
     savedStateHandle: SavedStateHandle,
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository,
     private val clock: Clock,
     private val timeZone: TimeZone,
-    private val speaker: Speaker
+    private val speaker: Speaker,
+    private val translator: Translator
 ) : ViewModel() {
 
     // Populated by Navigation from the StudyScreenRoute properties.
-    private val islandId: Int = checkNotNull(savedStateHandle["islandId"])
-    private val islandName: String = savedStateHandle["islandName"] ?: ""
+    private val scope: StudyScope = StudyScope.fromKey(savedStateHandle["scope"])
+    private val islandId: Int = savedStateHandle["islandId"] ?: 0
+    private val coastId: Int = savedStateHandle["coastId"] ?: 0
+    private val title: String = savedStateHandle["islandName"] ?: ""
 
     private data class Session(
-        val allCards: List<Flashcard> = emptyList(),
-        val cards: List<Flashcard> = emptyList(),
+        /** Every card in the scope, whether in the session or not. */
+        val allCards: List<PlacedCard> = emptyList(),
+        val cards: List<PlacedCard> = emptyList(),
         val total: Int = 0,
         val index: Int = 0,
         val againCount: Int = 0,
         val isStarted: Boolean = false,
         val isLoading: Boolean = true,
-        val isTypingMode: Boolean = false
+        val mode: StudyMode = StudyMode.Flip,
+        /** The islands the session's cards came from, marked studied when it is completed. */
+        val islandIds: Set<Int> = emptySet()
     )
 
     private val session = MutableStateFlow(Session())
+    private val explanation = MutableStateFlow<WordExplanation?>(null)
+    private var explainJob: Job? = null
 
-    /** What the session needs to know about the coast this island is on. */
-    private data class CoastInfo(val language: String, val canSpeak: Boolean, val islands: List<LanguageIsland>)
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val coastInfo = flashcards.observeCoastForIsland(islandId).flatMapLatest { coast ->
-        val language = coast?.language.orEmpty()
-        val islands = coast?.let { flashcards.observeIslands(it.coastId) } ?: flowOf(emptyList())
-        combine(speaker.canSpeak(language), islands) { canSpeak, islands -> CoastInfo(language, canSpeak, islands) }
-    }
+    /** The languages of the session's coasts that have a voice. */
+    private val spokenLanguages: Flow<Set<String>> = session
+        .map { s -> s.allCards.map { it.language }.distinct() }
+        .distinctUntilChanged()
+        .flatMapLatest { languages ->
+            if (languages.isEmpty()) flowOf(emptySet())
+            else combine(languages.map { language -> speaker.canSpeak(language).map { language to it } }) { pairs ->
+                pairs.filter { it.second }.mapTo(HashSet()) { it.first }
+            }
+        }
 
     val uiState: StateFlow<StudyUiState> = combine(
-        session,
+        combine(session, explanation) { s, e -> s to e },
         settings.nativeLanguage,
-        coastInfo,
+        combine(spokenLanguages, flashcards.observeAllIslands()) { spoken, islands -> spoken to islands },
         settings.streakCount,
         settings.studyReversed
-    ) { s, nativeLanguage, coast, streak, reversed ->
+    ) { (s, explanation), nativeLanguage, (spoken, islands), streak, reversed ->
         val now = clock.now()
         StudyUiState(
-            islandName = islandName,
+            islandName = title,
+            scope = scope,
             isLoading = s.isLoading,
             hasCards = s.allCards.isNotEmpty(),
             sessionCards = s.cards,
             totalCards = s.total,
             currentIndex = s.index,
-            isTypingMode = s.isTypingMode,
+            mode = s.mode,
             isSessionComplete = s.isStarted && s.total > 0 && s.cards.isEmpty(),
             isCaughtUp = s.isStarted && s.allCards.isNotEmpty() && s.total == 0,
-            nextDueInDays = daysUntilNextDue(s.allCards, now),
+            nextDueInDays = daysUntilNextDue(s.allCards.map { it.card }, now),
             gradeIntervals = s.cards.getOrNull(s.index)
-                ?.let { card -> reviewOutcomes(card, now, timeZone).mapValues { it.value.intervalDays } }
+                ?.let { placed -> reviewOutcomes(placed.card, now, timeZone).mapValues { it.value.intervalDays } }
                 .orEmpty(),
             againCount = s.againCount,
             streakCount = streak,
             nativeLanguage = nativeLanguage,
-            targetLanguage = coast.language,
-            canSpeak = coast.canSpeak,
-            coastIslands = coast.islands,
-            isReversed = reversed
+            scopeLanguage = if (scope == StudyScope.Island || scope == StudyScope.Coast) s.allCards.firstOrNull()?.language.orEmpty() else "",
+            spokenLanguages = spoken,
+            allIslands = islands,
+            isReversed = reversed,
+            explanation = explanation
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StudyUiState(islandName = islandName))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StudyUiState(islandName = title, scope = scope))
 
     init {
         viewModelScope.launch {
-            flashcards.observeCards(islandId).collect(::onCardsChanged)
+            flashcards.observeAllCards().map { cards -> cards.filter(::inScope) }.collect(::onCardsChanged)
         }
     }
 
-    /** Starts the session with the due cards once they first load; later updates only refresh or drop cards already in it. */
-    private fun onCardsChanged(cards: List<Flashcard>) = updateSession { s ->
+    private fun inScope(placed: PlacedCard): Boolean = when (scope) {
+        StudyScope.Island -> placed.card.islandId == islandId
+        StudyScope.Coast -> placed.coastId == coastId
+        StudyScope.Today, StudyScope.Leaky -> true
+    }
+
+    /** Starts the session once the cards first load; later updates only refresh or drop cards already in it. */
+    private fun onCardsChanged(cards: List<PlacedCard>) = updateSession { s ->
         if (!s.isStarted && cards.isNotEmpty()) {
-            val due = dueInStudyOrder(cards, clock.now().toEpochMilliseconds())
-            s.copy(allCards = cards, cards = due, total = due.size, index = 0, isStarted = true, isLoading = false)
+            val opening = openingCards(cards)
+            s.copy(
+                allCards = cards,
+                cards = opening,
+                total = opening.size,
+                index = 0,
+                isStarted = true,
+                isLoading = false,
+                islandIds = opening.mapTo(HashSet()) { it.card.islandId }
+            )
         } else {
             // Keep the session order, but use the saved cards and drop those deleted from the database.
-            val byId = cards.associateBy { it.cardId }
-            val kept = s.cards.mapNotNull { byId[it.cardId] }
+            val byId = cards.associateBy { it.card.cardId }
+            val kept = s.cards.mapNotNull { byId[it.card.cardId] }
             s.copy(allCards = cards, cards = kept, total = s.total - (s.cards.size - kept.size), isLoading = false)
         }
+    }
+
+    /** The cards a session over [cards] opens with: the due ones, or for [StudyScope.Leaky] the leaky ones. */
+    private fun openingCards(cards: List<PlacedCard>): List<PlacedCard> = when (scope) {
+        StudyScope.Leaky -> leakyInStudyOrder(cards)
+        StudyScope.Today -> interleaveByCoast(duePlacedInStudyOrder(cards, clock.now().toEpochMilliseconds()))
+        else -> duePlacedInStudyOrder(cards, clock.now().toEpochMilliseconds())
     }
 
     /** Reads the current card's translation aloud. */
@@ -179,13 +275,13 @@ class StudyViewModel(
         val card = uiState.value.currentCard ?: return
         if (alternative !in card.alternatives) return
         val alternatives = card.alternatives.map { if (it == alternative) card.targetText else it }
-        // observeCards re-emits the updated card, which replaces it in the session.
+        // observeAllCards re-emits the updated card, which replaces it in the session.
         viewModelScope.launch { flashcards.updateTranslation(card.cardId, alternative, alternatives) }
     }
 
     /**
-     * Saves [edit] to card [cardId]. A card moved to another island leaves the session;
-     * otherwise observeCards re-emits it with the changes in place.
+     * Saves [edit] to card [cardId]. A card moved to another island leaves an island session;
+     * otherwise observeAllCards re-emits it with the changes in place.
      */
     fun editCard(cardId: Int, edit: CardEdit) {
         viewModelScope.launch { flashcards.editCard(cardId, edit) }
@@ -193,13 +289,14 @@ class StudyViewModel(
 
     /** Grades the current card, saves its new schedule and moves on. */
     fun onGrade(grade: Grade) {
-        val card = session.value.let { it.cards.getOrNull(it.index) } ?: return
+        val placed = session.value.let { it.cards.getOrNull(it.index) } ?: return
         // Don't keep reading the old answer over the next card.
         speaker.stop()
-        val reviewed = reviewOutcomes(card, clock.now(), timeZone).getValue(grade).card
+        dismissExplanation()
+        val reviewed = reviewOutcomes(placed.card, clock.now(), timeZone).getValue(grade).card
         updateSession { s ->
-            val rest = s.cards.filterNot { it.cardId == card.cardId }
-            if (grade == Grade.Again) s.copy(cards = rest + reviewed, againCount = s.againCount + 1) else s.copy(cards = rest)
+            val rest = s.cards.filterNot { it.card.cardId == placed.card.cardId }
+            if (grade == Grade.Again) s.copy(cards = rest + placed.copy(card = reviewed), againCount = s.againCount + 1) else s.copy(cards = rest)
         }
         viewModelScope.launch { flashcards.saveReview(reviewed) }
     }
@@ -210,8 +307,14 @@ class StudyViewModel(
     /** Moves back to the previous card. */
     fun previous() = updateSession { it.copy(index = it.index - 1) }
 
-    /** Starts a session with every card of the island, due or not. Grades still reschedule the cards. */
-    fun practiceAll() = updateSession { it.copy(cards = it.allCards, total = it.allCards.size, index = 0, againCount = 0) }
+    /**
+     * Starts a session with every card of the scope, due or not (for [StudyScope.Leaky], every leaky card).
+     * Grades still reschedule the cards.
+     */
+    fun practiceAll() = updateSession { s ->
+        val all = if (scope == StudyScope.Leaky) leakyInStudyOrder(s.allCards).ifEmpty { s.allCards } else interleaveByCoast(s.allCards)
+        s.copy(cards = all, total = all.size, index = 0, againCount = 0, islandIds = all.mapTo(HashSet()) { it.card.islandId })
+    }
 
     /**
      * Switches between studying from the native language (recall) and from the coast's language (recognition).
@@ -222,12 +325,46 @@ class StudyViewModel(
     }
 
     /** Switches between revealing the answer and typing it. */
-    fun setTypingMode(enabled: Boolean) = updateSession { it.copy(isTypingMode = enabled) }
+    fun setTypingMode(enabled: Boolean) = setMode(if (enabled) StudyMode.Type else StudyMode.Flip)
+
+    /** Switches how cards are answered. */
+    fun setMode(mode: StudyMode) = updateSession { it.copy(mode = mode) }
+
+    /**
+     * Asks the AI provider picked in Settings to explain [word] as used on the current card. The answer
+     * (or why there is none) arrives in [StudyUiState.explanation].
+     */
+    fun explainWord(word: String) {
+        val state = uiState.value
+        val card = state.currentCard ?: return
+        explainJob?.cancel()
+        explainJob = viewModelScope.launch {
+            val provider = settings.translationProvider.first()
+            explanation.value = WordExplanation(word, card.targetText, provider.label)
+            val answer = when (val choice = settings.currentEngine(provider)) {
+                is EngineChoice.Missing -> null to choice.message
+                is EngineChoice.Ready -> {
+                    val completion = translator.complete(
+                        choice.engine,
+                        buildExplainPrompt(word, card.targetText, state.targetLanguage, state.nativeLanguage)
+                    )
+                    completion.text to completion.errorMessage
+                }
+            }
+            explanation.value = explanation.value?.takeIf { it.word == word }?.copy(text = answer.first, error = answer.second)
+        }
+    }
+
+    /** Closes the word explanation. */
+    fun dismissExplanation() {
+        explainJob?.cancel()
+        explanation.value = null
+    }
 
     /** Deletes the current card; [onDeleted] receives it so the delete can be undone. */
     fun deleteCurrentCard(onDeleted: (DeletedContent) -> Unit) {
         val card = uiState.value.currentCard ?: return
-        // observeCards re-emits without the card, which removes it from the session.
+        // observeAllCards re-emits without the card, which removes it from the session.
         viewModelScope.launch { onDeleted(flashcards.deleteFlashcard(card)) }
     }
 
@@ -236,7 +373,7 @@ class StudyViewModel(
 
     /**
      * Applies [transform] to the session, keeping the index in range.
-     * When the last card of a session is graded, records the study session and marks the island studied.
+     * When the last card of a session is graded, records the study session and marks its islands studied.
      */
     private fun updateSession(transform: (Session) -> Session) {
         val before = session.value
@@ -247,7 +384,8 @@ class StudyViewModel(
         if (justCompleted) {
             viewModelScope.launch {
                 settings.recordStudySession()
-                flashcards.markIslandStudied(islandId, clock.now().toEpochMilliseconds())
+                val now = clock.now().toEpochMilliseconds()
+                after.islandIds.forEach { flashcards.markIslandStudied(it, now) }
             }
         }
     }
@@ -270,3 +408,13 @@ internal fun dueInStudyOrder(cards: List<Flashcard>, now: Long): List<Flashcard>
     val (new, reviewed) = cards.filter { isDue(it, now) }.partition { it.due == null }
     return reviewed.sortedBy { it.due } + new.sortedBy { it.cardId }
 }
+
+/** [dueInStudyOrder] for cards that know their island and coast. */
+internal fun duePlacedInStudyOrder(cards: List<PlacedCard>, now: Long): List<PlacedCard> {
+    val byId = cards.associateBy { it.card.cardId }
+    return dueInStudyOrder(cards.map { it.card }, now).mapNotNull { byId[it.cardId] }
+}
+
+/** The leaky cards of [cards] (see [isLeaky]), the most forgotten first, with the coasts taking turns. */
+internal fun leakyInStudyOrder(cards: List<PlacedCard>): List<PlacedCard> =
+    interleaveByCoast(cards.filter { isLeaky(it.card) }.sortedWith(compareByDescending<PlacedCard> { it.card.lapses }.thenByDescending { it.card.difficulty ?: 0.0 }))

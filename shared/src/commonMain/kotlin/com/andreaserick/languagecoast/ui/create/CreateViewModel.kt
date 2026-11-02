@@ -176,25 +176,6 @@ class CreateViewModel(
             (coasts.firstOrNull { it.coastId == activeCoastId } ?: coasts.firstOrNull())?.coastId
         }.distinctUntilChanged()
 
-    /**
-     * Picks where to start reviewing: the island with the most due cards, on the selected coast if it
-     * has any due, otherwise on the coast with the most. [onOpen] gets the island's ID and name.
-     */
-    fun startReview(onOpen: (islandId: Int, islandName: String) -> Unit) {
-        viewModelScope.launch {
-            val now = clock.now().toEpochMilliseconds()
-            val coasts = flashcards.observeCoastSummaries(studiedSince = 0, now = now).first().filter { it.dueCount > 0 }
-            val coast = coasts.firstOrNull { it.coast.coastId == uiState.selectedCoast?.coastId }
-                ?: coasts.maxByOrNull { it.dueCount }
-                ?: return@launch
-            val island = flashcards.observeIslandSummaries(coast.coast.coastId, now).first()
-                .filter { it.dueCount > 0 }
-                .maxByOrNull { it.dueCount }
-                ?: return@launch
-            onOpen(island.island.islandId, island.island.name)
-        }
-    }
-
     /** Makes [coast] the one new cards are added to. */
     fun onCoastSelected(coast: Coast) {
         viewModelScope.launch { settings.setActiveCoastId(coast.coastId) }

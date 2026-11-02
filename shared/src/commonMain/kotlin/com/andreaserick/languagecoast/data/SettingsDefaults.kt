@@ -10,6 +10,14 @@ object SettingsDefaults {
     const val DEEPSEEK_MODEL = "deepseek-chat"
     const val LOCAL_AI_MODEL = LocalAiCatalog.DEFAULT_MODEL_ID
 
+    /** Islands to study per week. */
+    const val WEEKLY_GOAL = 5
+
+    /** "system", "dark" or "light". */
+    const val THEME_MODE = "system"
+    val THEME_MODES = listOf("system", "dark", "light")
+    val WEEKLY_GOALS = listOf(3, 5, 7, 10)
+
     /** OpenRouter's Auto Router, which picks a suitable model for each request. */
     const val OPENROUTER_MODEL = "openrouter/auto"
 

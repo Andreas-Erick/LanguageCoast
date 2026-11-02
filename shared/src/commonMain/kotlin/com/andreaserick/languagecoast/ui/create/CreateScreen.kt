@@ -90,7 +90,7 @@ import org.koin.compose.viewmodel.koinViewModel
  */
 @Composable
 fun CreateScreen(
-    onStartReview: (islandId: Int, islandName: String) -> Unit,
+    onStartReview: () -> Unit,
     viewModel: CreateViewModel = koinViewModel()
 ) {
     CreateContent(
@@ -103,7 +103,7 @@ fun CreateScreen(
         onAddCoast = viewModel::addCoast,
         onSave = viewModel::save,
         onUndo = viewModel::undoLastSave,
-        onStartReview = { viewModel.startReview(onStartReview) }
+        onStartReview = onStartReview
     )
 }
 

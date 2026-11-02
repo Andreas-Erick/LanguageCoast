@@ -356,98 +356,103 @@ actual class LocalAiTranslator actual constructor() : Translator {
     actual override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
         val localEngine = request.engine as? TranslationEngine.LocalAi ?: return TranslationResult.FAILURE
         val modelFile = LocalAiPaths.resolveModelFile(localEngine.modelId, localEngine.modelPath)
-            ?: return TranslationResult.failure(
-                "No local AI model is installed yet. Open Settings → Translation → Local AI to scan your phone and install a model."
-            )
+            ?: return TranslationResult.failure(NO_MODEL_MESSAGE)
 
+        val answer = withContext(dispatcher) {
+            mutex.withLock { generateLocked(buildTranslationPrompt(request), modelFile) }
+        }
+        val text = answer.text ?: return TranslationResult.failure(answer.errorMessage ?: "Local AI sent no answer.")
+        return parseLocalModelResponse(text, request)
+    }
+
+    actual override suspend fun complete(engine: TranslationEngine, prompt: String): Completion {
+        val localEngine = engine as? TranslationEngine.LocalAi ?: return Completion.failure("This provider can't answer here.")
+        val modelFile = LocalAiPaths.resolveModelFile(localEngine.modelId, localEngine.modelPath)
+            ?: return Completion.failure(NO_MODEL_MESSAGE)
         return withContext(dispatcher) {
-            mutex.withLock {
-                runInferenceLocked(request, modelFile)
-            }
+            mutex.withLock { generateLocked(prompt, modelFile) }
+        }.let { answer ->
+            // Reasoning models think out loud first; the answer is what follows.
+            answer.text?.let { Completion(it.replace(THINK_BLOCK, "").trim().ifEmpty { it }) } ?: answer
         }
     }
 
-    private suspend fun runInferenceLocked(request: TranslationRequest, modelFile: File): TranslationResult {
-        val targetPath = modelFile.absolutePath
-        val cacheDir = LocalAiPaths.cacheDir?.absolutePath ?: modelFile.parentFile?.absolutePath
-
-        if (engine == null || loadedModelPath != targetPath) {
-            closeEngineLocked()
-            val initialized = initializeEngineWithFallback(targetPath, cacheDir, preferGpu = LocalAiPaths.gpuSupported)
-                ?: return TranslationResult.failure(
-                    "Couldn't load the local AI model (${modelFile.name}). Ensure your phone has enough free RAM and try again."
-                )
-            engine = initialized
-            loadedModelPath = targetPath
+    /** Loads the model into memory so the first translation doesn't wait for it; quietly does nothing if it can't. */
+    actual override suspend fun prepare(engine: TranslationEngine) {
+        val localEngine = engine as? TranslationEngine.LocalAi ?: return
+        val modelFile = LocalAiPaths.resolveModelFile(localEngine.modelId, localEngine.modelPath) ?: return
+        withContext(dispatcher) {
+            mutex.withLock { ensureEngineLocked(modelFile) }
         }
+    }
 
-        val activeEngine = checkNotNull(engine)
-        var conversation: Conversation? = null
+    /** The engine for [modelFile], loading it (or swapping the loaded model) if needed; null if it can't be loaded. */
+    private fun ensureEngineLocked(modelFile: File): Engine? {
+        val targetPath = modelFile.absolutePath
+        if (engine != null && loadedModelPath == targetPath) return engine
+        closeEngineLocked()
+        val cacheDir = LocalAiPaths.cacheDir?.absolutePath ?: modelFile.parentFile?.absolutePath
+        val initialized = initializeEngineWithFallback(targetPath, cacheDir, preferGpu = LocalAiPaths.gpuSupported) ?: return null
+        engine = initialized
+        loadedModelPath = targetPath
+        return initialized
+    }
+
+    /** Sends [prompt] to the loaded model and returns its whole reply, retrying once on the CPU if the GPU backend fails. */
+    private suspend fun generateLocked(prompt: String, modelFile: File): Completion {
+        val activeEngine = ensureEngineLocked(modelFile)
+            ?: return Completion.failure("Couldn't load the local AI model (${modelFile.name}). Ensure your phone has enough free RAM and try again.")
         return try {
-            conversation = activeEngine.createConversation(
-                ConversationConfig(
-                    systemInstruction = Contents.of(
-                        "You are an expert multilingual flashcard translator. Follow the requested output format strictly."
-                    ),
-                    samplerConfig = SamplerConfig(topK = 20, topP = 0.90, temperature = 0.3)
-                )
-            )
-            val prompt = buildTranslationPrompt(request)
-            val replyBuilder = StringBuilder()
-            conversation.sendMessageAsync(prompt).collect { chunk ->
-                replyBuilder.append(chunk.toString())
-            }
-            val rawReply = replyBuilder.toString().trim()
-            parseLocalModelResponse(rawReply, request)
+            Completion(sendLocked(activeEngine, prompt))
         } catch (e: CancellationException) {
-            runCatching { conversation?.cancelProcess() }
             throw e
         } catch (e: Exception) {
             logError(TAG, "Local AI inference failed", e)
-            // If GPU failed on first message ("Can not find OpenCL library on this device"), retry once on CPU!
+            // If GPU failed on first message ("Can not find OpenCL library on this device"), retry once on CPU.
             if (e.message?.contains("OpenCL", ignoreCase = true) == true) {
                 LocalAiPaths.gpuSupported = false
-                runCatching { conversation?.close() }
-                conversation = null
                 closeEngineLocked()
-                return retryOnCpuLocked(request, targetPath, cacheDir)
+                retryOnCpuLocked(prompt, modelFile)
+            } else {
+                Completion.failure("Local AI couldn't finish translating: ${e.message ?: "try a lighter model in Settings."}")
             }
-            TranslationResult.failure("Local AI couldn't finish translating: ${e.message ?: "try a lighter model in Settings."}")
-        } finally {
-            runCatching { conversation?.close() }
         }
     }
 
-    private suspend fun retryOnCpuLocked(
-        request: TranslationRequest,
-        targetPath: String,
-        cacheDir: String?
-    ): TranslationResult {
-        val cpuEngine = initializeEngineWithFallback(targetPath, cacheDir, preferGpu = false)
-            ?: return TranslationResult.failure("Local AI couldn't initialize on CPU.")
+    private suspend fun retryOnCpuLocked(prompt: String, modelFile: File): Completion {
+        val cacheDir = LocalAiPaths.cacheDir?.absolutePath ?: modelFile.parentFile?.absolutePath
+        val cpuEngine = initializeEngineWithFallback(modelFile.absolutePath, cacheDir, preferGpu = false)
+            ?: return Completion.failure("Local AI couldn't initialize on CPU.")
         engine = cpuEngine
-        loadedModelPath = targetPath
-        var conversation: Conversation? = null
+        loadedModelPath = modelFile.absolutePath
         return try {
-            conversation = cpuEngine.createConversation(
+            Completion(sendLocked(cpuEngine, prompt))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logError(TAG, "Local AI CPU fallback failed", e)
+            Completion.failure("Local AI error: ${e.message ?: "couldn't run model"}")
+        }
+    }
+
+    /** One conversation with [activeEngine]: [prompt] in, the whole reply out. */
+    private suspend fun sendLocked(activeEngine: Engine, prompt: String): String {
+        var conversation: Conversation? = null
+        try {
+            conversation = activeEngine.createConversation(
                 ConversationConfig(
                     systemInstruction = Contents.of(
-                        "You are an expert multilingual flashcard translator. Follow the requested output format strictly."
+                        "You are an expert multilingual flashcard translator and language teacher. Follow the requested output format strictly."
                     ),
                     samplerConfig = SamplerConfig(topK = 20, topP = 0.90, temperature = 0.3)
                 )
             )
             val replyBuilder = StringBuilder()
-            conversation.sendMessageAsync(buildTranslationPrompt(request)).collect { chunk ->
-                replyBuilder.append(chunk.toString())
-            }
-            parseLocalModelResponse(replyBuilder.toString().trim(), request)
+            conversation.sendMessageAsync(prompt).collect { chunk -> replyBuilder.append(chunk.toString()) }
+            return replyBuilder.toString().trim()
         } catch (e: CancellationException) {
             runCatching { conversation?.cancelProcess() }
             throw e
-        } catch (e: Exception) {
-            logError(TAG, "Local AI CPU fallback failed", e)
-            TranslationResult.failure("Local AI error: ${e.message ?: "couldn't run model"}")
         } finally {
             runCatching { conversation?.close() }
         }
@@ -486,6 +491,8 @@ actual class LocalAiTranslator actual constructor() : Translator {
 
     private companion object {
         const val TAG = "LocalAiTranslator"
+        const val NO_MODEL_MESSAGE = "No local AI model is installed yet. Open Settings → Translation → Local AI to scan your phone and install a model."
+        val THINK_BLOCK = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
     }
 }
 
