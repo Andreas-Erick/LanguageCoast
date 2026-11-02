@@ -9,16 +9,19 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import kotlinx.coroutines.flow.first
 import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.datetime.toJavaLocalTime
+import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.datetime.toKotlinLocalDateTime
 import kotlinx.datetime.toKotlinLocalTime
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.Clock
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.util.concurrent.TimeUnit
@@ -93,13 +96,27 @@ class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
 
     private val reminderScheduler: WorkManagerReminderScheduler by inject()
     private val flashcards: FlashcardRepository by inject()
+    private val settings: SettingsRepository by inject()
     private val clock: Clock by inject()
 
-    /** Shows the reminder with the number of due cards, then queues the next one. */
+    /** Shows the reminder that fits today (see [reminderMessage]), then queues the next one. */
     override suspend fun doWork(): Result {
         Log.d("StudyReminderWorker", "Showing study reminder")
-        val dueCount = flashcards.countDueCards(clock.millis())
-        NotificationHelper.showStudyNotification(applicationContext, dueCount)
+        val now = clock.millis()
+        val today = LocalDate.now(clock).toKotlinLocalDate()
+        // A missed day must count as a lost streak, as it would on opening the app.
+        settings.refreshStreak()
+        val dueCards = flashcards.observeAllCards().first().filter { isDue(it.card, now) }
+        // A different due card each day, from the same seed as the message.
+        val teaser = dueCards.getOrNull((today.year * 366 + today.dayOfYear).mod(dueCards.size.coerceAtLeast(1)))
+        val message = reminderMessage(
+            dueCount = dueCards.size,
+            streak = settings.streakCount.first(),
+            studiedToday = today in settings.studyDays.first(),
+            teaser = teaser?.let { ReminderCard(it.card.nativeText, it.language, it.islandName, it.emoji) },
+            day = today
+        )
+        NotificationHelper.showStudyNotification(applicationContext, message)
         // The widget should show the same count as the reminder.
         StudyWidgetProvider.requestUpdate(applicationContext)
         reminderScheduler.scheduleNext()

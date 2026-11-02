@@ -37,34 +37,27 @@ class IosReminderScheduler(
         val reminder = settings.reminderSettings.first()
         if (!reminder.enabled) return
 
-        val time = reminder.time
-        if (time != null) {
-            val daily = NSDateComponents().apply {
-                hour = time.hour.toLong()
-                minute = time.minute.toLong()
-            }
-            add(IDENTIFIERS.first(), daily, repeats = true)
-        } else {
-            var next = nextReminderTime(null, clock.now().toLocalDateTime(timeZone), allowToday = true)
-            IDENTIFIERS.forEach { id ->
-                add(id, next.toComponents(), repeats = false)
-                next = nextReminderTime(null, next, allowToday = false)
-            }
+        // One reminder per day of the coming week, each worded differently; they are queued again
+        // whenever the app is opened, so the week keeps rolling.
+        var next = nextReminderTime(reminder.time, clock.now().toLocalDateTime(timeZone), allowToday = true)
+        IDENTIFIERS.forEachIndexed { index, id ->
+            add(id, next.toComponents(), scheduledReminderMessage(index))
+            next = nextReminderTime(reminder.time, next, allowToday = false)
         }
     }
 
-    private fun add(id: String, components: NSDateComponents, repeats: Boolean) {
+    private fun add(id: String, components: NSDateComponents, message: ReminderMessage) {
         val content = UNMutableNotificationContent().apply {
-            setTitle("Time to study!")
-            setBody("Keep your Language Coast growing. Practice today!")
+            setTitle(message.title)
+            setBody(message.text)
             setSound(UNNotificationSound.defaultSound)
         }
-        val trigger = UNCalendarNotificationTrigger.triggerWithDateMatchingComponents(components, repeats)
+        val trigger = UNCalendarNotificationTrigger.triggerWithDateMatchingComponents(components, repeats = false)
         center.addNotificationRequest(UNNotificationRequest.requestWithIdentifier(id, content, trigger), withCompletionHandler = null)
     }
 
     private companion object {
-        /** One per day for random times; a fixed time only uses the first. */
+        /** One per day of the coming week. */
         val IDENTIFIERS = (0 until 7).map { "study-reminder-$it" }
     }
 }
