@@ -19,17 +19,20 @@ import kotlinx.serialization.json.Json
  */
 class OpenRouterTranslator(private val client: HttpClient) : Translator {
 
-    override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
-        val engine = request.engine as? TranslationEngine.OpenRouter ?: return TranslationResult.FAILURE
-        val body = openRouterRequestBody(engine.model, buildTranslationPrompt(request))
+    override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult =
+        complete(request.engine, buildTranslationPrompt(request)).toTranslation()
+
+    override suspend fun complete(engine: TranslationEngine, prompt: String): Completion {
+        if (engine !is TranslationEngine.OpenRouter) return Completion.failure("This provider can't answer here.")
+        val body = openRouterRequestBody(engine.model, prompt)
         return try {
             val (status, response) = post(engine.apiKey, body)
-            parseOpenRouterResponse(status, response)
+            openRouterAnswer(status, response)
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
             logError(TAG, "OpenRouter request failed", e)
-            TranslationResult.failure("Couldn't reach OpenRouter. Check your internet connection and try again.")
+            Completion.failure("Couldn't reach OpenRouter. Check your internet connection and try again.")
         }
     }
 
@@ -78,7 +81,10 @@ internal fun openRouterRequestBody(model: String, prompt: String): String =
  * (https://openrouter.ai/docs/api-reference/errors) into messages the user can act on.
  * Errors can also arrive with status 200, in the body's `error` field.
  */
-internal fun parseOpenRouterResponse(status: Int, body: String): TranslationResult {
+internal fun parseOpenRouterResponse(status: Int, body: String): TranslationResult = openRouterAnswer(status, body).toTranslation()
+
+/** [parseOpenRouterResponse] without reading the answer as a translation. */
+internal fun openRouterAnswer(status: Int, body: String): Completion {
     val response = try {
         json.decodeFromString(ChatResponse.serializer(), body)
     } catch (e: SerializationException) {
@@ -94,11 +100,9 @@ internal fun parseOpenRouterResponse(status: Int, body: String): TranslationResu
             429 -> "OpenRouter is busy. Wait a moment and try again."
             else -> "OpenRouter: ${error?.message ?: "request failed ($status)"}"
         }
-        return TranslationResult.failure(message)
+        return Completion.failure(message)
     }
-    val content = response?.choices?.firstOrNull()?.message?.content
-        ?: return TranslationResult.failure("OpenRouter sent an empty answer. Try again or pick another model.")
-    return parseTranslationResponse(content).let {
-        if (it.isSuccess) it else TranslationResult.failure("The model's answer couldn't be read. Try again or pick another model.")
-    }
+    val content = response?.choices?.firstOrNull()?.message?.content?.trim()?.takeIf { it.isNotEmpty() }
+        ?: return Completion.failure("OpenRouter sent an empty answer. Try again or pick another model.")
+    return Completion(content)
 }

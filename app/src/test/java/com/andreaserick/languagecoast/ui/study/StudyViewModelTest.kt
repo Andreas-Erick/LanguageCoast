@@ -3,10 +3,12 @@ package com.andreaserick.languagecoast.ui.study
 import androidx.lifecycle.SavedStateHandle
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.DeletedContent
+import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.FakeSpeaker
+import com.andreaserick.languagecoast.testing.FakeTranslator
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
@@ -34,14 +36,17 @@ class StudyViewModelTest {
     private val settings = FakeSettingsRepository()
     private val speaker = FakeSpeaker()
 
-    private fun TestScope.createViewModel(islandId: Int = 1): StudyViewModel {
+    private val translator = FakeTranslator()
+
+    private fun TestScope.createViewModel(islandId: Int = 1, scope: String = "island", coastId: Int = 0): StudyViewModel {
         val viewModel = StudyViewModel(
-            SavedStateHandle(mapOf("islandId" to islandId, "islandName" to "Island $islandId")),
+            SavedStateHandle(mapOf("islandId" to islandId, "islandName" to "Island $islandId", "scope" to scope, "coastId" to coastId)),
             flashcards,
             settings,
             TEST_CLOCK,
             TEST_TIME_ZONE,
-            speaker
+            speaker,
+            translator
         )
         // uiState is only computed while collected (WhileSubscribed).
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
@@ -79,7 +84,7 @@ class StudyViewModelTest {
 
         viewModel.onGrade(Grade.Again)
 
-        assertEquals(listOf("n2", "n3", "n1"), viewModel.state.sessionCards.map { it.nativeText })
+        assertEquals(listOf("n2", "n3", "n1"), viewModel.state.sessionCards.map { it.card.nativeText })
         assertEquals("n2", viewModel.currentText)
     }
 
@@ -120,7 +125,7 @@ class StudyViewModelTest {
         var deleted: DeletedContent? = null
 
         viewModel.deleteCurrentCard { deleted = it }
-        assertEquals(listOf("n2"), viewModel.state.sessionCards.map { it.nativeText })
+        assertEquals(listOf("n2"), viewModel.state.sessionCards.map { it.card.nativeText })
 
         viewModel.restore(deleted!!)
         assertEquals(listOf("n1", "n2"), flashcards.cards.value.map { it.nativeText })
@@ -176,7 +181,7 @@ class StudyViewModelTest {
         viewModel.deleteCurrentCard {}
 
         assertEquals(listOf("n2"), flashcards.cards.value.map { it.nativeText })
-        assertEquals(listOf("n2"), viewModel.state.sessionCards.map { it.nativeText })
+        assertEquals(listOf("n2"), viewModel.state.sessionCards.map { it.card.nativeText })
     }
 
     @Test
@@ -227,7 +232,7 @@ class StudyViewModelTest {
         viewModel.onGrade(Grade.Again)
 
         assertEquals(startOfDay("2026-10-10"), flashcards.cards.value.first().due)
-        assertEquals(listOf("n2", "n1"), viewModel.state.sessionCards.map { it.nativeText })
+        assertEquals(listOf("n2", "n1"), viewModel.state.sessionCards.map { it.card.nativeText })
     }
 
     @Test
@@ -250,7 +255,7 @@ class StudyViewModelTest {
 
         val viewModel = createViewModel()
 
-        assertEquals(listOf("n4", "n3", "n1"), viewModel.state.sessionCards.map { it.nativeText })
+        assertEquals(listOf("n4", "n3", "n1"), viewModel.state.sessionCards.map { it.card.nativeText })
     }
 
     @Test
@@ -317,7 +322,7 @@ class StudyViewModelTest {
         assertEquals(listOf("a1", "t1"), card.alternatives)
         assertEquals("b1", flashcards.cards.value.first().targetText)
         // Still the same card in the same place in the session.
-        assertEquals(listOf("n1", "n2"), viewModel.state.sessionCards.map { it.nativeText })
+        assertEquals(listOf("n1", "n2"), viewModel.state.sessionCards.map { it.card.nativeText })
     }
 
     @Test
@@ -338,7 +343,7 @@ class StudyViewModelTest {
         viewModel.editCard(viewModel.state.currentCard!!.cardId, CardEdit("hello", "hola", emptyList(), null, islandId = 1))
 
         assertEquals("hola", viewModel.state.currentCard!!.targetText)
-        assertEquals(listOf("hello", "n2"), viewModel.state.sessionCards.map { it.nativeText })
+        assertEquals(listOf("hello", "n2"), viewModel.state.sessionCards.map { it.card.nativeText })
     }
 
     @Test
@@ -351,7 +356,7 @@ class StudyViewModelTest {
         val card = viewModel.state.currentCard!!
         viewModel.editCard(card.cardId, CardEdit(card.nativeText, card.targetText, emptyList(), null, islandId = 2))
 
-        assertEquals(listOf("n2"), viewModel.state.sessionCards.map { it.nativeText })
+        assertEquals(listOf("n2"), viewModel.state.sessionCards.map { it.card.nativeText })
         assertEquals(1, viewModel.state.totalCards)
     }
 
@@ -367,6 +372,97 @@ class StudyViewModelTest {
         assertTrue(viewModel.state.isReversed)
         assertTrue(settings.studyReversed.value)
         assertEquals("n2", viewModel.currentText)
+    }
+
+    @Test
+    fun todaySessionTakesDueCardsFromEveryCoastInTurns() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 3, coastId = 1)
+        flashcards.seedCoast(coastId = 2, language = "Icelandic")
+        flashcards.seed(islandId = 2, cardCount = 2, coastId = 2)
+        setDue("n3", startOfDay("2026-10-11")) // Not due yet.
+
+        val viewModel = createViewModel(scope = "today")
+
+        assertEquals(listOf("Spanish", "Icelandic", "Spanish", "Icelandic"), viewModel.state.sessionCards.map { it.language })
+        assertEquals("Spanish", viewModel.state.targetLanguage)
+        viewModel.next()
+        assertEquals("Icelandic", viewModel.state.targetLanguage)
+    }
+
+    @Test
+    fun completingTodaySessionMarksEveryIslandStudied() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
+        flashcards.seed(islandId = 2, cardCount = 1, coastId = 1)
+        val viewModel = createViewModel(scope = "today")
+
+        viewModel.onGrade(Grade.Good)
+        viewModel.onGrade(Grade.Good)
+
+        assertTrue(viewModel.state.isSessionComplete)
+        assertTrue(flashcards.islands.value.all { it.lastStudied == TEST_CLOCK.now().toEpochMilliseconds() })
+        assertEquals(1, settings.studySessionsRecorded)
+    }
+
+    @Test
+    fun coastSessionCoversOnlyThatCoast() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2, coastId = 1)
+        flashcards.seedCoast(coastId = 2, language = "Icelandic")
+        flashcards.seed(islandId = 2, cardCount = 2, coastId = 2)
+
+        val viewModel = createViewModel(scope = "coast", coastId = 2)
+
+        assertEquals(listOf("n1", "n2"), viewModel.state.sessionCards.map { it.card.nativeText })
+        assertTrue(viewModel.state.sessionCards.all { it.coastId == 2 })
+    }
+
+    @Test
+    fun leakySessionHasTheForgottenCardsMostForgottenFirst() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 3)
+        flashcards.cards.update { all -> all.map { if (it.nativeText == "n1") it.copy(lapses = 2, due = Long.MAX_VALUE) else if (it.nativeText == "n3") it.copy(lapses = 4) else it } }
+
+        val viewModel = createViewModel(scope = "leaky")
+
+        assertEquals(listOf("n3", "n1"), viewModel.state.sessionCards.map { it.card.nativeText })
+        assertFalse(viewModel.state.isCaughtUp)
+    }
+
+    @Test
+    fun nothingLeakyIsReportedAsCaughtUp() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+
+        val viewModel = createViewModel(scope = "leaky")
+
+        assertTrue(viewModel.state.isCaughtUp)
+    }
+
+    @Test
+    fun explainingAWordAsksTheProviderAndShowsItsAnswer() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        translator.completion = Completion("It means hello.")
+        val viewModel = createViewModel()
+
+        viewModel.explainWord("t1")
+
+        val explanation = viewModel.state.explanation!!
+        assertEquals("t1", explanation.word)
+        assertEquals("It means hello.", explanation.text)
+        assertTrue(translator.prompts.single().contains("\"t1\""))
+
+        viewModel.dismissExplanation()
+        assertEquals(null, viewModel.state.explanation)
+    }
+
+    @Test
+    fun fillTheGapBlanksTheLongestWordOfTheTranslation() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        flashcards.cards.update { all -> all.map { it.copy(targetText = "Wo ist der Strand?") } }
+        val viewModel = createViewModel()
+
+        viewModel.setMode(StudyMode.Cloze)
+
+        assertEquals("Strand", viewModel.state.cloze?.word)
+        assertEquals("Wo ist der ______?", viewModel.state.cloze?.display)
     }
 
     private fun setDue(nativeText: String, due: Long) {

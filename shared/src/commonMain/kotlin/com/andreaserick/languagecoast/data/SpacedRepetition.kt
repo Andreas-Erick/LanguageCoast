@@ -60,7 +60,8 @@ fun reviewOutcomes(card: Flashcard, now: Instant, zone: TimeZone): Map<Grade, Re
                 stability = memory.stability,
                 difficulty = memory.difficulty,
                 lastReviewed = now.toEpochMilliseconds(),
-                due = due
+                due = due,
+                lapses = if (grade == Grade.Again) card.lapses + 1 else card.lapses
             ),
             intervalDays = interval
         )

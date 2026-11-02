@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.data
 
+import kotlin.test.assertNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -178,4 +179,23 @@ class TranslationResponseParserTest {
         userCategory = "",
         existingCategories = existingCategories
     )
+
+    @Test
+    fun correctedSentenceAndItsNoteAreRead() {
+        val result = parseTranslationResponse(
+            "TRANSLATION: Where is the beach?\nCORRECTED: Wo ist der Strand?\nNOTE: \"Strand\" is masculine.\nCATEGORY: Travel\nEMOJI: ✈️"
+        )
+        assertTrue(result.isSuccess)
+        assertEquals("Where is the beach?", result.translatedText)
+        assertEquals("Wo ist der Strand?", result.corrected)
+        assertEquals("\"Strand\" is masculine.", result.note)
+    }
+
+    @Test
+    fun correctSentenceHasNoCorrection() {
+        val result = parseTranslationResponse("TRANSLATION: Where is the beach?\nCORRECTED: NONE\nNOTE: NONE\nCATEGORY: Travel\nEMOJI: ✈️")
+        assertTrue(result.isSuccess)
+        assertNull(result.corrected)
+        assertNull(result.note)
+    }
 }

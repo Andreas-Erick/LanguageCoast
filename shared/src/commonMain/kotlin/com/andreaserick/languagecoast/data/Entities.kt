@@ -118,6 +118,7 @@ data class IslandSummary(
  * @property due When the card should next be studied (epoch millis), or null for a new card, which is due right away.
  * @property alternatives Other correct translations (from the AI, for longer sentences), shown on the back when studying.
  * @property note How [alternatives] differ from [targetText] (e.g. formal vs. informal), if there are any.
+ * @property lapses How often the card was graded Again; see [isLeaky].
  */
 @Entity(
     tableName = "flashcards",
@@ -142,5 +143,6 @@ data class Flashcard(
     val lastReviewed: Long? = null,
     val due: Long? = null,
     @ColumnInfo(defaultValue = "") val alternatives: List<String> = emptyList(),
-    val note: String? = null
+    val note: String? = null,
+    @ColumnInfo(defaultValue = "0") val lapses: Int = 0
 )

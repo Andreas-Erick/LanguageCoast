@@ -19,6 +19,8 @@ import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.TranslationResult
+import com.andreaserick.languagecoast.data.Completion
+import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.emojiForCategory
 import com.andreaserick.languagecoast.data.isDue
@@ -357,6 +359,17 @@ class FakeTranslator(
         lastRequest = request
         return result
     }
+
+    var completion: Completion = Completion("A short explanation.")
+    val prompts = mutableListOf<String>()
+    val prepared = mutableListOf<TranslationEngine>()
+
+    override suspend fun complete(engine: TranslationEngine, prompt: String): Completion {
+        prompts += prompt
+        return completion
+    }
+
+    override suspend fun prepare(engine: TranslationEngine) { prepared += engine }
 }
 
 /** [Speaker] that records what it was asked to read; [available] says which languages have a voice. */

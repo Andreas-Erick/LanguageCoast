@@ -288,37 +288,6 @@ class CreateViewModelTest {
     }
 
     @Test
-    fun startReviewOpensTheIslandWithTheMostDueCardsOnTheSelectedCoast() = runTest {
-        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
-        flashcards.seed(islandId = 2, cardCount = 3, coastId = 1)
-        flashcards.seedCoast(coastId = 2, language = "Icelandic")
-        flashcards.seed(islandId = 3, cardCount = 5, coastId = 2)
-        settings.activeCoastId.value = 1
-        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
-        var opened: Pair<Int, String>? = null
-
-        viewModel.startReview { id, name -> opened = id to name }
-
-        assertEquals(2 to "Island 2", opened)
-    }
-
-    @Test
-    fun startReviewFallsBackToTheCoastWithTheMostDueCards() = runTest {
-        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
-        // Nothing on the selected coast is due.
-        flashcards.cards.update { all -> all.map { it.copy(due = Long.MAX_VALUE) } }
-        flashcards.seedCoast(coastId = 2, language = "Icelandic")
-        flashcards.seed(islandId = 2, cardCount = 2, coastId = 2)
-        settings.activeCoastId.value = 1
-        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
-        var opened: Pair<Int, String>? = null
-
-        viewModel.startReview { id, name -> opened = id to name }
-
-        assertEquals(2 to "Island 2", opened)
-    }
-
-    @Test
     fun recentCardsAreTheNewestOnTheSelectedCoast() = runTest {
         flashcards.seed(islandId = 1, cardCount = 4, coastId = 1)
         flashcards.seedCoast(coastId = 2, language = "Icelandic")

@@ -29,6 +29,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
+import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.ui.components.LocalFeedback
+import com.andreaserick.languagecoast.ui.components.rememberFeedback
+import org.koin.compose.koinInject
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -116,8 +120,12 @@ private fun AppContent() {
     val snackbarHostState = remember { SnackbarHostState() }
     val rootScope = rememberCoroutineScope()
     val undoMessenger = remember { UndoMessenger(snackbarHostState, rootScope) }
+    val settings = koinInject<SettingsRepository>()
+    val hapticsEnabled by settings.hapticsEnabled.collectAsState(initial = true)
+    val soundsEnabled by settings.soundsEnabled.collectAsState(initial = true)
+    val feedback = rememberFeedback(hapticsEnabled, soundsEnabled)
 
-    CompositionLocalProvider(LocalUndoMessenger provides undoMessenger) {
+    CompositionLocalProvider(LocalUndoMessenger provides undoMessenger, LocalFeedback provides feedback) {
         OceanBackground {
             Scaffold(
                 containerColor = Color.Transparent,
@@ -189,11 +197,7 @@ private fun AppContent() {
                     exitTransition = { fadeOut(tween(TRANSITION_MILLIS)) }
                 ) {
                     composable<CreateScreenRoute> {
-                        CreateScreen(
-                            onStartReview = { id, name ->
-                                navController.navigate(StudyScreenRoute(islandId = id, islandName = name))
-                            }
-                        )
+                        CreateScreen(onStartReview = { navController.navigate(StudyScreenRoute.Today) })
                     }
                     composable<MyCoastScreenRoute> {
                         MyCoastScreen(
@@ -216,7 +220,10 @@ private fun AppContent() {
                         // CoastViewModel reads the route arguments from its SavedStateHandle.
                         CoastScreen(
                             onIslandClick = { id, name ->
-                                navController.navigate(StudyScreenRoute(islandId = id, islandName = name))
+                                navController.navigate(StudyScreenRoute.island(id, name))
+                            },
+                            onReviewCoast = { id, name ->
+                                navController.navigate(StudyScreenRoute.coast(id, name))
                             },
                             onShowCards = { id, name ->
                                 navController.navigate(IslandScreenRoute(islandId = id, islandName = name))
@@ -240,9 +247,9 @@ private fun AppContent() {
                         // StudyViewModel reads the route arguments from its SavedStateHandle.
                         StudyScreen(
                             onNavigateBack = { navController.popBackStack() },
-                            onShowCards = {
-                                navController.navigate(IslandScreenRoute(islandId = route.islandId, islandName = route.islandName))
-                            }
+                            onShowCards = if (route.scope == StudyScreenRoute.SCOPE_ISLAND) {
+                                { navController.navigate(IslandScreenRoute(islandId = route.islandId, islandName = route.islandName)) }
+                            } else null
                         )
                     }
                 }

@@ -59,12 +59,14 @@ import org.koin.compose.viewmodel.koinViewModel
  * (categories) that contain flashcards.
  *
  * @param onIslandClick Called with the island ID and name when an island is tapped.
+ * @param onReviewCoast Called with the coast ID and name to study every due card on the coast.
  * @param onShowCards Called with the island ID and name when See cards is picked in an island's menu.
  * @param onNavigateBack Called when the back arrow is tapped.
  */
 @Composable
 fun CoastScreen(
     onIslandClick: (Int, String) -> Unit,
+    onReviewCoast: (Int, String) -> Unit,
     onShowCards: (Int, String) -> Unit,
     onNavigateBack: () -> Unit,
     viewModel: CoastViewModel = koinViewModel()
@@ -90,19 +92,19 @@ fun CoastScreen(
                 contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                // A session covers one island, so the button names the one it opens: the one with the most due.
-                val next = uiState.islands.filter { it.dueCount > 0 }.maxByOrNull { it.dueCount }
-                if (next != null) {
+                // One session for everything due on the coast, island by island.
+                val due = uiState.islands.sumOf { it.dueCount }
+                if (due > 0) {
                     item(key = "review", span = { GridItemSpan(maxLineSpan) }) {
                         CoastButton(
-                            onClick = { onIslandClick(next.island.islandId, next.island.name) },
+                            onClick = { onReviewCoast(uiState.coastId, uiState.coastName) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(ButtonHeight)
                                 .animateItem()
                         ) {
                             Text(
-                                "Review ${next.island.name} · ${next.dueCount} due",
+                                "Review the coast · $due due",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )

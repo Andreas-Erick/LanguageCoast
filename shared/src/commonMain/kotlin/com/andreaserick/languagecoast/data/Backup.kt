@@ -50,7 +50,14 @@ data class BackupSettings(
     val reminderEnabled: Boolean = true,
     /** The reminder's fixed time in minutes after midnight, or null for a random time. */
     val reminderMinuteOfDay: Int? = null,
-    val studyReversed: Boolean = false
+    val studyReversed: Boolean = false,
+    /** Islands to study per week; null means the default. */
+    val weeklyGoal: Int? = null,
+    /** The day a streak freeze last stood in for a missed day (ISO date). */
+    val freezeUsedOn: String? = null,
+    val themeMode: String? = null,
+    val hapticsEnabled: Boolean = true,
+    val soundsEnabled: Boolean = true
 )
 
 @Serializable
@@ -83,7 +90,8 @@ data class BackupCard(
     val lastReviewed: Long? = null,
     val due: Long? = null,
     val alternatives: List<String> = emptyList(),
-    val note: String? = null
+    val note: String? = null,
+    val lapses: Int = 0
 )
 
 /** Why a file can't be restored, in words for the user. */

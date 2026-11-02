@@ -16,6 +16,10 @@ object SettingsScreenRoute
 @Serializable
 object SearchScreenRoute
 
+// The month's study recap, opened from My Coasts
+@Serializable
+object RecapScreenRoute
+
 // The islands of a single coast, opened from My Coasts
 @Serializable
 data class CoastScreenRoute(
@@ -23,12 +27,31 @@ data class CoastScreenRoute(
     val coastName: String
 )
 
-// Study session for a single island, opened from a coast
+/**
+ * A study session. [scope] says what it covers: one island ("island", the default), every island of a
+ * coast ("coast"), today's due cards across all coasts ("today") or the leaky words the user keeps
+ * forgetting ("leaky"). [islandName] doubles as the session's title for the other scopes.
+ */
 @Serializable
 data class StudyScreenRoute(
-    val islandId: Int,
-    val islandName: String
-)
+    val islandId: Int = 0,
+    val islandName: String = "",
+    val scope: String = SCOPE_ISLAND,
+    val coastId: Int = 0
+) {
+    companion object {
+        const val SCOPE_ISLAND = "island"
+        const val SCOPE_COAST = "coast"
+        const val SCOPE_TODAY = "today"
+        const val SCOPE_LEAKY = "leaky"
+
+        fun island(islandId: Int, islandName: String) = StudyScreenRoute(islandId = islandId, islandName = islandName)
+        fun coast(coastId: Int, coastName: String) = StudyScreenRoute(islandName = coastName, scope = SCOPE_COAST, coastId = coastId)
+        val Today = StudyScreenRoute(islandName = "Today's review", scope = SCOPE_TODAY)
+        val Leaky = StudyScreenRoute(islandName = "Leaky words", scope = SCOPE_LEAKY)
+    }
+}
+
 // The cards of a single island, opened from a coast or a study session
 @Serializable
 data class IslandScreenRoute(

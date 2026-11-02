@@ -23,15 +23,18 @@ import kotlinx.serialization.json.Json
  */
 class GeminiTranslator(private val client: HttpClient) : Translator {
 
-    override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
-        val engine = request.engine as? TranslationEngine.Gemini ?: return TranslationResult.FAILURE
+    override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult =
+        complete(request.engine, buildTranslationPrompt(request)).toTranslation("Gemini's response couldn't be read. Try again.")
+
+    override suspend fun complete(engine: TranslationEngine, prompt: String): Completion {
+        if (engine !is TranslationEngine.Gemini) return Completion.failure("This provider can't answer here.")
         val apiKey = engine.apiKey.trim()
         if (apiKey.isBlank()) {
-            return TranslationResult.failure("Please enter a Gemini API key in Settings first!")
+            return Completion.failure("Please enter a Gemini API key in Settings first!")
         }
 
         val primaryModel = normalizeGeminiModel(engine.model)
-        val promptBody = geminiRequestBody(buildTranslationPrompt(request))
+        val promptBody = geminiRequestBody(prompt)
 
         return try {
             var (status, responseText) = postGenerateContent(apiKey, primaryModel, promptBody)
@@ -49,12 +52,12 @@ class GeminiTranslator(private val client: HttpClient) : Translator {
                 responseText = retry.second
             }
 
-            parseGeminiResponse(status, responseText)
+            geminiAnswer(status, responseText)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logError(TAG, "Translation request failed", e)
-            TranslationResult.failure("Couldn't reach Google Gemini. Check your internet connection and try again.")
+            Completion.failure("Couldn't reach Google Gemini. Check your internet connection and try again.")
         }
     }
 
@@ -127,7 +130,11 @@ internal fun geminiRequestBody(prompt: String): String =
  * answer, parsed with [parseTranslationResponse]. Errors and empty answers give a failed [TranslationResult]
  * with a clear user-facing [TranslationResult.errorMessage].
  */
-internal fun parseGeminiResponse(status: Int, body: String): TranslationResult {
+internal fun parseGeminiResponse(status: Int, body: String): TranslationResult =
+    geminiAnswer(status, body).toTranslation("Gemini's response couldn't be read. Try again.")
+
+/** [parseGeminiResponse] without reading the answer as a translation. */
+internal fun geminiAnswer(status: Int, body: String): Completion {
     val response = try {
         json.decodeFromString(GenerateResponse.serializer(), body)
     } catch (e: SerializationException) {
@@ -154,7 +161,7 @@ internal fun parseGeminiResponse(status: Int, body: String): TranslationResult {
             else ->
                 "Gemini request failed (HTTP $status)."
         }
-        return TranslationResult.failure(userMessage)
+        return Completion.failure(userMessage)
     }
     val candidate = response?.candidates?.firstOrNull()
     val text = candidate?.content?.parts
@@ -162,14 +169,12 @@ internal fun parseGeminiResponse(status: Int, body: String): TranslationResult {
         ?.mapNotNull { it.text }
         ?.joinToString("")
         ?.takeIf { it.isNotBlank() }
-        ?: return TranslationResult.failure(
+        ?: return Completion.failure(
             if (candidate?.finishReason == "SAFETY") {
                 "Gemini blocked this phrase due to safety filters. Try rephrasing or use another provider."
             } else {
                 "Gemini returned an empty answer. Try again or pick another model."
             }
         )
-    return parseTranslationResponse(text).let {
-        if (it.isSuccess) it else TranslationResult.failure("Gemini's response couldn't be read. Try again.")
-    }
+    return Completion(text.trim())
 }
