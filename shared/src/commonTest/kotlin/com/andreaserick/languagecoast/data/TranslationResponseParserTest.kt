@@ -51,6 +51,26 @@ class TranslationResponseParserTest {
     }
 
     @Test
+    fun placeholderCategoryFallsBackOrFails() {
+        // Small local models write things like "(empty)" when they have no category: never an island name.
+        listOf("(empty)", "none", "N/A", "[the category]").forEach { placeholder ->
+            val reply = "TRANSLATION: Wo ist das Meer?\nCATEGORY: $placeholder"
+            assertFalse(parseTranslationResponse(reply).isSuccess, placeholder)
+            val withFallback = parseTranslationResponse(reply, fallbackCategory = "Travel")
+            assertTrue(withFallback.isSuccess, placeholder)
+            assertEquals("Travel", withFallback.finalCategory)
+            assertEquals("Wo ist das Meer?", withFallback.translatedText)
+        }
+    }
+
+    @Test
+    fun promptNeverLeavesTheUserCategoryLabelEmpty() {
+        val prompt = buildTranslationPrompt(request(existingCategories = emptyList()))
+        assertFalse(prompt.contains("User Category: "), prompt)
+        assertTrue(prompt.contains("did not choose a category"))
+    }
+
+    @Test
     fun failsWhenFieldsAreEmpty() {
         assertFalse(parseTranslationResponse("TRANSLATION:\nCATEGORY: Greetings").isSuccess)
         assertFalse(parseTranslationResponse("TRANSLATION: Hola\nCATEGORY:   ").isSuccess)
