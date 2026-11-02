@@ -78,6 +78,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 
 ### 🔔 Study reminders
 - A daily reminder, scheduled with **WorkManager**: at a surprise time between 9:00 and 21:00, or at a fixed time you pick in Settings. It can also be turned off. On iPhone the reminders are queued with the system's notifications instead, so they don't say how many cards are due.
+- **A different reminder every day**: how many cards are due, a due card quoted as a quick self-test (*"Where is the train station?" in German*), a streak that ends tonight, a milestone within reach (day 7, 30, 100, ...), or *All caught up*. Each has its own picture and wording, rotated so two days in a row never look the same.
 - **Home-screen widget** (Android): the cards due today and your streak, a gentler nudge than a notification. It refreshes every hour and whenever you leave the app, and tapping it opens the app.
 
 ### 📤 Export, import & backup
