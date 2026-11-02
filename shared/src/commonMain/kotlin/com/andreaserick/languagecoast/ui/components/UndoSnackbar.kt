@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.ui.components
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarDuration
@@ -7,8 +8,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.SandBeige
+import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -48,10 +50,11 @@ val LocalUndoMessenger = staticCompositionLocalOf<UndoMessenger> { error("No Und
 fun CoastSnackbar(data: SnackbarData) {
     Snackbar(
         snackbarData = data,
-        containerColor = SandBeige,
-        contentColor = DeepOceanBlue,
-        actionColor = DeepOceanBlue,
-        actionContentColor = DeepOceanBlue,
-        dismissActionContentColor = DeepOceanBlue
+        shape = MaterialTheme.shapes.medium,
+        containerColor = SurfaceSelected,
+        contentColor = TextPrimary,
+        actionColor = Sunlit,
+        actionContentColor = Sunlit,
+        dismissActionContentColor = TextPrimary
     )
 }

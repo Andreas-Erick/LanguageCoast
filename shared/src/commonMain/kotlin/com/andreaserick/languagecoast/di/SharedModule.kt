@@ -5,6 +5,8 @@ import com.andreaserick.languagecoast.data.BackupManager
 import com.andreaserick.languagecoast.data.DataStoreSettingsRepository
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.GeminiTranslator
+import com.andreaserick.languagecoast.data.LocalAiTranslator
+import com.andreaserick.languagecoast.data.MultiCloudTranslator
 import com.andreaserick.languagecoast.data.OfflineFlashcardRepository
 import com.andreaserick.languagecoast.data.OnDeviceTranslator
 import com.andreaserick.languagecoast.data.OpenRouterTranslator
@@ -42,10 +44,12 @@ val sharedModule = module {
     /** Translations go to the provider picked in each request. */
     factoryOf(::RoutingTranslator) { bind<Translator>() }
     singleOf(::OnDeviceTranslator)
+    singleOf(::LocalAiTranslator)
     singleOf(::GeminiTranslator)
     singleOf(::OpenRouterTranslator)
+    singleOf(::MultiCloudTranslator)
 
-    /** For the Gemini and OpenRouter APIs; Ktor picks each platform's own networking. */
+    /** For the cloud AI APIs and local model downloads; Ktor picks each platform's own networking. */
     single {
         HttpClient {
             install(HttpTimeout) {

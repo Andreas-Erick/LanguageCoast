@@ -1,39 +1,77 @@
 package com.andreaserick.languagecoast.ui.theme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 /**
- * The "Language Coast" color scheme. It is used in both light and dark system modes:
- * the dark [DeepOceanBlue] background provides a high-contrast, immersive coastal atmosphere.
+ * The "Language Coast" color scheme. Material components pick their colors from here, so dialogs,
+ * sheets, menus and pickers match the app without setting colors on each one.
  */
-private val CoastColorScheme = lightColorScheme(
-    primary = SandBeige,        // Used for main buttons and top bars
-    onPrimary = DeepOceanBlue,      // Text inside main buttons; white on sand would be below 4.5:1 contrast
+private val CoastColorScheme = darkColorScheme(
+    primary = Sunlit,
+    onPrimary = OceanGround,
 
-    primaryContainer = WaveTeal,    // Highlighted cards (e.g., save confirmation)
-    onPrimaryContainer = Color.White,
+    primaryContainer = SurfaceSelected,
+    onPrimaryContainer = TextPrimary,
 
-    secondary = WaveTeal,           // Used for secondary elements
-    onSecondary = Color.White,
+    secondary = SurfBlue,
+    onSecondary = OceanGround,
 
-    tertiary = CoralAccent,         // Used for highlights or error states
+    secondaryContainer = SurfaceSelected,
+    onSecondaryContainer = TextPrimary,
 
-    background = DeepOceanBlue,         // The main background of all screens
-    onBackground = DarkCharcoal,    // Standard text color
+    tertiary = CoralText,
+    onTertiary = OceanGround,
 
-    surface = Color.White,          // The color of Cards and dropdowns
-    onSurface = SandBeige,
+    tertiaryContainer = SurfaceSelected,
+    onTertiaryContainer = TextPrimary,
 
-    surfaceVariant = SurfLightBlue, // A softer blue for secondary cards (e.g., Island squares)
-    onSurfaceVariant = Color.White
+    background = OceanGround,
+    onBackground = TextPrimary,
+
+    surface = OceanGround,
+    onSurface = TextPrimary,
+
+    surfaceVariant = SurfaceRaised,
+    onSurfaceVariant = TextSecondary,
+
+    // Bottom sheets use Low, menus plain, dialogs High, and the time picker's dial Highest.
+    surfaceContainerLowest = NavGround,
+    surfaceContainerLow = SurfaceCard,
+    surfaceContainer = SurfaceRaised,
+    surfaceContainerHigh = SurfaceCard,
+    surfaceContainerHighest = SurfaceRaised,
+
+    outline = TextSecondary,
+    outlineVariant = SurfaceSelected,
+
+    error = CoralText,
+    onError = OceanGround
 )
+
+private val CoastShapes = Shapes(
+    // Material's menus use this one; a plain 4dp corner would look out of place next to everything else.
+    extraSmall = RoundedCornerShape(12.dp),
+    small = RoundedCornerShape(12.dp),
+    // Buttons and text fields.
+    medium = RoundedCornerShape(16.dp),
+    // Cards.
+    large = RoundedCornerShape(20.dp),
+    // The flashcard, sheets and dialogs.
+    extraLarge = RoundedCornerShape(24.dp)
+)
+
+/** Translucent, so a chip reads as a step lighter on both the background and a card. */
+internal val ChipContainer = Color.White.copy(alpha = 0.06f)
 
 /**
  * The main theme wrapper for the Language Coast application.
- * Configures the Material 3 color system and typography. On Android, system bars are drawn edge-to-edge (see MainActivity).
+ * Configures the Material 3 color system, rounded shapes, and typography.
  *
  * @param content The Composable content to be themed.
  */
@@ -41,6 +79,7 @@ private val CoastColorScheme = lightColorScheme(
 fun LanguageCoastTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = CoastColorScheme,
+        shapes = CoastShapes,
         typography = coastTypography(),
         content = content
     )

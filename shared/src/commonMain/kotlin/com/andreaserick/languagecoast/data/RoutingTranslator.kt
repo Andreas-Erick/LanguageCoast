@@ -3,13 +3,20 @@ package com.andreaserick.languagecoast.data
 /** The production [Translator]: hands each request to the translator for its [TranslationRequest.engine]. */
 class RoutingTranslator(
     private val onDevice: OnDeviceTranslator,
+    private val localAi: LocalAiTranslator,
     private val gemini: GeminiTranslator,
-    private val openRouter: OpenRouterTranslator
+    private val openRouter: OpenRouterTranslator,
+    private val multiCloud: MultiCloudTranslator
 ) : Translator {
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult = when (request.engine) {
         TranslationEngine.OnDevice -> onDevice.translateAndCategorize(request)
+        is TranslationEngine.LocalAi -> localAi.translateAndCategorize(request)
         is TranslationEngine.Gemini -> gemini.translateAndCategorize(request)
         is TranslationEngine.OpenRouter -> openRouter.translateAndCategorize(request)
+        is TranslationEngine.OpenAI,
+        is TranslationEngine.Claude,
+        is TranslationEngine.Groq,
+        is TranslationEngine.DeepSeek -> multiCloud.translateAndCategorize(request)
     }
 }
 
