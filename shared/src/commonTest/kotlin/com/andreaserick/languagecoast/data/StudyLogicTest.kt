@@ -62,4 +62,10 @@ class StudyLogicTest {
         assertEquals(LocalDate(2026, 11, 2), startOfWeek(LocalDate(2026, 11, 5)))
         assertEquals(LocalDate(2026, 11, 2), startOfWeek(LocalDate(2026, 11, 2)))
     }
+
+    @Test
+    fun pastedTextIsSplitIntoSentencesWithoutBulletsOrRepeats() {
+        val text = "Where is the beach? It is far.\n- The water is cold!\nWhere is the beach?\nOk"
+        assertEquals(listOf("Where is the beach?", "It is far.", "The water is cold!"), splitSentences(text))
+    }
 }

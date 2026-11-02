@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
+import com.andreaserick.languagecoast.data.EngineChoice
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.LanguageIsland
@@ -20,9 +21,13 @@ import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.availableCoastLanguages
+import com.andreaserick.languagecoast.data.currentEngine
+import com.andreaserick.languagecoast.data.fallbackCloudEngine
 import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.data.normalizedWords
+import com.andreaserick.languagecoast.data.splitSentences
+import com.andreaserick.languagecoast.data.suggestIsland
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -46,12 +51,44 @@ const val RESULT_VISIBLE_MILLIS = 8_000L
 /** How many recently added cards the screen lists. */
 const val RECENT_CARDS = 3
 
+/** After this many unreadable answers in a row from the local model, a cloud provider is offered instead. */
+const val LOCAL_FAILURES_BEFORE_FALLBACK = 2
+
+/** Where a new card's translation comes from. */
+enum class InputMode {
+    /** The user writes in their language; the AI translates. */
+    Translate,
+    /** The user writes in the coast's language; the AI fills in their language and corrects slips. */
+    WriteInTarget,
+    /** The user types both sides. */
+    Manual
+}
+
+/** A sentence offered by a batch capture (pasted text or a photo), ticked to become a card. */
+data class BatchSentence(val text: String, val checked: Boolean = true)
+
+/**
+ * A batch capture in progress: the sentences found, and once saving, how far along it is.
+ *
+ * @property saved How many cards were saved so far; null until saving starts.
+ */
+data class BatchState(
+    val sentences: List<BatchSentence>,
+    val saved: Int? = null,
+    val failed: Int = 0
+) {
+    val isSaving: Boolean get() = saved != null && saved < sentences.count { it.checked }
+    val isDone: Boolean get() = saved != null && !isSaving
+}
+
 data class CreateUiState(
     val nativeSentence: String = "",
     val targetSentence: String = "", // Only used in manual mode
     val category: String = "",
-    val isManualMode: Boolean = false,
+    val inputMode: InputMode = InputMode.Translate,
     val isSaving: Boolean = false,
+    /** Seconds since the save started, for the "thinking…" label of slow local models. */
+    val elapsedSeconds: Int = 0,
     val result: SaveResult? = null,
     val isLoadingCoasts: Boolean = true,
     val coasts: List<Coast> = emptyList(),
@@ -73,16 +110,35 @@ data class CreateUiState(
     /** The cards most recently added to the selected coast, newest first. */
     val recentCards: List<RecentCard> = emptyList(),
     /** A card on the selected coast with the same text as [nativeSentence] (see [findDuplicate]), if there is one. */
-    val duplicate: PlacedCard? = null
+    val duplicate: PlacedCard? = null,
+    /** The island whose cards the typed sentence resembles (see [suggestIsland]), while no category is typed. */
+    val suggestedIsland: String? = null,
+    /** A cloud provider to retry with after the local model's answers couldn't be read; null if none is set up. */
+    val fallbackProvider: TranslationProvider? = null,
+    /** A batch capture being reviewed or saved. */
+    val batch: BatchState? = null
 ) {
     /** True when the selected coast is in the user's native language, so there's nothing to translate. */
     val isSameLanguage: Boolean get() = selectedCoast?.language == nativeLanguage
+    val isManualMode: Boolean get() = inputMode == InputMode.Manual
 }
 
 /** Outcome of the last save, shown as a feedback card. */
 sealed interface SaveResult {
-    /** A card was saved; [added] identifies it so the save can be undone. */
-    data class Saved(val added: AddedCard, val category: String, val emoji: String, val manual: Boolean) : SaveResult {
+    /**
+     * A card was saved; [added] identifies it so the save can be undone.
+     *
+     * @property corrected For a sentence written in the coast's language: what the user wrote, if the AI corrected it.
+     * @property note What was corrected, or how the alternatives differ.
+     */
+    data class Saved(
+        val added: AddedCard,
+        val category: String,
+        val emoji: String,
+        val manual: Boolean,
+        val corrected: String? = null,
+        val note: String? = null
+    ) : SaveResult {
         val nativeText: String get() = added.card.nativeText
         val targetText: String get() = added.card.targetText
     }
@@ -103,9 +159,13 @@ class CreateViewModel(
         private set
 
     private var dismissJob: Job? = null
+    private var tickerJob: Job? = null
 
-    /** The cards of the selected coast, to warn about duplicates while typing. */
+    /** The cards of the selected coast, to warn about duplicates and suggest an island while typing. */
     private var coastCards: List<PlacedCard> = emptyList()
+
+    /** Unreadable answers from the local model in a row; see [LOCAL_FAILURES_BEFORE_FALLBACK]. */
+    private var localFailures = 0
 
     init {
         viewModelScope.launch {
@@ -157,10 +217,21 @@ class CreateViewModel(
             combine(selectedCoastId(), flashcards.observeAllCards()) { coastId, cards -> cards.filter { it.coastId == coastId } }
                 .collect { cards ->
                     coastCards = cards
-                    uiState = uiState.copy(duplicate = findDuplicate(uiState.nativeSentence, cards))
+                    uiState = uiState.copy(
+                        duplicate = findDuplicate(uiState.nativeSentence, cards),
+                        suggestedIsland = suggestion(uiState.nativeSentence, uiState.category)
+                    )
                 }
         }
         viewModelScope.launch { settings.refreshStreak() }
+        viewModelScope.launch {
+            // A local model takes seconds to load, so load it while the user is still typing.
+            settings.translationProvider.distinctUntilChanged().collect { provider ->
+                if (provider == TranslationProvider.LocalAi) {
+                    (settings.currentEngine(provider) as? EngineChoice.Ready)?.let { translator.prepare(it.engine) }
+                }
+            }
+        }
     }
 
     private data class CoastSelectionSnapshot(
@@ -189,9 +260,18 @@ class CreateViewModel(
         }
     }
 
-    /** Updates the sentence typed in the native language. */
+    /** Sets the language the user speaks (the first step of onboarding). */
+    fun setNativeLanguage(language: String) {
+        viewModelScope.launch { settings.setNativeLanguage(language) }
+    }
+
+    /** Updates the sentence typed in the native language (or, in [InputMode.WriteInTarget], the coast's). */
     fun onNativeSentenceChange(value: String) {
-        uiState = uiState.copy(nativeSentence = value, duplicate = findDuplicate(value, coastCards))
+        uiState = uiState.copy(
+            nativeSentence = value,
+            duplicate = findDuplicate(value, coastCards),
+            suggestedIsland = suggestion(value, uiState.category)
+        )
     }
 
     /** Updates the translation typed in manual mode. */
@@ -201,13 +281,20 @@ class CreateViewModel(
 
     /** Updates the category (island) typed for the card. */
     fun onCategoryChange(value: String) {
-        uiState = uiState.copy(category = value)
+        uiState = uiState.copy(category = value, suggestedIsland = suggestion(uiState.nativeSentence, value))
     }
 
     /** Switches between translating automatically and typing the translation by hand. */
-    fun onManualModeChange(manual: Boolean) {
-        uiState = uiState.copy(isManualMode = manual)
+    fun onManualModeChange(manual: Boolean) = onInputModeChange(if (manual) InputMode.Manual else InputMode.Translate)
+
+    /** Switches where the translation comes from. */
+    fun onInputModeChange(mode: InputMode) {
+        uiState = uiState.copy(inputMode = mode)
     }
+
+    /** The island [sentence] resembles, unless a [category] is already typed (see [suggestIsland]). */
+    private fun suggestion(sentence: String, category: String): String? =
+        if (category.isNotBlank()) null else suggestIsland(sentence, coastCards)
 
     /**
      * Translates the typed sentence (unless in manual mode) and saves it as a card, then shows the result.
@@ -217,25 +304,65 @@ class CreateViewModel(
         val state = uiState
         if (state.nativeSentence.isBlank() || state.isSaving) return
         dismissJob?.cancel()
-        uiState = state.copy(isSaving = true, result = null)
+        uiState = state.copy(isSaving = true, result = null, fallbackProvider = null)
+        startTicker()
 
         viewModelScope.launch {
             val result = try {
-                createCard(state)
+                createCard(state, engineOverride = null)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 SaveResult.Error(e.message ?: "Something went wrong.")
             }
-
-            uiState = if (result is SaveResult.Saved) {
-                uiState.copy(nativeSentence = "", targetSentence = "", category = "", isSaving = false, result = result)
-            } else {
-                uiState.copy(isSaving = false, result = result)
-            }
-            scheduleResultDismissal()
+            finishSave(result)
         }
     }
+
+    /** Translates the typed sentence again with [fallbackProvider][CreateUiState.fallbackProvider] instead of the local model. */
+    fun retryWithFallback() {
+        val state = uiState
+        val provider = state.fallbackProvider ?: return
+        if (state.nativeSentence.isBlank() || state.isSaving) return
+        dismissJob?.cancel()
+        uiState = state.copy(isSaving = true, result = null)
+        startTicker()
+        viewModelScope.launch {
+            val result = try {
+                when (val choice = settings.currentEngine(provider)) {
+                    is EngineChoice.Ready -> createCard(state, engineOverride = choice.engine)
+                    is EngineChoice.Missing -> SaveResult.Error(choice.message)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SaveResult.Error(e.message ?: "Something went wrong.")
+            }
+            finishSave(result)
+        }
+    }
+
+    /** Shows [result], clearing the form if a card was saved, and offers a cloud retry after repeated local failures. */
+    private suspend fun finishSave(result: SaveResult) {
+        stopTicker()
+        val fallback = if (result is SaveResult.Error && uiState.translationProvider == TranslationProvider.LocalAi && result.isUnreadableAnswer) {
+            localFailures += 1
+            if (localFailures >= LOCAL_FAILURES_BEFORE_FALLBACK) settings.fallbackCloudEngine()?.first else null
+        } else {
+            if (result is SaveResult.Saved) localFailures = 0
+            null
+        }
+        uiState = if (result is SaveResult.Saved) {
+            uiState.copy(nativeSentence = "", targetSentence = "", category = "", suggestedIsland = null, duplicate = null, isSaving = false, result = result)
+        } else {
+            uiState.copy(isSaving = false, result = result, fallbackProvider = fallback)
+        }
+        scheduleResultDismissal()
+    }
+
+    /** Whether a failure means the model answered, but not in the expected format. */
+    private val SaveResult.Error.isUnreadableAnswer: Boolean
+        get() = message.contains("couldn't be read", ignoreCase = true) || message.contains("empty answer", ignoreCase = true)
 
     /** Removes the card that was just saved (and its island, if that was created for it). */
     fun undoLastSave() {
@@ -243,6 +370,20 @@ class CreateViewModel(
         dismissJob?.cancel()
         uiState = uiState.copy(result = null)
         viewModelScope.launch { flashcards.undoAdd(saved.added) }
+    }
+
+    /** Replaces the translation of the card that was just saved with [targetText], as typed in the preview. */
+    fun updateSavedTranslation(targetText: String) {
+        val saved = uiState.result as? SaveResult.Saved ?: return
+        val text = targetText.trim()
+        if (text.isEmpty() || text == saved.targetText) return
+        val card = saved.added.card
+        // Keep the preview up, and keep the old translation among the alternatives in case it was right after all.
+        val alternatives = (card.alternatives + card.targetText).filterNot { it == text }.distinct().take(2)
+        val updated = saved.copy(added = saved.added.copy(card = card.copy(targetText = text, alternatives = alternatives)))
+        uiState = uiState.copy(result = updated)
+        scheduleResultDismissal()
+        viewModelScope.launch { flashcards.updateTranslation(card.cardId, text, alternatives) }
     }
 
     /** Hides the feedback card after [RESULT_VISIBLE_MILLIS], restarting the timer on every save. */
@@ -254,95 +395,145 @@ class CreateViewModel(
         }
     }
 
+    /** Counts the seconds a save has been running. */
+    private fun startTicker() {
+        tickerJob?.cancel()
+        uiState = uiState.copy(elapsedSeconds = 0)
+        tickerJob = viewModelScope.launch {
+            var seconds = 0
+            while (true) {
+                delay(1_000)
+                seconds += 1
+                uiState = uiState.copy(elapsedSeconds = seconds)
+            }
+        }
+    }
+
+    private fun stopTicker() {
+        tickerJob?.cancel()
+        tickerJob = null
+    }
+
+    // ---------- Batch capture ----------
+
+    /** Starts a batch capture from pasted or scanned [text], splitting it into sentences to tick. */
+    fun startBatch(text: String) {
+        val sentences = splitSentences(text)
+        uiState = uiState.copy(batch = BatchState(sentences.map { BatchSentence(it) }))
+    }
+
+    /** Ticks or unticks the sentence at [index] of the batch. */
+    fun toggleBatchSentence(index: Int) {
+        val batch = uiState.batch ?: return
+        if (batch.saved != null) return
+        val sentences = batch.sentences.mapIndexed { i, s -> if (i == index) s.copy(checked = !s.checked) else s }
+        uiState = uiState.copy(batch = batch.copy(sentences = sentences))
+    }
+
+    /** Saves a card for every ticked sentence of the batch, one after the other, reporting progress. */
+    fun saveBatch() {
+        val batch = uiState.batch ?: return
+        if (batch.saved != null) return
+        val picked = batch.sentences.filter { it.checked }
+        if (picked.isEmpty()) return
+        uiState = uiState.copy(batch = batch.copy(saved = 0, failed = 0))
+        viewModelScope.launch {
+            var saved = 0
+            var failed = 0
+            for (sentence in picked) {
+                val state = uiState.copy(nativeSentence = sentence.text)
+                val result = try {
+                    createCard(state, engineOverride = null)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    SaveResult.Error(e.message ?: "Something went wrong.")
+                }
+                if (result is SaveResult.Saved) saved += 1 else failed += 1
+                val current = uiState.batch ?: return@launch
+                uiState = uiState.copy(batch = current.copy(saved = saved + failed, failed = failed))
+            }
+        }
+    }
+
+    /** Closes the batch capture. */
+    fun dismissBatch() {
+        uiState = uiState.copy(batch = null)
+    }
+
     /**
      * Saves a card for [state], translating it first unless in manual mode. Missing input, a missing API key
      * or a failed translation are returned as [SaveResult.Error] rather than thrown.
+     * [engineOverride] translates with that engine instead of the provider picked in Settings.
      */
-    private suspend fun createCard(state: CreateUiState): SaveResult {
-        val nativeText = state.nativeSentence.trim()
+    private suspend fun createCard(state: CreateUiState, engineOverride: TranslationEngine?): SaveResult {
+        val typed = state.nativeSentence.trim()
         val coast = state.selectedCoast ?: return SaveResult.Error("Start a coast first!")
         if (state.isSameLanguage) return SaveResult.Error(sameLanguageMessage(coast.language))
 
-        if (state.isManualMode) {
+        if (state.inputMode == InputMode.Manual) {
             if (state.targetSentence.isBlank()) return SaveResult.Error("Translation cannot be empty in manual mode.")
             val category = state.category.trim().ifBlank { DEFAULT_MANUAL_CATEGORY }
-            val added = flashcards.addFlashcard(coast.coastId, nativeText, state.targetSentence.trim(), category)
+            val added = flashcards.addFlashcard(coast.coastId, typed, state.targetSentence.trim(), category)
             return saved(added, coast.coastId, category, manual = true)
         }
 
-        val engine = when (settings.translationProvider.first()) {
-            TranslationProvider.OnDevice -> TranslationEngine.OnDevice
-            TranslationProvider.LocalAi -> {
-                val modelId = settings.localAiModel.first().ifBlank { SettingsDefaults.LOCAL_AI_MODEL }
-                TranslationEngine.LocalAi(modelId = modelId)
-            }
-            TranslationProvider.Gemini -> {
-                val apiKey = settings.apiKey.first()
-                if (apiKey.isBlank()) return SaveResult.Error("Please enter a Gemini API key in Settings first!")
-                TranslationEngine.Gemini(apiKey, settings.geminiModel.first())
-            }
-            TranslationProvider.OpenAI -> {
-                val apiKey = settings.openAiKey.first()
-                if (apiKey.isBlank()) return SaveResult.Error("Please enter an OpenAI API key in Settings first!")
-                val model = settings.openAiModel.first().trim().ifBlank { SettingsDefaults.OPENAI_MODEL }
-                TranslationEngine.OpenAI(apiKey, model)
-            }
-            TranslationProvider.Claude -> {
-                val apiKey = settings.claudeKey.first()
-                if (apiKey.isBlank()) return SaveResult.Error("Please enter an Anthropic Claude API key in Settings first!")
-                val model = settings.claudeModel.first().trim().ifBlank { SettingsDefaults.CLAUDE_MODEL }
-                TranslationEngine.Claude(apiKey, model)
-            }
-            TranslationProvider.Groq -> {
-                val apiKey = settings.groqKey.first()
-                if (apiKey.isBlank()) return SaveResult.Error("Please enter a Groq API key in Settings first!")
-                val model = settings.groqModel.first().trim().ifBlank { SettingsDefaults.GROQ_MODEL }
-                TranslationEngine.Groq(apiKey, model)
-            }
-            TranslationProvider.DeepSeek -> {
-                val apiKey = settings.deepSeekKey.first()
-                if (apiKey.isBlank()) return SaveResult.Error("Please enter a DeepSeek API key in Settings first!")
-                val model = settings.deepSeekModel.first().trim().ifBlank { SettingsDefaults.DEEPSEEK_MODEL }
-                TranslationEngine.DeepSeek(apiKey, model)
-            }
-            TranslationProvider.OpenRouter -> {
-                val apiKey = settings.openRouterKey.first()
-                if (apiKey.isBlank()) return SaveResult.Error("Please enter an OpenRouter API key in Settings first!")
-                val model = settings.openRouterModel.first().trim().ifBlank { SettingsDefaults.OPENROUTER_MODEL }
-                TranslationEngine.OpenRouter(apiKey, model)
-            }
+        val engine = engineOverride ?: when (val choice = settings.currentEngine()) {
+            is EngineChoice.Ready -> choice.engine
+            is EngineChoice.Missing -> return SaveResult.Error(choice.message)
+        }
+        val writtenInTarget = state.inputMode == InputMode.WriteInTarget
+        if (writtenInTarget && engine == TranslationEngine.OnDevice) {
+            return SaveResult.Error("On-device translation can't correct what you write. Pick an AI provider in Settings, or let the AI translate.")
         }
 
         val translation = translator.translateAndCategorize(
             TranslationRequest(
                 engine = engine,
-                nativeSentence = nativeText,
+                nativeSentence = typed,
                 nativeLanguage = settings.nativeLanguage.first(),
                 targetLanguage = coast.language,
                 userCategory = state.category.trim(),
-                existingCategories = flashcards.observeIslands(coast.coastId).first().map { it.name }
+                existingCategories = flashcards.observeIslands(coast.coastId).first().map { it.name },
+                writtenInTarget = writtenInTarget
             )
         )
         if (!translation.isSuccess) return SaveResult.Error(translation.errorMessage ?: "AI Translation Failed.")
 
+        // Written in the coast's language, the typed text is the card's translation (corrected if need be)
+        // and the model's answer is the native side.
         val added = flashcards.addFlashcard(
             coastId = coast.coastId,
-            nativeText = nativeText,
-            targetText = translation.translatedText,
+            nativeText = if (writtenInTarget) translation.translatedText else typed,
+            targetText = if (writtenInTarget) translation.corrected ?: typed else translation.translatedText,
             category = translation.finalCategory,
             emoji = translation.emoji,
-            alternatives = translation.alternatives,
-            note = translation.note
+            alternatives = if (writtenInTarget) emptyList() else translation.alternatives,
+            note = if (writtenInTarget) null else translation.note
         )
-        return saved(added, coast.coastId, translation.finalCategory, manual = false)
+        return saved(
+            added = added,
+            coastId = coast.coastId,
+            category = translation.finalCategory,
+            manual = false,
+            corrected = if (writtenInTarget && translation.corrected != null) typed else null,
+            note = if (writtenInTarget) translation.note else null
+        )
     }
 
     /** The feedback for a saved card, with the emoji of the island it went into. */
-    private suspend fun saved(added: AddedCard, coastId: Int, category: String, manual: Boolean): SaveResult.Saved {
+    private suspend fun saved(
+        added: AddedCard,
+        coastId: Int,
+        category: String,
+        manual: Boolean,
+        corrected: String? = null,
+        note: String? = null
+    ): SaveResult.Saved {
         // An existing island keeps its own emoji; look it up so the feedback card matches the island.
         val island = added.createdIsland
             ?: flashcards.observeIslands(coastId).first().first { it.islandId == added.card.islandId }
-        return SaveResult.Saved(added, category, islandEmoji(island), manual)
+        return SaveResult.Saved(added, category, islandEmoji(island), manual, corrected, note)
     }
 }
 

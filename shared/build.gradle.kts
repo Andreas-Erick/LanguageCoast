@@ -69,6 +69,8 @@ kotlin {
             implementation(libs.androidx.sqlite.framework)
             implementation(libs.ktor.client.android)
             implementation(libs.mlkit.translate)
+            implementation(libs.mlkit.text.recognition)
+            implementation(libs.androidx.activity.compose)
             implementation(libs.litertlm.android)
         }
         iosMain.dependencies {
