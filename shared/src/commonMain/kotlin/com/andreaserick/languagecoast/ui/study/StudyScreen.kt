@@ -8,15 +8,16 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,22 +27,32 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.BeachAccess
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -49,10 +60,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -79,29 +86,39 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.data.isSameSentence
+import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CardOptionsMenu
+import com.andreaserick.languagecoast.ui.components.CoastButton
+import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
+import com.andreaserick.languagecoast.ui.components.CoastTextField
+import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.EditCardSheet
+import com.andreaserick.languagecoast.ui.components.EmptyState
+import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
+import com.andreaserick.languagecoast.ui.components.ScreenMargin
+import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
 import com.andreaserick.languagecoast.ui.components.plural
-import com.andreaserick.languagecoast.ui.theme.CardTints
-import com.andreaserick.languagecoast.ui.theme.CardWash
-import com.andreaserick.languagecoast.ui.theme.CoralAccent
 import com.andreaserick.languagecoast.ui.theme.CoralText
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.MistWhite
-import com.andreaserick.languagecoast.ui.theme.SandBeige
-import com.andreaserick.languagecoast.ui.theme.SandMuted
-import com.andreaserick.languagecoast.ui.theme.WaveTeal
+import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.Seafoam
+import com.andreaserick.languagecoast.ui.theme.SurfBlue
+import com.andreaserick.languagecoast.ui.theme.SurfaceCard
+import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
+import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
+import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import com.andreaserick.languagecoast.util.dictCcSearchUrl
 import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
@@ -112,6 +129,8 @@ import kotlin.random.Random
 /**
  * The main screen for studying flashcards within a specific "Language Island" (category).
  * Provides two modes of study: "Flip Cards" (standard flashcard) and "Active Type" (writing practice).
+ * A running session is a focus mode: the app hides its bottom navigation, and everything that isn't
+ * answering the current card is tucked into the ⋮ menu.
  * The island is taken from the navigation arguments by [StudyViewModel].
  *
  * @param onNavigateBack Callback to navigate back to the previous screen.
@@ -138,40 +157,40 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
         )
     }
 
+    val inSession = uiState.hasCards && !uiState.isCaughtUp && !uiState.isSessionComplete && currentCard != null
+
     Column(modifier = Modifier.fillMaxSize()) {
-        ScreenHeader(
-            title = uiState.islandName,
-            onBack = onNavigateBack,
-            actions = {
-                if (uiState.hasCards) {
-                    IconButton(onClick = onShowCards) {
-                        Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = "All cards", tint = SandBeige)
+        if (inSession && currentCard != null) {
+            SessionTopBar(
+                uiState = uiState,
+                onClose = onNavigateBack,
+                onShowCards = onShowCards,
+                onPrevious = viewModel::previous,
+                onSkip = viewModel::next,
+                onEdit = { editingCard = currentCard },
+                onDelete = {
+                    viewModel.deleteCurrentCard { deleted ->
+                        undoMessenger.show("Card deleted") { viewModel.restore(deleted) }
                     }
                 }
-                if (currentCard != null && !uiState.isSessionComplete) {
-                    CardOptionsMenu(
-                        onEdit = { editingCard = currentCard },
-                        onDelete = {
-                            viewModel.deleteCurrentCard { deleted ->
-                                undoMessenger.show("Card deleted") { viewModel.restore(deleted) }
-                            }
+            )
+        } else if (!uiState.isLoading) {
+            ScreenHeader(
+                title = uiState.islandName,
+                onBack = onNavigateBack,
+                actions = {
+                    if (uiState.hasCards) {
+                        IconButton(onClick = onShowCards) {
+                            Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = "All cards", tint = TextPrimary)
                         }
-                    )
+                    }
                 }
-            }
-        )
+            )
+        }
 
         when {
             uiState.isLoading -> Unit
-            !uiState.hasCards -> Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text("🌊", fontSize = 56.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("No flashcards here yet!", color = SandBeige)
-            }
+            !uiState.hasCards -> EmptyState(icon = Icons.Default.Waves, title = "No flashcards here yet")
             uiState.isCaughtUp -> CaughtUpView(
                 nextDueInDays = uiState.nextDueInDays,
                 onPracticeAll = viewModel::practiceAll,
@@ -185,17 +204,17 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                 onBack = onNavigateBack
             )
             currentCard != null -> {
-                StudyModeTabs(isTypingMode = uiState.isTypingMode, onModeChange = viewModel::setTypingMode)
-                DirectionToggle(
+                StudyModeRow(
+                    isTypingMode = uiState.isTypingMode,
+                    onModeChange = viewModel::setTypingMode,
                     nativeLanguage = uiState.nativeLanguage,
                     targetLanguage = uiState.targetLanguage,
                     isReversed = uiState.isReversed,
                     onReversedChange = viewModel::setReversed
                 )
-                SessionProgress(uiState)
 
-                // Typing mode scrolls when it doesn't fit (short screens, or with the keyboard open),
-                // staying centered when it does; Flip mode sizes its card to the space instead.
+                // Typing mode scrolls when it doesn't fit (short screens, or with the keyboard open);
+                // Flip mode sizes its card to the space instead.
                 BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     val scrollState = key(currentCard.cardId) { rememberScrollState() }
                     Column(
@@ -205,9 +224,8 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                                 if (uiState.isTypingMode) Modifier.verticalScroll(scrollState).heightIn(min = maxHeight)
                                 else Modifier.fillMaxHeight()
                             )
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                            .padding(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         // key(cardId) resets per-card state (flip state, typed answer)
                         // when we move to a different card.
@@ -227,6 +245,9 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                                     nativeLang = uiState.nativeLanguage,
                                     targetLang = uiState.targetLanguage,
                                     isReversed = uiState.isReversed,
+                                    islandName = uiState.islandName,
+                                    // Swiping is worth a reminder, but not on every card.
+                                    showSwipeHint = uiState.sessionCards.size == uiState.totalCards,
                                     intervals = uiState.gradeIntervals,
                                     onGrade = viewModel::onGrade,
                                     onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak },
@@ -237,108 +258,138 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: () -> Unit, viewModel: 
                         }
                     }
                 }
-
-                // Browsing is a secondary action, so it stays small and out of the way.
-                if (uiState.sessionCards.size > 1) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        TextButton(onClick = viewModel::previous, enabled = uiState.canGoBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.padding(end = 4.dp))
-                            Text("Previous")
-                        }
-                        TextButton(onClick = viewModel::next, enabled = uiState.canGoForward) {
-                            Text("Skip")
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(start = 4.dp))
-                        }
-                    }
-                }
             }
         }
     }
 }
 
 /**
- * Shows which way cards are studied ("English → German") and swaps it when tapped: from the native
- * language trains recall, from the coast's language trains recognition.
+ * The top of a running session: close, how far along it is, and a ⋮ menu with the rest of the actions.
+ * Previous and Skip are only offered when there is more than one card to move between.
  */
 @Composable
-private fun DirectionToggle(
+private fun SessionTopBar(
+    uiState: StudyUiState,
+    onClose: () -> Unit,
+    onShowCards: () -> Unit,
+    onPrevious: () -> Unit,
+    onSkip: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val progress by animateFloatAsState(uiState.progress, label = "progress")
+    val canBrowse = uiState.sessionCards.size > 1
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 8.dp, end = 8.dp, top = 12.dp)
+    ) {
+        IconButton(onClick = onClose) {
+            Icon(Icons.Default.Close, contentDescription = "Close session", tint = TextPrimary)
+        }
+        LinearProgressIndicator(
+            progress = { progress },
+            color = Sunlit,
+            trackColor = SurfaceRaised,
+            strokeCap = StrokeCap.Round,
+            gapSize = 0.dp,
+            drawStopIndicator = {},
+            modifier = Modifier
+                .weight(1f)
+                .height(6.dp)
+        )
+        Text(
+            text = "${uiState.sessionCards.size} left",
+            style = MaterialTheme.typography.labelMedium,
+            color = TextSecondary,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp)
+        )
+        CardOptionsMenu(
+            onEdit = onEdit,
+            onDelete = onDelete,
+            tint = TextPrimary,
+            leadingItems = { dismiss ->
+                if (canBrowse) {
+                    DropdownMenuItem(
+                        text = { Text("Previous card") },
+                        enabled = uiState.canGoBack,
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) },
+                        onClick = {
+                            dismiss()
+                            onPrevious()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Skip card") },
+                        enabled = uiState.canGoForward,
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null) },
+                        onClick = {
+                            dismiss()
+                            onSkip()
+                        }
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("All cards") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null) },
+                    onClick = {
+                        dismiss()
+                        onShowCards()
+                    }
+                )
+            }
+        )
+    }
+}
+
+/**
+ * The switch between "Flip Cards" and "Active Type", next to which way cards are studied ("English → German").
+ * Tapping the direction swaps it: from the native language trains recall, from the coast's language
+ * trains recognition.
+ */
+@Composable
+private fun StudyModeRow(
+    isTypingMode: Boolean,
+    onModeChange: (Boolean) -> Unit,
     nativeLanguage: String,
     targetLanguage: String,
     isReversed: Boolean,
     onReversedChange: (Boolean) -> Unit
 ) {
     val (from, to) = if (isReversed) targetLanguage to nativeLanguage else nativeLanguage to targetLanguage
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = ScreenMargin, end = ScreenMargin, top = 8.dp)
+    ) {
+        SegmentedSwitch(
+            options = listOf("Flip Cards", "Active Type"),
+            selectedIndex = if (isTypingMode) 1 else 0,
+            onSelect = { onModeChange(it == 1) },
+            modifier = Modifier.fillMaxWidth()
+        )
         TextButton(
             onClick = { onReversedChange(!isReversed) },
-            colors = ButtonDefaults.textButtonColors(contentColor = SandMuted),
-            modifier = Modifier.semantics { contentDescription = "Studying $from to $to. Tap to swap." }
+            colors = ButtonDefaults.textButtonColors(contentColor = TextSecondary),
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .semantics { contentDescription = "Studying $from to $to. Tap to swap." }
         ) {
-            Text("$from → $to", fontSize = 14.sp)
-            Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.padding(start = 6.dp))
+            Text("$from → $to", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(18.dp))
         }
-    }
-}
-
-/** Tabs to switch between flipping cards to reveal the answer and typing the answer ("Active Type"). */
-@Composable
-private fun StudyModeTabs(isTypingMode: Boolean, onModeChange: (Boolean) -> Unit) {
-    PrimaryTabRow(
-        selectedTabIndex = if (isTypingMode) 1 else 0,
-        containerColor = Color.Transparent,
-        contentColor = SandBeige,
-        divider = {}
-    ) {
-        Tab(
-            selected = !isTypingMode,
-            onClick = { onModeChange(false) },
-            text = { Text("Flip Cards", fontWeight = FontWeight.SemiBold) },
-            selectedContentColor = SandBeige,
-            unselectedContentColor = SandMuted
-        )
-        Tab(
-            selected = isTypingMode,
-            onClick = { onModeChange(true) },
-            text = { Text("Active Type", fontWeight = FontWeight.SemiBold) },
-            selectedContentColor = SandBeige,
-            unselectedContentColor = SandMuted
-        )
-    }
-}
-
-/** A progress bar for the session plus how many cards are left. */
-@Composable
-private fun SessionProgress(uiState: StudyUiState) {
-    val progress by animateFloatAsState(uiState.progress, label = "progress")
-    Column(modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp)) {
-        LinearProgressIndicator(
-            progress = { progress },
-            color = SandBeige,
-            trackColor = SandBeige.copy(alpha = 0.2f),
-            strokeCap = StrokeCap.Round,
-            drawStopIndicator = {},
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-        )
-        Text(
-            text = "${plural(uiState.sessionCards.size, "card")} left",
-            color = SandMuted,
-            fontSize = 13.sp,
-            modifier = Modifier
-                .align(Alignment.End)
-                .padding(top = 6.dp)
-        )
     }
 }
 
 /** How far (in dp) a card must be dragged to count as an Again/Good swipe. */
 private const val SWIPE_THRESHOLD_DP = 110
+
+/** How high the row of buttons under the flip card is, so that it doesn't resize when the card is flipped. */
+private val GradeRowHeight = 68.dp
 
 /**
  * A flashcard that flips when tapped, revealing the translation. Once flipped, it can be graded with
@@ -350,6 +401,8 @@ private const val SWIPE_THRESHOLD_DP = 110
  * @param targetLang The language being studied.
  * @param intervals Days until the card is due again after each grade, shown on the buttons.
  * @param onGrade Callback when the card is graded.
+ * @param islandName Shown on the card, as the session's top bar leaves it out.
+ * @param showSwipeHint Whether to explain swiping under the flipped card.
  * @param onSpeak Reads the translation aloud; null hides the speaker button (no voice for the language).
  * @param onSpeakText Reads an alternative aloud; null hides those speaker buttons.
  * @param onMakeMain Makes an alternative the card's translation.
@@ -362,6 +415,8 @@ fun FlipStudyView(
     intervals: Map<Grade, Int>,
     onGrade: (Grade) -> Unit,
     isReversed: Boolean = false,
+    islandName: String = "",
+    showSwipeHint: Boolean = false,
     onSpeak: (() -> Unit)? = null,
     onSpeakText: ((String) -> Unit)? = null,
     onMakeMain: (String) -> Unit = {}
@@ -378,6 +433,10 @@ fun FlipStudyView(
     // Reversed, the translation is the question, so looking its words up would give the answer away.
     val hasDictionary = !isReversed && dictCcSearchUrl("", nativeLang, targetLang) != null
 
+    // A new card settles into place rather than just appearing, which makes the change easy to notice.
+    val arrival = remember(currentCard.cardId) { Animatable(0f) }
+    LaunchedEffect(currentCard.cardId) { arrival.animateTo(1f, tween(durationMillis = 220)) }
+
     // Again re-queues the card, so with one card left the same card comes back: reset it explicitly.
     fun grade(grade: Grade) {
         haptics.performHapticFeedback(if (grade == Grade.Again) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
@@ -388,6 +447,11 @@ fun FlipStudyView(
         }
     }
 
+    fun flip() {
+        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+        isFlipped = !isFlipped
+    }
+
     // Animate the card rotation
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
@@ -395,17 +459,25 @@ fun FlipStudyView(
         label = "flip"
     )
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.weight(1f, fill = false)) {
+    val faceLanguage = when {
+        isReversed && !isFlipped -> targetLang
+        isReversed && isFlipped -> nativeLang
+        !isReversed && !isFlipped -> nativeLang
+        else -> targetLang
+    }
+    val question = if (isReversed) currentCard.targetText else currentCard.nativeText
+    val answer = if (isReversed) currentCard.nativeText else currentCard.targetText
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize()) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.weight(1f).fillMaxWidth()) {
             // Shown behind the card while it is dragged, to tell which way grades it how.
             if (isFlipped && offsetX.value != 0f) {
                 SwipeLabel(offset = offsetX.value, thresholdPx = thresholdPx)
             }
             Card(
+                onClick = ::flip,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    // Shrink the card on short screens so the buttons below keep their full height.
-                    .heightIn(min = 160.dp, max = 260.dp)
+                    .fillMaxSize()
                     // Must come before the rotated graphicsLayer: inside it, the flipped (180°) card
                     // would mirror drag directions and a swipe right would count as "Again".
                     .pointerInput(isFlipped) {
@@ -430,75 +502,120 @@ fun FlipStudyView(
                         cameraDistance = 12f * density
                         translationX = offsetX.value
                         rotationZ = offsetX.value / 40f
-                    }
-                    .clickable { isFlipped = !isFlipped },
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                // Light card faces with dark text keep both sides readable
-                colors = CardDefaults.cardColors(
-                    // Sky on the front keeps the small "Tap to flip" hint above 4.5:1 contrast.
-                    containerColor = if (isFlipped) SandBeige else CardTints.first(),
-                    contentColor = DeepOceanBlue
-                )
+                        alpha = arrival.value
+                        scaleX = 0.97f + 0.03f * arrival.value
+                        scaleY = scaleX
+                    },
+                shape = MaterialTheme.shapes.extraLarge,
+                border = BorderStroke(1.dp, SurfaceSelected),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard, contentColor = TextPrimary)
             ) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    // Keep content upright regardless of the card's rotation
+                // Keep content upright regardless of the card's rotation
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { rotationY = if (isFlipped) 180f else 0f }
+                ) {
+                    Text(
+                        text = listOf(islandName, faceLanguage).filter { it.isNotEmpty() }.joinToString(" · "),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 24.dp, end = 56.dp, top = 20.dp)
+                    )
+                    // The translation can be heard once it is showing or, when it is the question, right away.
+                    if (onSpeak != null && (isFlipped || isReversed)) {
+                        IconButton(
+                            onClick = onSpeak,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 6.dp, end = 6.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = Sunlit)
+                        }
+                    }
+
+                    // Long sentences scroll inside the card instead of being cut off.
                     Box(
+                        contentAlignment = Alignment.CenterStart,
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer { rotationY = if (isFlipped) 180f else 0f },
-                        contentAlignment = Alignment.Center
+                            .padding(top = 56.dp, bottom = 40.dp)
                     ) {
-                        if (isReversed) {
-                            // The translation is the question: it can be heard before flipping.
-                            CardFaceText(if (isFlipped) currentCard.nativeText else currentCard.targetText)
-                            if (!isFlipped) {
-                                if (onSpeak != null) {
-                                    IconButton(onClick = onSpeak, modifier = Modifier.align(Alignment.TopEnd)) {
-                                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = DeepOceanBlue)
-                                    }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 24.dp)
+                        ) {
+                            if (isFlipped) {
+                                Text(question, style = MaterialTheme.typography.titleMedium, color = TextSecondary)
+                                HorizontalDivider(color = SurfaceSelected, modifier = Modifier.padding(vertical = 16.dp))
+                                if (hasDictionary) {
+                                    ClickableWordSentence(
+                                        sentence = answer,
+                                        onWordClick = { word ->
+                                            dictCcSearchUrl(word, nativeLang, targetLang)?.let { url ->
+                                                runCatching { uriHandler.openUri(url) }
+                                                    .onFailure { undoMessenger.showMessage("No browser found to open dict.cc") }
+                                            }
+                                        }
+                                    )
+                                } else {
+                                    Text(answer, style = MaterialTheme.typography.headlineLarge)
                                 }
-                                FlipHint()
+                            } else {
+                                Text(question, style = MaterialTheme.typography.headlineLarge)
                             }
-                        } else if (isFlipped) {
-                            ClickableWordSentence(
-                                sentence = currentCard.targetText,
-                                onWordClick = if (hasDictionary) { word ->
-                                    dictCcSearchUrl(word, nativeLang, targetLang)?.let { url ->
-                                        runCatching { uriHandler.openUri(url) }
-                                            .onFailure { undoMessenger.showMessage("No browser found to open dict.cc") }
-                                    }
-                                } else null
-                            )
-                            if (onSpeak != null) {
-                                IconButton(onClick = onSpeak, modifier = Modifier.align(Alignment.TopEnd)) {
-                                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = DeepOceanBlue)
-                                }
-                            }
-                        } else {
-                            CardFaceText(currentCard.nativeText)
-                            FlipHint()
                         }
+                    }
+
+                    if (!isFlipped) {
+                        Text(
+                            text = "Tap to flip",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 14.dp)
+                        )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = when {
-                !isFlipped -> " "
-                hasDictionary -> "Tap a word to look it up · Swipe ← Again, Good →"
-                else -> "Swipe ← Again, Good →"
-            },
-            fontSize = 13.sp,
-            color = SandMuted,
-            textAlign = TextAlign.Center
-        )
-        // Alternatives are other ways to say the translation, which only make sense when it is the answer.
-        if (isFlipped && !isReversed && currentCard.alternatives.isNotEmpty()) {
-            TextButton(onClick = { showAlternatives = true }, colors = ButtonDefaults.textButtonColors(contentColor = SandBeige)) {
-                Text(plural(currentCard.alternatives.size, "alternative"), fontWeight = FontWeight.SemiBold)
-                Icon(Icons.Default.ExpandLess, contentDescription = null)
+        // Always the same height, so the card doesn't jump when it is flipped.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+        ) {
+            val hint = when {
+                !isFlipped -> ""
+                hasDictionary && showSwipeHint -> "Tap a word to look it up · Swipe ← Again, Good →"
+                hasDictionary -> "Tap a word to look it up"
+                showSwipeHint -> "Swipe ← Again, Good →"
+                else -> ""
+            }
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.weight(1f)
+            )
+            // Alternatives are other ways to say the translation, which only make sense when it is the answer.
+            if (isFlipped && !isReversed && currentCard.alternatives.isNotEmpty()) {
+                TextButton(
+                    onClick = { showAlternatives = true },
+                    colors = ButtonDefaults.textButtonColors(contentColor = TextPrimary),
+                    contentPadding = PaddingValues(start = 8.dp, end = 4.dp)
+                ) {
+                    Text(plural(currentCard.alternatives.size, "alternative"), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                    Icon(Icons.Default.ExpandLess, contentDescription = null)
+                }
             }
         }
         if (showAlternatives) {
@@ -509,47 +626,20 @@ fun FlipStudyView(
                 onDismiss = { showAlternatives = false }
             )
         }
-        Spacer(modifier = Modifier.height(16.dp))
 
         if (isFlipped) {
             GradeButtons(intervals = intervals, onGrade = ::grade)
         } else {
-            Button(
-                onClick = { isFlipped = true },
+            CoastButton(
+                onClick = ::flip,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = WaveTeal, contentColor = Color.White)
+                    .height(GradeRowHeight)
             ) {
-                Text("Show answer", fontSize = 18.sp)
+                Text("Show answer")
             }
         }
     }
-}
-
-/** The sentence on a face of the flip card that has no tappable words. */
-@Composable
-private fun CardFaceText(text: String) {
-    Text(
-        text = text,
-        fontSize = 24.sp,
-        fontWeight = FontWeight.Medium,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.padding(16.dp)
-    )
-}
-
-/** "Tap to flip" at the bottom of the front of the flip card. */
-@Composable
-private fun BoxScope.FlipHint() {
-    Text(
-        text = "Tap to flip",
-        fontSize = 13.sp,
-        color = DeepOceanBlue.copy(alpha = 0.85f),
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 12.dp)
-    )
 }
 
 /** "Again" / "Good" while a card is dragged, fading in as the drag nears the threshold. */
@@ -558,7 +648,7 @@ private fun SwipeLabel(offset: Float, thresholdPx: Float) {
     val good = offset > 0
     Text(
         text = if (good) "Good" else "Again",
-        color = if (good) SandBeige else CoralText,
+        color = if (good) Sunlit else CoralText,
         style = MaterialTheme.typography.headlineMedium,
         modifier = Modifier
             .fillMaxWidth()
@@ -571,32 +661,47 @@ private fun SwipeLabel(offset: Float, thresholdPx: Float) {
 /**
  * The four grading buttons shared by both study modes, each showing when the card would come back
  * ("Soon" for Again, which repeats it later in the session).
- * "Good" is the usual choice, so it gets the strongest color.
+ * "Good" is the usual choice, so it alone gets the accent; "Again" is told apart by its label's colour.
  */
 @Composable
 private fun GradeButtons(intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+    ) {
         Grade.entries.forEach { grade ->
-            val (container, content) = when (grade) {
-                // Dark text: white on coral is only 3:1 contrast.
-                Grade.Again -> CoralAccent to DeepOceanBlue
-                Grade.Hard -> CardWash to SandBeige
-                Grade.Good -> SandBeige to DeepOceanBlue
-                Grade.Easy -> WaveTeal to Color.White
-            }
-            Button(
+            val isGood = grade == Grade.Good
+            CoastButton(
                 onClick = { onGrade(grade) },
                 modifier = Modifier
                     .weight(1f)
-                    .height(64.dp),
+                    .fillMaxHeight()
+                    .heightIn(min = GradeRowHeight),
                 contentPadding = PaddingValues(horizontal = 4.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isGood) Sunlit else SurfaceCard,
+                    contentColor = if (isGood) OceanGround else TextPrimary
+                )
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(grade.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(
+                        grade.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (grade == Grade.Again) CoralText else Color.Unspecified,
+                        maxLines = 1
+                    )
                     // Again re-queues the card in this session; its saved interval only applies if the session is left.
                     val label = if (grade == Grade.Again) "Soon" else intervals[grade]?.let(::intervalLabel)
-                    label?.let { Text(it, fontSize = 12.sp, maxLines = 1) }
+                    label?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isGood) OceanGround else TextSecondary,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
@@ -644,132 +749,141 @@ fun TypeStudyView(
         if (hasChecked) result.bringIntoView()
     }
 
+    fun checkAnswer() {
+        if (userInput.isBlank()) return
+        isCorrect = isCorrectAnswer(userInput, currentCard, isReversed)
+        hasChecked = true
+        haptics.performHapticFeedback(if (isCorrect) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
+    }
+
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text("Translate this:", color = SandMuted)
-
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)) {
-            Text(
-                text = question,
-                style = MaterialTheme.typography.headlineSmall,
-                color = SandBeige,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            if (isReversed && onSpeak != null) {
-                IconButton(onClick = onSpeak) {
-                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = SandBeige)
+        ContentCard(padding = PaddingValues(start = 20.dp, top = 16.dp, end = 8.dp, bottom = 20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 40.dp)) {
+                Text(
+                    "Translate this",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextSecondary,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isReversed && onSpeak != null) {
+                    IconButton(onClick = onSpeak) {
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = Sunlit)
+                    }
                 }
             }
+            Text(
+                text = question,
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(end = 12.dp)
+            )
         }
 
-        OutlinedTextField(
+        CoastTextField(
             value = userInput,
             onValueChange = {
                 userInput = it
                 hasChecked = false // Hide feedback if they start typing again
             },
             label = { Text(if (isReversed && nativeLang.isNotEmpty()) "Type it in $nativeLang..." else "Type the translation...") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { checkAnswer() }),
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         if (!hasChecked) {
-            Button(
-                onClick = {
-                    isCorrect = isCorrectAnswer(userInput, currentCard, isReversed)
-                    hasChecked = true
-                    haptics.performHapticFeedback(if (isCorrect) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
-                },
+            CoastButton(
+                onClick = ::checkAnswer,
                 enabled = userInput.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = WaveTeal, contentColor = Color.White)
+                    .height(ButtonHeight)
             ) {
-                Text("Check answer", fontSize = 18.sp)
+                Text("Check answer")
             }
         } else Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .bringIntoViewRequester(result)
         ) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isCorrect) SandBeige else DeepOceanBlue,
-                    contentColor = if (isCorrect) DeepOceanBlue else Color.White
-                ),
-                border = if (isCorrect) null else BorderStroke(1.dp, CoralText),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = if (isCorrect) "✅ Perfect!" else "❌ Not quite",
-                        style = MaterialTheme.typography.titleLarge
+            ContentCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (isCorrect) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                        contentDescription = null,
+                        tint = if (isCorrect) Seafoam else CoralText
                     )
-                    if (!isCorrect) {
-                        Text("Correct answer:", modifier = Modifier.padding(top = 8.dp))
-                        Text(
-                            answer,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    // The other correct translations: besides the one typed, or besides the answer shown above.
-                    val others = if (isCorrect) {
-                        (listOf(currentCard.targetText) + currentCard.alternatives).filterNot { answerMatches(userInput, it) }
-                    } else {
-                        currentCard.alternatives
-                    }
-                    if (!isReversed && currentCard.alternatives.isNotEmpty() && others.isNotEmpty()) {
-                        Text(
-                            text = "Also correct: ${others.joinToString(" · ")}",
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                    // Reversed, the translation was the question and has its own speaker button.
-                    if (!isReversed && onSpeak != null) {
-                        TextButton(
-                            onClick = onSpeak,
-                            colors = ButtonDefaults.textButtonColors(contentColor = if (isCorrect) DeepOceanBlue else SandBeige)
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, modifier = Modifier.padding(end = 6.dp))
-                            Text("Listen")
-                        }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isCorrect) "Perfect!" else "Not quite",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (!isCorrect) {
+                    Text(
+                        "Correct answer",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                    Text(answer, style = MaterialTheme.typography.titleLarge)
+                }
+                // The other correct translations: besides the one typed, or besides the answer shown above.
+                val others = if (isCorrect) {
+                    (listOf(currentCard.targetText) + currentCard.alternatives).filterNot { answerMatches(userInput, it) }
+                } else {
+                    currentCard.alternatives
+                }
+                if (!isReversed && currentCard.alternatives.isNotEmpty() && others.isNotEmpty()) {
+                    Text(
+                        text = "Also correct: ${others.joinToString(" · ")}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                // Reversed, the translation was the question and has its own speaker button.
+                if (!isReversed && onSpeak != null) {
+                    TextButton(
+                        onClick = onSpeak,
+                        colors = ButtonDefaults.textButtonColors(contentColor = Sunlit),
+                        contentPadding = PaddingValues(horizontal = 0.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, modifier = Modifier.padding(end = 6.dp))
+                        Text("Listen", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(16.dp))
             if (isCorrect) {
-                GradeButtons(intervals = intervals, onGrade = onGrade)
+                GradeButtons(
+                    intervals = intervals,
+                    onGrade = { grade ->
+                        haptics.performHapticFeedback(if (grade == Grade.Again) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
+                        onGrade(grade)
+                    }
+                )
             } else {
                 // A wrong answer means the card wasn't remembered, so there is nothing to grade: it's "Again".
-                Button(
+                CoastButton(
                     onClick = { onGrade(Grade.Again) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp)
+                        .height(ButtonHeight)
                 ) {
-                    Text("Continue", fontSize = 18.sp)
+                    Text("Continue")
                 }
                 Text(
                     text = "This card comes back later in this session.",
-                    fontSize = 13.sp,
-                    color = SandMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
@@ -789,32 +903,32 @@ private fun AlternativesSheet(
     onMakeMain: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = DeepOceanBlue, contentColor = Color.White) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text("Other ways to say it", style = MaterialTheme.typography.titleLarge, color = SandBeige)
+            Text("Other ways to say it", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(card.targetText, color = MistWhite, fontSize = 14.sp)
+            Text(card.targetText, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             card.note?.let {
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(it, fontStyle = FontStyle.Italic, color = MistWhite)
+                Text(it, fontStyle = FontStyle.Italic, color = TextSecondary)
             }
             card.alternatives.forEach { alternative ->
-                HorizontalDivider(color = SandBeige.copy(alpha = 0.15f), modifier = Modifier.padding(vertical = 12.dp))
-                Text(alternative, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = SandBeige)
+                HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 12.dp))
+                Text(alternative, style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                     if (onSpeak != null) {
                         IconButton(onClick = { onSpeak(alternative) }) {
-                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = SandBeige)
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = Sunlit)
                         }
                     }
                     Spacer(modifier = Modifier.weight(1f))
-                    TextButton(onClick = { onMakeMain(alternative) }, colors = ButtonDefaults.textButtonColors(contentColor = SandBeige)) {
-                        Text("Make main", fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { onMakeMain(alternative) }) {
+                        Text("Make main", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
@@ -845,34 +959,16 @@ internal fun answerMatches(typed: String, expected: String): Boolean = isSameSen
  */
 @Composable
 fun CaughtUpView(nextDueInDays: Int?, onPracticeAll: () -> Unit, onBack: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("🌴", fontSize = 64.sp)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "All caught up!",
-            style = MaterialTheme.typography.headlineLarge,
-            color = SandBeige,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = when (nextDueInDays) {
-                null -> "No cards are due on this island right now."
-                1 -> "The next cards are due tomorrow."
-                else -> "The next cards are due in $nextDueInDays days."
-            },
-            fontSize = 16.sp,
-            color = SandMuted,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp, bottom = 32.dp)
-        )
-        SessionEndButtons(onPracticeAll = onPracticeAll, onBack = onBack)
-    }
+    EmptyState(
+        icon = Icons.Default.BeachAccess,
+        title = "All caught up",
+        body = when (nextDueInDays) {
+            null -> "No cards are due on this island right now."
+            1 -> "The next cards are due tomorrow."
+            else -> "The next cards are due in $nextDueInDays days."
+        },
+        action = { SessionEndButtons(onPracticeAll = onPracticeAll, onBack = onBack) }
+    )
 }
 
 /**
@@ -892,9 +988,9 @@ fun SessionCompleteView(
     onPracticeAll: () -> Unit,
     onBack: () -> Unit
 ) {
-    val emojiScale = remember { Animatable(0f) }
+    val markScale = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        emojiScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
+        markScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -903,87 +999,96 @@ fun SessionCompleteView(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .padding(ScreenMargin),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("🏝️", fontSize = 72.sp, modifier = Modifier.scale(emojiScale.value))
-            Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(72.dp)
+                    .scale(markScale.value)
+                    .background(Sunlit, CircleShape)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = OceanGround, modifier = Modifier.size(40.dp))
+            }
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "Island explored!",
                 style = MaterialTheme.typography.headlineLarge,
-                color = SandBeige,
+                color = TextPrimary,
                 textAlign = TextAlign.Center
             )
             Text(
                 text = if (againCount == 0) "Every card on the first try. Brilliant!" else "You worked through every card.",
-                fontSize = 16.sp,
-                color = SandMuted,
+                color = TextSecondary,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
+                modifier = Modifier.padding(top = 6.dp, bottom = 24.dp)
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                StatTile(value = "$reviewedCount", label = if (reviewedCount == 1) "card" else "cards", modifier = Modifier.weight(1f))
-                StatTile(value = "$againCount", label = "needed again", modifier = Modifier.weight(1f))
-                // The 🔥 sits with the label so a long streak (1000) still fits the tile on one line.
-                StatTile(value = "$streakCount", label = "🔥 day streak", modifier = Modifier.weight(1f))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+            ) {
+                StatTile(value = "$reviewedCount", label = if (reviewedCount == 1) "card" else "cards", modifier = Modifier.weight(1f).fillMaxHeight())
+                StatTile(value = "$againCount", label = "needed again", modifier = Modifier.weight(1f).fillMaxHeight())
+                StatTile(value = "$streakCount", label = "day streak", modifier = Modifier.weight(1f).fillMaxHeight())
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             SessionEndButtons(onPracticeAll = onPracticeAll, onBack = onBack)
         }
     }
 }
 
-/** "Practice all cards" and "Back to islands", shared by the session end screens. */
+/** "Back to islands" and "Practice all cards", shared by the session end screens. Going back is the usual next step. */
 @Composable
 private fun SessionEndButtons(onPracticeAll: () -> Unit, onBack: () -> Unit) {
-    Button(
-        onClick = onPracticeAll,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = SandBeige, contentColor = DeepOceanBlue)
-    ) {
-        Text("Practice all cards", fontSize = 18.sp)
-    }
-
-    Spacer(modifier = Modifier.height(12.dp))
-
-    OutlinedButton(
+    CoastButton(
         onClick = onBack,
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp),
-        border = BorderStroke(1.dp, SandBeige),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige)
+            .height(ButtonHeight)
     ) {
-        Text("Back to islands", fontSize = 18.sp)
+        Text("Back to islands")
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    CoastSecondaryButton(
+        onClick = onPracticeAll,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(ButtonHeight)
+    ) {
+        Text("Practice all cards")
     }
 }
 
 /** A large [value] with a short [label] below it, for the session summary. */
 @Composable
 private fun StatTile(value: String, label: String, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = CardWash, contentColor = SandBeige)
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 14.dp, horizontal = 8.dp)
-        ) {
-            Text(value, style = MaterialTheme.typography.titleLarge)
-            Text(label, fontSize = 13.sp, color = MistWhite, textAlign = TextAlign.Center)
-        }
+    ContentCard(modifier = modifier, padding = PaddingValues(vertical = 14.dp, horizontal = 8.dp)) {
+        Text(
+            value,
+            style = MaterialTheme.typography.headlineSmall,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
-/** A one-off shower of confetti in the card tints, falling from the top of the screen. */
+/** A one-off shower of confetti, falling from the top of the screen. */
 @Composable
 private fun Confetti(modifier: Modifier = Modifier) {
     val progress = remember { Animatable(0f) }
@@ -995,7 +1100,7 @@ private fun Confetti(modifier: Modifier = Modifier) {
                 delay = Random.nextFloat() * 0.35f,
                 speed = 0.8f + Random.nextFloat() * 0.6f,
                 drift = (Random.nextFloat() - 0.5f) * 0.15f,
-                color = (CardTints + SandBeige).random()
+                color = listOf(Sunlit, SurfBlue, Seafoam, CoralText).random()
             )
         }
     }
@@ -1024,26 +1129,27 @@ private data class ConfettiPiece(val x: Float, val delay: Float, val speed: Floa
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ClickableWordSentence(sentence: String, onWordClick: ((String) -> Unit)?) {
+    val style = MaterialTheme.typography.headlineLarge
     // FlowRow automatically wraps words to the next line
     FlowRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.Center
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         sentence.split(" ").filter { it.isNotEmpty() }.forEach { token ->
             val (leading, word, trailing) = splitPunctuation(token)
-            Row(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
-                if (leading.isNotEmpty()) WordText(leading)
+            Row {
+                if (leading.isNotEmpty()) WordText(leading, style)
                 if (word.isNotEmpty()) {
                     WordText(
                         text = word,
+                        style = style,
                         modifier = if (onWordClick == null) Modifier else Modifier
-                            .dottedUnderline(DeepOceanBlue.copy(alpha = 0.6f))
+                            .dottedUnderline(TextSecondary)
                             .clickable { onWordClick(word) }
                     )
                 }
-                if (trailing.isNotEmpty()) WordText(trailing)
+                if (trailing.isNotEmpty()) WordText(trailing, style)
             }
         }
     }
@@ -1051,8 +1157,8 @@ fun ClickableWordSentence(sentence: String, onWordClick: ((String) -> Unit)?) {
 
 /** A word or punctuation of a card's sentence, at the size cards are shown in. */
 @Composable
-private fun WordText(text: String, modifier: Modifier = Modifier) {
-    Text(text = text, fontSize = 24.sp, fontWeight = FontWeight.Medium, modifier = modifier)
+private fun WordText(text: String, style: TextStyle, modifier: Modifier = Modifier) {
+    Text(text = text, style = style, modifier = modifier)
 }
 
 /** Splits "¿hola," into "¿", "hola" and ",": the word is everything from the first to the last letter or digit. */
@@ -1065,7 +1171,7 @@ internal fun splitPunctuation(token: String): Triple<String, String, String> {
 
 /** Draws a dotted line under the content, marking a word that can be looked up. */
 private fun Modifier.dottedUnderline(color: Color) = drawBehind {
-    val y = size.height - 2.dp.toPx()
+    val y = size.height - 1.dp.toPx()
     drawLine(
         color = color,
         start = Offset(0f, y),

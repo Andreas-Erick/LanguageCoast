@@ -1,24 +1,25 @@
 package com.andreaserick.languagecoast.ui.coast
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.BeachAccess
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -32,30 +33,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.islandEmoji
+import com.andreaserick.languagecoast.ui.components.ButtonHeight
+import com.andreaserick.languagecoast.ui.components.CoastButton
+import com.andreaserick.languagecoast.ui.components.ContentCard
+import com.andreaserick.languagecoast.ui.components.EmptyState
+import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
-import com.andreaserick.languagecoast.ui.components.cardCountLabel
+import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.SandBeige
-import com.andreaserick.languagecoast.ui.theme.WaveTeal
-import com.andreaserick.languagecoast.ui.theme.cardTint
+import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * A single coast: a grid of its "Language Islands" (categories) that contain flashcards.
+ * A single coast: a button to review its busiest island, and a grid of its "Language Islands"
+ * (categories) that contain flashcards.
  *
  * @param onIslandClick Called with the island ID and name when an island is tapped.
  * @param onShowCards Called with the island ID and name when See cards is picked in an island's menu.
@@ -77,28 +78,37 @@ fun CoastScreen(
         when {
             // Show nothing while loading to avoid flashing the empty state.
             uiState.isLoading -> Unit
-            uiState.islands.isEmpty() -> Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text("🏝️", fontSize = 56.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "This coast has no islands yet. Go create some flashcards!",
-                    color = SandBeige,
-                    textAlign = TextAlign.Center
-                )
-            }
+            uiState.islands.isEmpty() -> EmptyState(
+                icon = Icons.Default.BeachAccess,
+                title = "No islands yet",
+                body = "Create a flashcard and its island appears here."
+            )
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
+                // A session covers one island, so the button names the one it opens: the one with the most due.
+                val next = uiState.islands.filter { it.dueCount > 0 }.maxByOrNull { it.dueCount }
+                if (next != null) {
+                    item(key = "review", span = { GridItemSpan(maxLineSpan) }) {
+                        CoastButton(
+                            onClick = { onIslandClick(next.island.islandId, next.island.name) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(ButtonHeight)
+                                .animateItem()
+                        ) {
+                            Text(
+                                "Review ${next.island.name} · ${next.dueCount} due",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
                 items(uiState.islands, key = { it.island.islandId }) { summary ->
                     IslandCard(
                         summary = summary,
@@ -119,8 +129,8 @@ fun CoastScreen(
 }
 
 /**
- * A square card for one "Language Island": its emoji, name, card count and last study session,
- * with a ⋮ menu to see its cards or delete it.
+ * A card for one "Language Island": its emoji in a small tile, name, card count and either how many
+ * cards are due or when it was last studied, with a ⋮ menu to see its cards or delete it.
  */
 @Composable
 fun IslandCard(
@@ -132,92 +142,52 @@ fun IslandCard(
     modifier: Modifier = Modifier
 ) {
     val island = summary.island
-    val onCardSecondary = DeepOceanBlue.copy(alpha = 0.85f)
-
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = cardTint(island.islandId), contentColor = DeepOceanBlue)
-    ) {
-        Box {
-            // The last-studied line is part of the column, so a two-line name pushes it down instead of overlapping it.
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .atLeastSquare()
-                    .padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 10.dp)
-            ) {
-                Spacer(modifier = Modifier.weight(1f))
-                Text(text = islandEmoji(island), fontSize = 36.sp)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = island.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-                Text(text = cardCountLabel(summary.cardCount, summary.dueCount), fontSize = 13.sp, color = onCardSecondary)
-                Spacer(modifier = Modifier.weight(1f))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = lastStudiedLabel(island.lastStudied, today),
-                    fontSize = 11.sp,
-                    color = onCardSecondary,
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            IslandMenu(
-                islandName = island.name,
-                tint = onCardSecondary,
-                onShowCards = onShowCards,
-                onDelete = onDeleteClick,
-                modifier = Modifier.align(Alignment.TopEnd)
+    ContentCard(onClick = onClick, modifier = modifier.heightIn(min = 160.dp), padding = PaddingValues(start = 14.dp, top = 14.dp, bottom = 14.dp)) {
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+            IconTile { Text(islandEmoji(island), fontSize = 22.sp) }
+            Spacer(modifier = Modifier.weight(1f))
+            IslandMenu(islandName = island.name, onShowCards = onShowCards, onDelete = onDeleteClick)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        // The card has no end padding, so that the ⋮ button can sit in its corner.
+        Column(modifier = Modifier.fillMaxWidth().padding(end = 14.dp)) {
+            Text(
+                text = island.name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
+            Text(plural(summary.cardCount, "card"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            if (summary.dueCount > 0) {
+                Text("${summary.dueCount} due", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+            } else {
+                Text(lastStudiedLabel(island.lastStudied, today), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            }
         }
     }
 }
 
-/** At least as tall as it is wide, growing taller only when the content needs it (e.g. a two-line name at a large font size). */
-private fun Modifier.atLeastSquare() = layout { measurable, constraints ->
-    val width = constraints.maxWidth
-    val height = maxOf(width, measurable.minIntrinsicHeight(width)).coerceIn(constraints.minHeight, constraints.maxHeight)
-    val placeable = measurable.measure(Constraints.fixed(width, height))
-    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-}
-
 /** The ⋮ menu of an island card: See cards and Delete island. */
 @Composable
-private fun IslandMenu(
-    islandName: String,
-    tint: Color,
-    onShowCards: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun IslandMenu(islandName: String, onShowCards: () -> Unit, onDelete: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
+    Box {
         // IconButton keeps a 48dp touch target even though the icon is small.
         IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Default.MoreVert, contentDescription = "Options for $islandName", tint = tint)
+            Icon(Icons.Default.MoreVert, contentDescription = "Options for $islandName", tint = TextSecondary)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = WaveTeal) {
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text("See cards", color = Color.White) },
-                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null, tint = Color.White) },
+                text = { Text("See cards") },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null) },
                 onClick = {
                     expanded = false
                     onShowCards()
                 }
             )
             DropdownMenuItem(
-                text = { Text("Delete island", color = Color.White) },
-                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White) },
+                text = { Text("Delete island") },
+                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
                 onClick = {
                     expanded = false
                     onDelete()

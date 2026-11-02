@@ -3,6 +3,8 @@ package com.andreaserick.languagecoast.di
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.andreaserick.languagecoast.data.AppDatabase
+import com.andreaserick.languagecoast.data.LocalModelController
+import com.andreaserick.languagecoast.data.NoOpLocalModelController
 import com.andreaserick.languagecoast.data.buildAppDatabase
 import com.andreaserick.languagecoast.data.createSettingsDataStore
 import com.andreaserick.languagecoast.notifications.IosReminderScheduler
@@ -36,6 +38,9 @@ actual val platformModule = module {
 
     /** Reminders are queued with iOS's notification center. (Android binds its WorkManager scheduler in the app.) */
     singleOf(::IosReminderScheduler) { bind<ReminderScheduler>() }
+
+    /** Local AI model controller stub for iOS. */
+    singleOf(::NoOpLocalModelController) { bind<LocalModelController>() }
 }
 
 /** The app's Documents folder, which iOS keeps across updates and includes in backups. */

@@ -3,16 +3,13 @@ package com.andreaserick.languagecoast.ui.settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -20,25 +17,26 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.BackupSummary
+import com.andreaserick.languagecoast.ui.components.ButtonHeight
+import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
-import com.andreaserick.languagecoast.ui.theme.DeepOceanBlue
-import com.andreaserick.languagecoast.ui.theme.SandBeige
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.koin.compose.viewmodel.koinViewModel
+import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
+import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.koin.compose.viewmodel.koinViewModel
 
 /** Backups are refused above this size; one this large would hold far more than 50,000 cards with their progress. */
 private const val MAX_BACKUP_CHARS = 30_000_000
@@ -91,24 +89,22 @@ actual fun BackupSection() {
     )
     Spacer(modifier = Modifier.height(12.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(
+        CoastSecondaryButton(
             onClick = { backupLauncher.launch(viewModel.backupFileName()) },
             enabled = uiState.hasCoasts,
             modifier = Modifier
                 .weight(1f)
-                .height(50.dp)
+                .height(ButtonHeight)
         ) {
-            Text("Back up", fontSize = 16.sp)
+            Text("Back up")
         }
-        OutlinedButton(
+        CoastSecondaryButton(
             onClick = { restoreLauncher.launch(BACKUP_MIME_TYPES) },
-            border = BorderStroke(1.dp, SandBeige),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = SandBeige),
             modifier = Modifier
                 .weight(1f)
-                .height(50.dp)
+                .height(ButtonHeight)
         ) {
-            Text("Restore", fontSize = 16.sp)
+            Text("Restore")
         }
     }
 
@@ -133,9 +129,6 @@ private fun RestoreDialog(summary: BackupSummary, isRestoring: Boolean, onRestor
         .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
     AlertDialog(
         onDismissRequest = { if (!isRestoring) onDismiss() },
-        containerColor = DeepOceanBlue,
-        titleContentColor = SandBeige,
-        textContentColor = Color.White,
         title = { Text("Restore backup?") },
         text = {
             Column {
@@ -143,9 +136,9 @@ private fun RestoreDialog(summary: BackupSummary, isRestoring: Boolean, onRestor
                 Text(
                     "${plural(summary.coastCount, "coast")} · ${plural(summary.islandCount, "island")} · " +
                         plural(summary.cardCount, "card"),
-                    color = SandBeige
+                    color = TextSecondary
                 )
-                if (summary.streakCount > 0) Text("${summary.streakCount} day streak", color = SandBeige)
+                if (summary.streakCount > 0) Text("${summary.streakCount} day streak", color = TextSecondary)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     "This replaces all coasts, cards and settings on this phone. Your API keys stay as they are.",
@@ -155,11 +148,11 @@ private fun RestoreDialog(summary: BackupSummary, isRestoring: Boolean, onRestor
         },
         confirmButton = {
             TextButton(onClick = onRestore, enabled = !isRestoring) {
-                Text(if (isRestoring) "Restoring…" else "Restore", color = SandBeige)
+                Text(if (isRestoring) "Restoring…" else "Restore", color = Sunlit, style = MaterialTheme.typography.labelMedium)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isRestoring) { Text("Cancel", color = SandBeige) }
+            TextButton(onClick = onDismiss, enabled = !isRestoring) { Text("Cancel", color = TextPrimary, style = MaterialTheme.typography.labelMedium) }
         }
     )
 }

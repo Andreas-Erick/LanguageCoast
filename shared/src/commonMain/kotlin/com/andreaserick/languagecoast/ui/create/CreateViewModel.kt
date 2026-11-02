@@ -10,6 +10,7 @@ import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
+import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
@@ -56,9 +57,12 @@ data class CreateUiState(
     val coasts: List<Coast> = emptyList(),
     /** The coast new cards are added to; null until the user has started a coast. */
     val selectedCoast: Coast? = null,
+    /** Existing islands on [selectedCoast], offered as quick-pick category chips. */
+    val coastIslands: List<LanguageIsland> = emptyList(),
     /** Languages a new coast can be started for. */
     val availableLanguages: List<Language> = emptyList(),
     val nativeLanguage: String = SettingsDefaults.NATIVE_LANGUAGE,
+    val translationProvider: TranslationProvider = TranslationProvider.OnDevice,
     val streakCount: Int = 0,
     /** Whether any coast has cards at all, i.e. whether there is anything to review. */
     val hasCards: Boolean = false,
@@ -108,17 +112,19 @@ class CreateViewModel(
             combine(
                 flashcards.observeCoasts(),
                 settings.activeCoastId,
-                settings.nativeLanguage
-            ) { coasts, activeCoastId, nativeLanguage ->
-                Triple(coasts, activeCoastId, nativeLanguage)
-            }.collect { (coasts, activeCoastId, nativeLanguage) ->
+                settings.nativeLanguage,
+                settings.translationProvider
+            ) { coasts, activeCoastId, nativeLanguage, provider ->
+                 CoastSelectionSnapshot(coasts, activeCoastId, nativeLanguage, provider)
+            }.collect { snapshot ->
                 uiState = uiState.copy(
                     isLoadingCoasts = false,
-                    coasts = coasts,
+                    coasts = snapshot.coasts,
                     // Fall back to the first coast if none was picked yet or the active one was deleted.
-                    selectedCoast = coasts.firstOrNull { it.coastId == activeCoastId } ?: coasts.firstOrNull(),
-                    availableLanguages = availableCoastLanguages(coasts, nativeLanguage),
-                    nativeLanguage = nativeLanguage
+                    selectedCoast = snapshot.coasts.firstOrNull { it.coastId == snapshot.activeCoastId } ?: snapshot.coasts.firstOrNull(),
+                    availableLanguages = availableCoastLanguages(snapshot.coasts, snapshot.nativeLanguage),
+                    nativeLanguage = snapshot.nativeLanguage,
+                    translationProvider = snapshot.provider
                 )
             }
         }
@@ -143,6 +149,11 @@ class CreateViewModel(
                 .collect { uiState = uiState.copy(recentCards = it) }
         }
         viewModelScope.launch {
+            selectedCoastId()
+                .flatMapLatest { coastId -> if (coastId == null) flowOf(emptyList()) else flashcards.observeIslands(coastId) }
+                .collect { uiState = uiState.copy(coastIslands = it) }
+        }
+        viewModelScope.launch {
             combine(selectedCoastId(), flashcards.observeAllCards()) { coastId, cards -> cards.filter { it.coastId == coastId } }
                 .collect { cards ->
                     coastCards = cards
@@ -151,6 +162,13 @@ class CreateViewModel(
         }
         viewModelScope.launch { settings.refreshStreak() }
     }
+
+    private data class CoastSelectionSnapshot(
+        val coasts: List<Coast>,
+        val activeCoastId: Int?,
+        val nativeLanguage: String,
+        val provider: TranslationProvider
+    )
 
     /** The coast new cards go to, as shown in the coast picker. */
     private fun selectedCoastId(): Flow<Int?> =
@@ -273,10 +291,38 @@ class CreateViewModel(
 
         val engine = when (settings.translationProvider.first()) {
             TranslationProvider.OnDevice -> TranslationEngine.OnDevice
+            TranslationProvider.LocalAi -> {
+                val modelId = settings.localAiModel.first().ifBlank { SettingsDefaults.LOCAL_AI_MODEL }
+                TranslationEngine.LocalAi(modelId = modelId)
+            }
             TranslationProvider.Gemini -> {
                 val apiKey = settings.apiKey.first()
                 if (apiKey.isBlank()) return SaveResult.Error("Please enter a Gemini API key in Settings first!")
                 TranslationEngine.Gemini(apiKey, settings.geminiModel.first())
+            }
+            TranslationProvider.OpenAI -> {
+                val apiKey = settings.openAiKey.first()
+                if (apiKey.isBlank()) return SaveResult.Error("Please enter an OpenAI API key in Settings first!")
+                val model = settings.openAiModel.first().trim().ifBlank { SettingsDefaults.OPENAI_MODEL }
+                TranslationEngine.OpenAI(apiKey, model)
+            }
+            TranslationProvider.Claude -> {
+                val apiKey = settings.claudeKey.first()
+                if (apiKey.isBlank()) return SaveResult.Error("Please enter an Anthropic Claude API key in Settings first!")
+                val model = settings.claudeModel.first().trim().ifBlank { SettingsDefaults.CLAUDE_MODEL }
+                TranslationEngine.Claude(apiKey, model)
+            }
+            TranslationProvider.Groq -> {
+                val apiKey = settings.groqKey.first()
+                if (apiKey.isBlank()) return SaveResult.Error("Please enter a Groq API key in Settings first!")
+                val model = settings.groqModel.first().trim().ifBlank { SettingsDefaults.GROQ_MODEL }
+                TranslationEngine.Groq(apiKey, model)
+            }
+            TranslationProvider.DeepSeek -> {
+                val apiKey = settings.deepSeekKey.first()
+                if (apiKey.isBlank()) return SaveResult.Error("Please enter a DeepSeek API key in Settings first!")
+                val model = settings.deepSeekModel.first().trim().ifBlank { SettingsDefaults.DEEPSEEK_MODEL }
+                TranslationEngine.DeepSeek(apiKey, model)
             }
             TranslationProvider.OpenRouter -> {
                 val apiKey = settings.openRouterKey.first()

@@ -5,7 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.andreaserick.languagecoast.MainActivity
@@ -15,6 +16,7 @@ import com.andreaserick.languagecoast.R
 object NotificationHelper {
     private const val CHANNEL_ID = "study_reminder_channel"
     private const val NOTIFICATION_ID = 1001
+    private const val LARGE_ICON_PX = 256
 
     /** Creates the channel study reminders are posted to (Android 8 and later); creating it again changes nothing. */
     fun createNotificationChannel(context: Context) {
@@ -43,10 +45,11 @@ object NotificationHelper {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val largeIcon = BitmapFactory.decodeResource(context.resources, R.mipmap.logo_android_language_coast)
+        // The launcher icon is an adaptive icon (XML), so it's drawn rather than decoded.
+        val largeIcon = ContextCompat.getDrawable(context, R.mipmap.ic_launcher)?.toBitmap(LARGE_ICON_PX, LARGE_ICON_PX)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // Using standard foreground icon
+            .setSmallIcon(R.drawable.ic_notification)
             .setLargeIcon(largeIcon)
             .setContentTitle("Time to study!")
             .setContentText(
