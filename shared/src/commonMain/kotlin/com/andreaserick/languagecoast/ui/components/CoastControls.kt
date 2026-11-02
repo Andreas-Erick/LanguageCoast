@@ -52,6 +52,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.andreaserick.languagecoast.ui.theme.CardEdge
 import com.andreaserick.languagecoast.ui.theme.ChipContainer
 import com.andreaserick.languagecoast.ui.theme.OceanGround
 import com.andreaserick.languagecoast.ui.theme.SurfaceCard
@@ -206,11 +207,12 @@ fun ContentCard(
 ) {
     val colors = CardDefaults.cardColors(containerColor = SurfaceCard, contentColor = TextPrimary)
     val shape = MaterialTheme.shapes.large
+    val edge = BorderStroke(1.dp, CardEdge)
     val body: @Composable ColumnScope.() -> Unit = { Column(modifier = Modifier.padding(padding), content = content) }
     if (onClick == null) {
-        Card(modifier = modifier.fillMaxWidth(), colors = colors, shape = shape, content = body)
+        Card(modifier = modifier.fillMaxWidth(), colors = colors, shape = shape, border = edge, content = body)
     } else {
-        Card(onClick = onClick, modifier = modifier.fillMaxWidth(), colors = colors, shape = shape, content = body)
+        Card(onClick = onClick, modifier = modifier.fillMaxWidth(), colors = colors, shape = shape, border = edge, content = body)
     }
 }
 

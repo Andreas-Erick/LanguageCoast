@@ -8,8 +8,14 @@ import androidx.compose.ui.graphics.Color
  * everything else stays in the ocean tones.
  */
 
-/** The background of every screen. */
+/** The background of every screen: the bottom of the gradient that starts at [OceanSurface]. */
 val OceanGround = Color(0xFF0C2536)
+
+/** The top of the screen background, a touch lighter than [OceanGround], as if lit from above. */
+val OceanSurface = Color(0xFF123349)
+
+/** A hairline along the edge of cards and the nav bar, lifting them off the background without a shadow. */
+val CardEdge = Color(0x12FFFFFF)
 
 /** The bottom navigation bar, a step darker than [OceanGround]. */
 val NavGround = Color(0xFF0A1F2E)

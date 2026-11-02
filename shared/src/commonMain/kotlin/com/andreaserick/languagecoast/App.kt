@@ -7,6 +7,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EditNote
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Sailing
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -61,6 +63,7 @@ import com.andreaserick.languagecoast.ui.search.SearchScreen
 import com.andreaserick.languagecoast.ui.settings.SettingsScreen
 import com.andreaserick.languagecoast.ui.study.StudyScreen
 import com.andreaserick.languagecoast.ui.theme.LanguageCoastTheme
+import com.andreaserick.languagecoast.ui.theme.CardEdge
 import com.andreaserick.languagecoast.ui.theme.NavGround
 import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
@@ -130,45 +133,48 @@ private fun AppContent() {
                         enter = expandVertically(tween(TRANSITION_MILLIS)),
                         exit = shrinkVertically(tween(TRANSITION_MILLIS))
                     ) {
-                        NavigationBar(containerColor = NavGround, tonalElevation = 0.dp) {
-                            // A screen on top of a study session belongs to the tab the session was opened from
-                            // (My Coasts or Create's review button), so select the tab of the newest screen that has one.
-                            val tabDestination = backStack.lastOrNull { entry ->
-                                topLevelDestinations.any { tab -> entry.destination.hierarchy.any(tab.isSelected) }
-                            }?.destination
+                        Column {
+                            HorizontalDivider(color = CardEdge, thickness = 1.dp)
+                            NavigationBar(containerColor = NavGround, tonalElevation = 0.dp) {
+                                // A screen on top of a study session belongs to the tab the session was opened from
+                                // (My Coasts or Create's review button), so select the tab of the newest screen that has one.
+                                val tabDestination = backStack.lastOrNull { entry ->
+                                    topLevelDestinations.any { tab -> entry.destination.hierarchy.any(tab.isSelected) }
+                                }?.destination
 
-                            topLevelDestinations.forEach { destination ->
-                                val selected = tabDestination?.hierarchy?.any(destination.isSelected) == true
-                                NavigationBarItem(
-                                    icon = {
-                                        Icon(
-                                            imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
-                                            contentDescription = null
+                                topLevelDestinations.forEach { destination ->
+                                    val selected = tabDestination?.hierarchy?.any(destination.isSelected) == true
+                                    NavigationBarItem(
+                                        icon = {
+                                            Icon(
+                                                imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
+                                                contentDescription = null
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                text = destination.label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Bold
+                                            )
+                                        },
+                                        selected = selected,
+                                        onClick = {
+                                            navController.navigate(destination.route) {
+                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = Sunlit,
+                                            indicatorColor = Color.Transparent,
+                                            selectedTextColor = Sunlit,
+                                            unselectedIconColor = TextSecondary,
+                                            unselectedTextColor = TextSecondary
                                         )
-                                    },
-                                    label = {
-                                        Text(
-                                            text = destination.label,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Bold
-                                        )
-                                    },
-                                    selected = selected,
-                                    onClick = {
-                                        navController.navigate(destination.route) {
-                                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = Sunlit,
-                                        indicatorColor = Color.Transparent,
-                                        selectedTextColor = Sunlit,
-                                        unselectedIconColor = TextSecondary,
-                                        unselectedTextColor = TextSecondary
                                     )
-                                )
+                                }
                             }
                         }
                     }
