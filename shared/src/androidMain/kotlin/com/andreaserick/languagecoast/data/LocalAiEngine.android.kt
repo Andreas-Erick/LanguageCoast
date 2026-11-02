@@ -496,7 +496,8 @@ actual class LocalAiTranslator actual constructor() : Translator {
 internal fun parseLocalModelResponse(rawReply: String, request: TranslationRequest): TranslationResult {
     // Strip optional <think>...</think> reasoning blocks emitted by Qwen3 / DeepSeek style models
     val cleaned = rawReply.replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "").trim()
-    val structured = parseTranslationResponse(cleaned)
+    // A small model often has no category to offer; that's no reason to lose its translation.
+    val structured = parseTranslationResponse(cleaned, fallbackCategory = request.userCategory.ifBlank { DEFAULT_CATEGORY })
     if (structured.isSuccess) return structured
 
     // Fallback if a compact local model answered with just the translation or "TRANSLATION: ..." without CATEGORY:

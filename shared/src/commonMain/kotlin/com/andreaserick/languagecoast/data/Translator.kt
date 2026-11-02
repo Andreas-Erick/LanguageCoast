@@ -70,6 +70,8 @@ data class TranslationRequest(
 
 /** Builds the prompt AI models (Gemini, OpenAI, Claude, Groq, DeepSeek, OpenRouter, Local AI) get for [request]. */
 fun buildTranslationPrompt(request: TranslationRequest): String = with(request) {
+    // Never leave the label empty: a small model copies "User Category:" back as "(empty)".
+    val userCategoryText = if (userCategory.isBlank()) "The user did not choose a category." else "The user chose this category; use it: $userCategory"
     val categoryText = if (existingCategories.isEmpty()) {
         "You have no existing categories yet. Generate a brand new, single-word category (the name of the category should be in English)."
     } else {
@@ -86,8 +88,7 @@ fun buildTranslationPrompt(request: TranslationRequest): String = with(request) 
 
         Input text: $nativeSentence
 
-        If the user provided a category below, use it.
-        User Category: $userCategory
+        $userCategoryText
 
         $categoryText
 
@@ -141,7 +142,16 @@ private val KNOWN_LABELS = listOf("TRANSLATION", "CATEGORY", "EMOJI", "ALTERNATI
  * Returns [TranslationResult.FAILURE] if the translation or category is missing or empty;
  * the emoji is optional and dropped if it doesn't look like one, and "NONE" means no alternatives or note.
  */
-fun parseTranslationResponse(responseText: String): TranslationResult {
+/** Things a model writes in place of a category when it has none; never an island name. */
+private val CATEGORY_PLACEHOLDERS = setOf("", "(empty)", "empty", "none", "n/a", "na", "null", "-", "unknown", "the category", "category")
+
+/**
+ * Parses a model's reply into a [TranslationResult].
+ *
+ * @param fallbackCategory Used when the reply's category is missing or a placeholder like "(empty)";
+ *     without one, such a reply fails.
+ */
+fun parseTranslationResponse(responseText: String, fallbackCategory: String? = null): TranslationResult {
     // Strip markdown bold, code fences, and normalize known field labels to uppercase so case-insensitive
     // model outputs ("Translation:", "- **Category**:") parse reliably.
     val cleaned = responseText
@@ -189,6 +199,8 @@ fun parseTranslationResponse(responseText: String): TranslationResult {
 
     val translation = extractField("TRANSLATION", singleLineOnly = false)
     val category = extractField("CATEGORY", singleLineOnly = true)
+        .trim('"', '\'', '*', '[', ']', '(', ')', ' ')
+        .let { if (it.lowercase() in CATEGORY_PLACEHOLDERS) fallbackCategory.orEmpty() else it }
     val emoji = extractField("EMOJI", singleLineOnly = true)
 
     val alternatives = extractField("ALTERNATIVES", singleLineOnly = true)
