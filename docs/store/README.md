@@ -44,7 +44,7 @@ Texts, images and form answers for Google Play and the App Store, ready to paste
 > • Undo instead of "Are you sure?"
 >
 > PRIVATE BY DESIGN
-> No account, no ads, no tracking. Your cards stay on your phone. Translate with Google Gemini or OpenRouter using your own API key.
+> No account, no ads, no tracking. Your cards stay on your phone. Translate with Google Gemini, OpenAI, Claude, Groq, DeepSeek or OpenRouter using your own API key.
 
 On Android, add these lines under STAY ON TRACK:
 
@@ -53,7 +53,7 @@ On Android, add these lines under STAY ON TRACK:
 
 And this line under PRIVATE BY DESIGN:
 
-> Or translate on your phone, for free and offline.
+> Or translate on your phone, for free and offline: with the built-in translator, or with a local AI model that also sorts your cards into islands.
 
 **Category:** Education
 
@@ -79,7 +79,7 @@ Data types:
 
 | Data type | Collected | Shared | Optional | Purpose |
 |---|---|---|---|---|
-| App activity → Other user-generated content (sentences to translate, island names) | Yes | Yes, with the translation provider the user picks (Google Gemini or OpenRouter) | Yes. Only when the user picks Gemini or OpenRouter and adds an API key | App functionality |
+| App activity → Other user-generated content (sentences to translate, island names) | Yes | Yes, with the cloud provider the user picks (Google Gemini, OpenAI, Anthropic, Groq, DeepSeek or OpenRouter) | Yes. Only when the user picks a cloud provider and adds an API key | App functionality |
 | App info and performance → Diagnostics (ML Kit) | Yes | No | No | Analytics |
 | App info and performance → Other app performance data (ML Kit: configured languages) | Yes | No | No | Analytics |
 | Device or other IDs (ML Kit: per-installation ID via Firebase Installations) | Yes | No | No | Analytics |
@@ -93,7 +93,7 @@ The ML Kit rows come from Google's [ML Kit data disclosure](https://developers.g
 - **Content rating** (IARC questionnaire): category *Reference, News, or Educational*. No violence, sexual content, profanity, drugs, gambling or user-to-user communication. It shares no location. Expected rating: Everyone / PEGI 3.
 - **Target audience:** 13 and older. The app is fine for children, but choosing under 13 brings the Families policy requirements.
 - **Ads:** No.
-- **App access:** All features work without an account. For Gemini and OpenRouter the reviewer needs their own API key; on-device translation works without one.
+- **App access:** All features work without an account. For the cloud providers the reviewer needs their own API key; on-device translation and Local AI work without one.
 - **Government app / financial features / health:** No.
 
 ## App Store: App Privacy
@@ -102,4 +102,4 @@ Answer **"Data Not Collected"** (the iPhone app doesn't include ML Kit, so the A
 
 - **Age rating:** 4+.
 - **Export compliance:** already answered in `Info.plist` (`ITSAppUsesNonExemptEncryption = false`; the app only uses HTTPS).
-- **Review notes:** "Translation with Gemini or OpenRouter needs the user's own API key. Without a key, cards can be created by typing the translation yourself (Create → I'll type it)."
+- **Review notes:** "Translation with a cloud provider needs the user's own API key. Without a key, cards can be created by typing the translation yourself (Create → I'll type it)."
