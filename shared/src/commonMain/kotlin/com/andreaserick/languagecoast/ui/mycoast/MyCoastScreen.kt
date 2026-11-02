@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.CoastSummary
 import com.andreaserick.languagecoast.data.Languages
@@ -249,7 +250,7 @@ private fun WeekBars(studyDays: Set<LocalDate>, today: LocalDate) {
 }
 
 /**
- * A card for one coast: its language code and name (with the native name), how many cards are due,
+ * A card for one coast: its flag and name (with the native name), how many cards are due,
  * and how much of the coast was explored in the last week. Deleting is in its ⋮ menu.
  */
 @Composable
@@ -263,7 +264,7 @@ fun CoastCard(
     val coast = summary.coast
     val language = Languages.byName(coast.language)
     val nativeName = language?.nativeName?.takeIf { it != coast.language }
-    val code = language?.code ?: coast.language.take(2)
+    val flag = language?.flag
     // The islands are counted on the line under the progress bar, or here if there is no bar yet.
     val counts = if (summary.islandCount > 0) plural(summary.cardCount, "card") else plural(summary.islandCount, "island")
 
@@ -274,7 +275,17 @@ fun CoastCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconTile {
-                Text(code.uppercase(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                if (flag != null) {
+                    Text(flag, fontSize = 24.sp)
+                } else {
+                    // No flag stands for this language, so it shows its code instead.
+                    Text(
+                        (language?.code ?: coast.language.take(2)).uppercase(),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextPrimary
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
