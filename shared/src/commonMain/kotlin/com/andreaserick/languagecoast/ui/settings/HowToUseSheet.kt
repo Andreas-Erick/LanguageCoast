@@ -51,7 +51,7 @@ private val GUIDE = listOf(
         listOfNotNull(
             "On-device translation is free, private and works offline. It needs no setup."
                 .takeIf { onDeviceTranslationAvailable },
-            "Local AI scans your phone's RAM, storage, CPU and GPU, recommends compatible .litertlm models (such as Qwen3, Gemma 3, Llama 3.2 and Gemma 4), and lets you install and run them 100% offline with automatic island categorization."
+            "Local AI scans your phone's RAM, storage, CPU and GPU, recommends models that fit (such as Qwen 3, LFM2.5 and Gemma 4), and downloads the one you pick to run 100% offline with automatic island categorization. Gemma 3 is gated on Hugging Face and needs a token from there."
                 .takeIf { localAiAvailable },
             "Cloud AI providers (Google Gemini, OpenAI, Anthropic Claude, Groq, DeepSeek and OpenRouter) give rich translations, sort cards into islands and suggest natural alternatives.",
             "For longer sentences, AI models also suggest other ways to say it and explain nuances."

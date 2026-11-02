@@ -45,7 +45,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 ### 🤖 AI-powered card creation
 - **Translate however you like**, picked in Settings:
   - **On-device** (Google ML Kit): free, private and offline once a language is downloaded (about 30 MB). It only translates, so cards go into the island you type. Covers every app language except Bosnian, Latin and Serbian.
-  - **Local AI** (Android): a language model that runs on your phone with Google LiteRT-LM. The app scans your phone's RAM, storage and processor, recommends models that fit (such as Qwen 3, Gemma 3 and Llama 3.2), and downloads the one you pick. Free, private and offline, and unlike the on-device translator it also sorts cards into islands and suggests alternatives.
+  - **Local AI** (Android): a language model that runs on your phone with Google LiteRT-LM. The app scans your phone's RAM, storage and processor, recommends models that fit (Qwen 3, LFM2.5 and Gemma 4 download straight away; Gemma 3 is gated on Hugging Face and needs a token from there), and downloads the one you pick in the background. Free, private and offline, and unlike the on-device translator it also sorts cards into islands and suggests alternatives.
   - **Cloud AI** with your own API key: **Google Gemini**, **OpenAI**, **Anthropic Claude**, **Groq**, **DeepSeek** or **OpenRouter** (one key for many models; `openrouter/auto` picks one for you, or enter any model ID).
 - **Auto-categorization**: the AI models sort each new card into an island such as *Travel*, *Restaurant* or *Greetings*, reusing your existing islands whenever one fits.
 - **Icelandic noun rule**: single Icelandic nouns are returned with their definite and plural forms (e.g. *hestur, hesturinn, hestar*).

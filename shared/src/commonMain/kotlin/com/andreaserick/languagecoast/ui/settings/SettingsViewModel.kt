@@ -59,6 +59,9 @@ data class SettingsUiState(
     val isScanningHardware: Boolean = false,
     val modelRecommendations: List<ModelRecommendation> = defaultRecommendations(),
     val modelInstallStates: Map<String, ModelInstallStatus> = emptyMap(),
+    /** The saved Hugging Face token, which gated local models are downloaded with. */
+    val savedHuggingFaceToken: String = "",
+    val huggingFaceTokenSaved: Boolean = false,
     val reminder: ReminderSettings = ReminderSettings()
 )
 
@@ -90,6 +93,7 @@ class SettingsViewModel(
     private val claudeSaved = MutableStateFlow(false)
     private val groqSaved = MutableStateFlow(false)
     private val deepSeekSaved = MutableStateFlow(false)
+    private val huggingFaceTokenSaved = MutableStateFlow(false)
 
     private data class CloudProviderState(
         val geminiModel: String,
@@ -116,7 +120,8 @@ class SettingsViewModel(
         val activeModelId: String,
         val hardwareProfile: DeviceHardwareProfile?,
         val isScanning: Boolean,
-        val installStates: Map<String, ModelInstallStatus>
+        val installStates: Map<String, ModelInstallStatus>,
+        val huggingFaceToken: Pair<String, Boolean>
     )
 
     private val cloudState = combine(
@@ -160,6 +165,7 @@ class SettingsViewModel(
         localModels.hardwareProfile,
         localModels.isScanning,
         localModels.installStates,
+        combine(settings.huggingFaceToken, huggingFaceTokenSaved, ::Pair),
         ::LocalAiState
     )
 
@@ -198,6 +204,8 @@ class SettingsViewModel(
             isScanningHardware = local.isScanning,
             modelRecommendations = recommendations,
             modelInstallStates = local.installStates,
+            savedHuggingFaceToken = local.huggingFaceToken.first,
+            huggingFaceTokenSaved = local.huggingFaceToken.second,
             reminder = reminder
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
@@ -222,8 +230,22 @@ class SettingsViewModel(
 
     /** Downloads and installs a local `.litertlm` model and sets it as the active Local AI model. */
     fun installLocalModel(modelId: String) {
-        localModels.installModel(modelId)
-        viewModelScope.launch { settings.setLocalAiModel(modelId) }
+        viewModelScope.launch {
+            localModels.installModel(modelId, settings.huggingFaceToken.first().trim().ifEmpty { null })
+            settings.setLocalAiModel(modelId)
+        }
+    }
+
+    /** Saves the Hugging Face token that gated local models are downloaded with. */
+    fun saveHuggingFaceToken(token: String) {
+        viewModelScope.launch {
+            settings.setHuggingFaceToken(token.trim())
+            huggingFaceTokenSaved.value = true
+        }
+    }
+
+    fun onHuggingFaceTokenEdited() {
+        huggingFaceTokenSaved.value = false
     }
 
     /** Cancels an active download for [modelId]. */
