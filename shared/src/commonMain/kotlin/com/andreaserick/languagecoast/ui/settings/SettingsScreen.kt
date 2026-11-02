@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import com.andreaserick.languagecoast.ui.theme.ThemeMode
+import com.andreaserick.languagecoast.data.LocalAiCatalog
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -104,7 +108,7 @@ import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.formatTime
 import com.andreaserick.languagecoast.ui.components.is24HourClock
 import com.andreaserick.languagecoast.ui.theme.CoralText
-import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfBlue
 import com.andreaserick.languagecoast.ui.theme.Sunlit
@@ -164,6 +168,53 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
                 )
             }
 
+            SettingsCard(title = "Weekly goal", icon = Icons.Default.Flag) {
+                FieldLabel("Islands to study each week")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsDefaults.WEEKLY_GOALS.forEach { goal ->
+                        FilterChip(
+                            selected = goal == uiState.weeklyGoal,
+                            onClick = { viewModel.setWeeklyGoal(goal) },
+                            label = { Text("$goal", style = MaterialTheme.typography.labelMedium) },
+                            colors = coastChipColors(),
+                            border = coastChipBorder(enabled = true, selected = goal == uiState.weeklyGoal),
+                            shape = MaterialTheme.shapes.small
+                        )
+                    }
+                }
+                Hint("Shown on My Coasts as a bar for the week. Finishing a session on an island counts it.")
+            }
+
+            SettingsCard(title = "Look & feel", icon = Icons.Default.Palette) {
+                FieldLabel("Theme")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = mode == uiState.themeMode,
+                            onClick = { viewModel.setThemeMode(mode) },
+                            label = { Text(mode.label, style = MaterialTheme.typography.labelMedium) },
+                            colors = coastChipColors(),
+                            border = coastChipBorder(enabled = true, selected = mode == uiState.themeMode),
+                            shape = MaterialTheme.shapes.small
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+                ToggleRow(
+                    title = "Vibration",
+                    subtitle = "A short buzz when a card is flipped or graded.",
+                    checked = uiState.hapticsEnabled,
+                    onCheckedChange = viewModel::setHapticsEnabled
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                ToggleRow(
+                    title = "Sounds",
+                    subtitle = "A soft tone for right and wrong answers.",
+                    checked = uiState.soundsEnabled,
+                    onCheckedChange = viewModel::setSoundsEnabled
+                )
+            }
+
             if (fileTransferAvailable) {
                 SettingsCard(title = "Your cards", icon = Icons.Default.SwapVert) {
                     CardTransferSection()
@@ -179,7 +230,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
                     onClick = { showHowToUse = true },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(ButtonHeight)
+                        .heightIn(min = ButtonHeight)
                 ) {
                     Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.size(8.dp))
@@ -204,6 +255,42 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
     }
 
     if (showHowToUse) HowToUseSheet(onDismiss = { showHowToUse = false })
+
+    uiState.meteredWarningModelId?.let { modelId ->
+        val model = LocalAiCatalog.byId(modelId)
+        AlertDialog(
+            onDismissRequest = viewModel::dismissMeteredWarning,
+            title = { Text("Download over mobile data?") },
+            text = {
+                Text(
+                    "You're not on Wi-Fi. ${model?.name ?: "This model"} is ${model?.sizeLabel ?: "large"}, " +
+                        "which may use up a good part of a data plan."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.installLocalModel(modelId, allowMetered = true) }) {
+                    Text("Download anyway", color = Sunlit, style = MaterialTheme.typography.labelMedium)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissMeteredWarning) {
+                    Text("Wait for Wi-Fi", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        )
+    }
+}
+
+/** A setting that is on or off, with a title and a line explaining it. */
+@Composable
+private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(subtitle, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
 }
 
 /** Where the privacy policy is published; the app stores link to it too. */
@@ -299,7 +386,7 @@ private fun ApiKeySection(
         enabled = !isSaved && currentInput.isNotBlank(),
         modifier = Modifier
             .fillMaxWidth()
-            .height(ButtonHeight)
+            .heightIn(min = ButtonHeight)
     ) {
         Text(if (justSaved) "Saved" else "Save API Key")
     }
@@ -853,7 +940,7 @@ private fun DownloadButton(label: String, enabled: Boolean, primary: Boolean, on
 @Composable
 private fun FitBadge(fitLevel: ModelFitLevel) {
     val (container, content) = when (fitLevel) {
-        ModelFitLevel.BEST_MATCH -> Sunlit to OceanGround
+        ModelFitLevel.BEST_MATCH -> Sunlit to OnSunlit
         ModelFitLevel.GREAT_FIT -> SurfaceSelected to Seafoam
         ModelFitLevel.HEAVY_FIT -> SurfaceSelected to TextPrimary
         ModelFitLevel.NOT_RECOMMENDED -> SurfaceSelected to CoralText

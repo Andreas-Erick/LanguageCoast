@@ -71,4 +71,13 @@ class ReminderMessagesTest {
         assertEquals(7, titles.toSet().size)
         assertEquals(titles[0], scheduledReminderMessage(7).title)
     }
+
+    @Test
+    fun teaserReminderCarriesItsCardForTheRevealButton() {
+        val card = ReminderCard("Where is the beach?", "German", "Travel", "✈️", cardId = 7, targetText = "Wo ist der Strand?")
+        val teasers = week(teaser = card).filter { it.kind == ReminderKind.Teaser }
+        assertTrue(teasers.isNotEmpty())
+        teasers.forEach { assertEquals(card, it.teaser) }
+        week(teaser = null).forEach { assertEquals(null, it.teaser) }
+    }
 }

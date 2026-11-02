@@ -8,6 +8,7 @@ import com.andreaserick.languagecoast.ui.search.SearchViewModel
 import com.andreaserick.languagecoast.ui.settings.BackupViewModel
 import com.andreaserick.languagecoast.ui.settings.CardTransferViewModel
 import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
+import com.andreaserick.languagecoast.ui.recap.RecapViewModel
 import com.andreaserick.languagecoast.ui.study.StudyViewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
@@ -18,6 +19,7 @@ val viewModelModule = module {
     viewModelOf(::CreateViewModel)
     viewModelOf(::IslandViewModel)
     viewModelOf(::MyCoastViewModel)
+    viewModelOf(::RecapViewModel)
     viewModelOf(::SearchViewModel)
     viewModelOf(::BackupViewModel)
     viewModelOf(::CardTransferViewModel)

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Sailing
 import androidx.compose.material.icons.filled.Search
@@ -58,6 +60,7 @@ import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.dayOfWeekName
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
+import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.StreakToday
 import com.andreaserick.languagecoast.ui.theme.SurfBlue
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
@@ -76,11 +79,15 @@ import org.koin.compose.viewmodel.koinViewModel
  *
  * @param onCoastClick Called with the coast ID and display name when a coast is tapped.
  * @param onSearchClick Called when the search icon is tapped.
+ * @param onLeakyClick Opens a session with the leaky words.
+ * @param onRecapClick Opens the month's recap.
  */
 @Composable
 fun MyCoastScreen(
     onCoastClick: (Int, String) -> Unit,
     onSearchClick: () -> Unit,
+    onLeakyClick: () -> Unit = {},
+    onRecapClick: () -> Unit = {},
     viewModel: MyCoastViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -106,6 +113,9 @@ fun MyCoastScreen(
             title = "My Coasts",
             actions = {
                 if (uiState.coasts.any { it.cardCount > 0 }) {
+                    IconButton(onClick = onRecapClick) {
+                        Icon(Icons.Default.Insights, contentDescription = "This month's recap", tint = TextPrimary)
+                    }
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Default.Search, contentDescription = "Search cards", tint = TextPrimary)
                     }
@@ -125,7 +135,7 @@ fun MyCoastScreen(
                         onClick = { showNewCoastDialog = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(ButtonHeight)
+                            .heightIn(min = ButtonHeight)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                         Text("Start a Coast")
@@ -141,8 +151,16 @@ fun MyCoastScreen(
                     StreakCard(
                         streakCount = uiState.streakCount,
                         studyDays = uiState.studyDays,
-                        today = uiState.today
+                        today = uiState.today,
+                        weeklyGoal = uiState.weeklyGoal,
+                        islandsThisWeek = uiState.islandsThisWeek,
+                        freezeUsedOn = uiState.freezeUsedOn
                     )
+                }
+                if (uiState.leakyCount > 0) {
+                    item(key = "leaky") {
+                        LeakyCard(count = uiState.leakyCount, onClick = onLeakyClick, modifier = Modifier.animateItem())
+                    }
                 }
                 items(uiState.coasts, key = { it.coast.coastId }) { summary ->
                     CoastCard(
@@ -163,7 +181,7 @@ fun MyCoastScreen(
                             onClick = { showNewCoastDialog = true },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(ButtonHeight)
+                                .heightIn(min = ButtonHeight)
                                 .animateItem()
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
@@ -177,13 +195,23 @@ fun MyCoastScreen(
 }
 
 /**
- * The user's daily study streak, with a bar for each day of the current week.
+ * The user's daily study streak, with a bar for each day of the current week, and how the weekly
+ * island goal is going.
  *
  * @param streakCount The current number of consecutive study days.
  * @param studyDays Days with a completed study session.
+ * @param freezeUsedOn A day this week that a streak freeze covered, to say so.
  */
 @Composable
-fun StreakCard(streakCount: Int, studyDays: Set<LocalDate>, today: LocalDate?, modifier: Modifier = Modifier) {
+fun StreakCard(
+    streakCount: Int,
+    studyDays: Set<LocalDate>,
+    today: LocalDate?,
+    modifier: Modifier = Modifier,
+    weeklyGoal: Int = 0,
+    islandsThisWeek: Int = 0,
+    freezeUsedOn: LocalDate? = null
+) {
     ContentCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.Bottom) {
             if (streakCount > 0) {
@@ -203,14 +231,56 @@ fun StreakCard(streakCount: Int, studyDays: Set<LocalDate>, today: LocalDate?, m
         }
         if (today != null) {
             Spacer(modifier = Modifier.height(14.dp))
-            WeekBars(studyDays = studyDays, today = today)
+            WeekBars(studyDays = studyDays, today = today, frozen = freezeUsedOn)
+        }
+        if (weeklyGoal > 0) {
+            Spacer(modifier = Modifier.height(14.dp))
+            val reached = islandsThisWeek >= weeklyGoal
+            LinearProgressIndicator(
+                progress = { (islandsThisWeek.toFloat() / weeklyGoal).coerceIn(0f, 1f) },
+                color = if (reached) Seafoam else SurfBlue,
+                trackColor = SurfaceRaised,
+                strokeCap = StrokeCap.Round,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = buildString {
+                    append(if (reached) "Weekly goal reached: " else "Weekly goal: ")
+                    append("$islandsThisWeek of ${plural(weeklyGoal, "island")}")
+                    if (freezeUsedOn != null) append(" · ❄️ freeze used ${dayOfWeekName(freezeUsedOn.dayOfWeek, narrow = false)}")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
         }
     }
 }
 
-/** A bar for each day from Monday to Sunday of the current week: lit if studied, a step brighter for today. */
+/** The cards that keep slipping away, with a session that goes over just those. */
 @Composable
-private fun WeekBars(studyDays: Set<LocalDate>, today: LocalDate) {
+private fun LeakyCard(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    ContentCard(onClick = onClick, modifier = modifier, padding = PaddingValues(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconTile { Text("💧", fontSize = 22.sp) }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("${plural(count, "leaky word")}", style = MaterialTheme.typography.titleMedium)
+                Text("Cards you keep forgetting. A short session plugs the leaks.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Pill("Study")
+        }
+    }
+}
+
+/** A bar for each day from Monday to Sunday of the current week: lit if studied, half-lit if a freeze covered it, a step brighter for today. */
+@Composable
+private fun WeekBars(studyDays: Set<LocalDate>, today: LocalDate, frozen: LocalDate? = null) {
     val monday = today.minus(today.dayOfWeek.isoDayNumber - 1, DateTimeUnit.DAY)
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
         (0 until 7).map { monday.plus(it, DateTimeUnit.DAY) }.forEach { day ->
@@ -221,7 +291,7 @@ private fun WeekBars(studyDays: Set<LocalDate>, today: LocalDate) {
                 modifier = Modifier
                     .weight(1f)
                     .semantics(mergeDescendants = true) {
-                        contentDescription = "$dayName: ${if (studied) "studied" else "not studied"}"
+                        contentDescription = "$dayName: ${if (studied) "studied" else if (day == frozen) "streak frozen" else "not studied"}"
                     }
             ) {
                 Text(
@@ -238,6 +308,7 @@ private fun WeekBars(studyDays: Set<LocalDate>, today: LocalDate) {
                         .background(
                             color = when {
                                 studied -> Sunlit
+                                day == frozen -> SurfBlue
                                 day == today -> StreakToday
                                 else -> SurfaceRaised
                             },

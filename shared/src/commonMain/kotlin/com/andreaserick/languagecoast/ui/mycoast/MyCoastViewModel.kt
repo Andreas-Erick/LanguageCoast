@@ -7,8 +7,12 @@ import com.andreaserick.languagecoast.data.CoastSummary
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
+import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.availableCoastLanguages
+import com.andreaserick.languagecoast.data.isLeaky
+import com.andreaserick.languagecoast.data.startOfWeek
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -32,6 +36,14 @@ data class MyCoastUiState(
     val today: LocalDate? = null,
     /** Current time in epoch millis, for "last studied" labels. */
     val now: Long = 0L,
+    /** Islands the user aims to study each week. */
+    val weeklyGoal: Int = SettingsDefaults.WEEKLY_GOAL,
+    /** Islands with a session since Monday. */
+    val islandsThisWeek: Int = 0,
+    /** The day this week a streak freeze stood in for, if any. */
+    val freezeUsedOn: LocalDate? = null,
+    /** Cards the user keeps forgetting (see [isLeaky]). */
+    val leakyCount: Int = 0,
     val isLoading: Boolean = true
 )
 
@@ -46,12 +58,32 @@ class MyCoastViewModel(
     private val timeZone: TimeZone
 ) : ViewModel() {
 
+    /** What the weekly goal and the leaky-word booster need: islands studied since Monday, and the leaky cards. */
+    private val progress = combine(
+        flashcards.observeAllIslands(),
+        flashcards.observeAllCards(),
+        settings.weeklyGoal,
+        settings.freezeUsedOn
+    ) { islands, cards, goal, freezeUsedOn ->
+        val today = clock.todayIn(timeZone)
+        val weekStart = startOfWeek(today).atStartOfDayIn(timeZone).toEpochMilliseconds()
+        Progress(
+            weeklyGoal = goal,
+            islandsThisWeek = islands.count { (it.lastStudied ?: 0L) >= weekStart },
+            freezeUsedOn = freezeUsedOn?.takeIf { it >= startOfWeek(today) },
+            leakyCount = cards.count { isLeaky(it.card) }
+        )
+    }
+
+    private data class Progress(val weeklyGoal: Int, val islandsThisWeek: Int, val freezeUsedOn: LocalDate?, val leakyCount: Int)
+
     val uiState: StateFlow<MyCoastUiState> = combine(
         flashcards.observeCoastSummaries(studiedSince = clock.now().toEpochMilliseconds() - RECENT_STUDY_WINDOW.inWholeMilliseconds, now = clock.now().toEpochMilliseconds()),
         settings.nativeLanguage,
         settings.streakCount,
-        settings.studyDays
-    ) { coasts, nativeLanguage, streak, studyDays ->
+        settings.studyDays,
+        progress
+    ) { coasts, nativeLanguage, streak, studyDays, progress ->
         MyCoastUiState(
             coasts = coasts,
             availableLanguages = availableCoastLanguages(coasts.map { it.coast }, nativeLanguage),
@@ -59,6 +91,10 @@ class MyCoastViewModel(
             studyDays = studyDays,
             today = clock.todayIn(timeZone),
             now = clock.now().toEpochMilliseconds(),
+            weeklyGoal = progress.weeklyGoal,
+            islandsThisWeek = progress.islandsThisWeek,
+            freezeUsedOn = progress.freezeUsedOn,
+            leakyCount = progress.leakyCount,
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MyCoastUiState())

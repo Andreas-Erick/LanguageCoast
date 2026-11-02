@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.search
-import com.andreaserick.languagecoast.ui.theme.OceanGround
+import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
@@ -77,7 +77,7 @@ fun LanguagePickerDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
-            color = OceanGround,
+            color = OnSunlit,
         ) {
             Column(modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)) {
                 Text(

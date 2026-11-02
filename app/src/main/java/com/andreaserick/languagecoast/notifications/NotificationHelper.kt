@@ -76,9 +76,44 @@ object NotificationHelper {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 
+        // A quoted card can be answered from the notification: reveal it, then say whether it was known.
+        val teaser = message.teaser
+        if (message.kind == ReminderKind.Teaser && teaser != null && teaser.cardId != 0) {
+            builder.addAction(0, "Reveal", ReminderActionReceiver.pendingIntent(context, ReminderActionReceiver.ACTION_REVEAL, teaser))
+        }
+
         val notificationManager: NotificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, builder.build())
+    }
+
+    /** Replaces the teaser reminder with [teaser]'s answer and the buttons that grade it. */
+    fun showRevealedTeaser(context: Context, teaser: ReminderCard) {
+        createNotificationChannel(context)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val open = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val text = "${teaser.targetText}\n“${teaser.nativeText}” · ${teaser.emoji} ${teaser.islandName}"
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(emojiTile(teaser.emoji))
+            .setColor(SUNLIT)
+            .setContentTitle("Did you know it?")
+            .setContentText(teaser.targetText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .addAction(0, "Got it", ReminderActionReceiver.pendingIntent(context, ReminderActionReceiver.ACTION_GOOD, teaser))
+            .addAction(0, "Forgot", ReminderActionReceiver.pendingIntent(context, ReminderActionReceiver.ACTION_AGAIN, teaser))
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NOTIFICATION_ID, builder.build())
+    }
+
+    /** Takes the reminder down, e.g. once its card was graded. */
+    fun dismiss(context: Context) {
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION_ID)
     }
 
     /** [emoji] on a rounded tile in the app's raised surface colour, like the icon tiles in the app. */

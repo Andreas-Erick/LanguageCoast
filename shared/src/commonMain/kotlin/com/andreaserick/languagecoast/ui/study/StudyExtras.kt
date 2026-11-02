@@ -182,7 +182,7 @@ fun ClozeStudyView(
             null -> CoastButton(
                 onClick = ::check,
                 enabled = userInput.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().height(ButtonHeight)
+                modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
             ) {
                 Text("Check")
             }
@@ -256,7 +256,7 @@ internal fun AnswerVerdict(outcome: AnswerMatch, expected: String, alsoCorrect: 
 /** A slip of a letter counts as remembered, but only just: the card is graded Hard. */
 @Composable
 internal fun HardContinue(onGrade: (Grade) -> Unit) {
-    CoastButton(onClick = { onGrade(Grade.Hard) }, modifier = Modifier.fillMaxWidth().height(ButtonHeight)) {
+    CoastButton(onClick = { onGrade(Grade.Hard) }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
         Text("Continue")
     }
     Text(
@@ -271,7 +271,7 @@ internal fun HardContinue(onGrade: (Grade) -> Unit) {
 /** A wrong answer means the card wasn't remembered, so there is nothing to grade: it's "Again". */
 @Composable
 internal fun AgainContinue(onGrade: (Grade) -> Unit) {
-    CoastButton(onClick = { onGrade(Grade.Again) }, modifier = Modifier.fillMaxWidth().height(ButtonHeight)) {
+    CoastButton(onClick = { onGrade(Grade.Again) }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
         Text("Continue")
     }
     Text(

@@ -100,7 +100,7 @@ fun CoastScreen(
                             onClick = { onReviewCoast(uiState.coastId, uiState.coastName) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(ButtonHeight)
+                                .heightIn(min = ButtonHeight)
                                 .animateItem()
                         ) {
                             Text(
