@@ -23,7 +23,7 @@ class BackupManager(
     /** Replaces everything in the app with [backup]. The API keys stay as they are. */
     suspend fun restore(backup: Backup) {
         flashcards.replaceAll(
-            coasts = backup.coasts.map { Coast(it.coastId, it.language, it.creationDate, it.goal, it.bankOffered) },
+            coasts = backup.coasts.map { Coast(it.coastId, it.language, it.creationDate, it.goal, it.bankOffered, it.region) },
             islands = backup.islands.map { LanguageIsland(it.islandId, it.coastId, it.name, it.creationDate, it.emoji, it.lastStudied) },
             cards = backup.cards.map {
                 Flashcard(
@@ -46,7 +46,7 @@ class BackupManager(
     }
 }
 
-private fun Coast.toBackup() = BackupCoast(coastId, language, creationDate, goal, bankOffered)
+private fun Coast.toBackup() = BackupCoast(coastId, language, creationDate, goal, bankOffered, region)
 
 private fun LanguageIsland.toBackup() = BackupIsland(islandId, coastId, name, creationDate, emoji, lastStudied)
 

@@ -10,9 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-/** Placeholders a whole topic can be added with: they have one value per person. The rest need a value per sentence. */
-val PROFILE_PLACEHOLDERS = listOf("name", "city", "country", "job")
-
 /**
  * How far adding starter topics to a coast has got.
  *
@@ -99,12 +96,12 @@ class StarterImporter(
                 progress = progress.copy(topic = theme.category)
                 _progress.value = progress
                 val doneBefore = progress.done
-                val translated = starterTranslator.translate(engine, theme, nativeLanguage, coast.language, sentences) { done ->
+                val translated = starterTranslator.translate(engine, theme, nativeLanguage, coast.language, coast.region, sentences) { done ->
                     progress = progress.copy(done = doneBefore + done)
                     _progress.value = progress
                 }
                 for (sentence in translated) {
-                    flashcards.addFlashcard(coastId, sentence.nativeText, sentence.targetText, theme.category, theme.emoji)
+                    flashcards.addFlashcard(coastId, sentence.nativeText, sentence.targetText, theme.category, theme.emoji, sentence.alternatives, sentence.note)
                 }
                 progress = progress.copy(done = doneBefore + sentences.size, added = progress.added + translated.size, failed = progress.failed + (sentences.size - translated.size))
                 _progress.value = progress

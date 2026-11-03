@@ -59,7 +59,9 @@ data class BackupSettings(
     val hapticsEnabled: Boolean = true,
     val soundsEnabled: Boolean = true,
     /** Starter topics added whole to a coast, as "coastId:topic". */
-    val starterTopicsAdded: List<String> = emptyList()
+    val starterTopicsAdded: List<String> = emptyList(),
+    /** The user's name, city and so on, by placeholder (see [Profile.fillers]). */
+    val profile: Map<String, String> = emptyMap()
 )
 
 @Serializable
@@ -70,7 +72,9 @@ data class BackupCoast(
     /** Why the user learns the language, if they said. */
     val goal: String? = null,
     /** How many starter sentences the daily session has offered on the coast. */
-    val bankOffered: Int = 0
+    val bankOffered: Int = 0,
+    /** Where the language will be used, if the user said. */
+    val region: String? = null
 )
 
 @Serializable

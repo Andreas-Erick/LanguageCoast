@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import com.andreaserick.languagecoast.ui.theme.ThemeMode
 import com.andreaserick.languagecoast.data.LocalAiCatalog
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -81,6 +82,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.DeviceHardwareProfile
 import com.andreaserick.languagecoast.data.Languages
+import com.andreaserick.languagecoast.data.Profile
+import com.andreaserick.languagecoast.data.profileExample
+import com.andreaserick.languagecoast.data.profileLabel
 import com.andreaserick.languagecoast.data.ModelFitLevel
 import com.andreaserick.languagecoast.data.ModelInstallStatus
 import com.andreaserick.languagecoast.data.ModelRecommendation
@@ -166,6 +170,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
                     onEnabledChange = viewModel::setRemindersEnabled,
                     onTimeChange = viewModel::setReminderTime
                 )
+            }
+
+            SettingsCard(title = "About you", icon = Icons.Default.Person) {
+                ProfileSection(profile = uiState.profile, onChange = viewModel::setProfileField)
             }
 
             SettingsCard(title = "Weekly goal", icon = Icons.Default.Flag) {
@@ -298,6 +306,31 @@ private const val PRIVACY_POLICY_URL =
     "https://github.com/Andreas-Erick/LanguageCoast/blob/main/docs/privacy-policy.md"
 
 /** A titled group of settings. */
+/**
+ * The user's name, city and so on: the blanks starter sentences use, entered once here and filled in
+ * wherever one appears. Each field is saved as it is typed.
+ */
+@Composable
+private fun ProfileSection(profile: Profile, onChange: (placeholder: String, value: String) -> Unit) {
+    Hint("Starter sentences have blanks like [name] and [city]. Fill these in once and they're filled in for you; leave out what you'd rather not share.")
+    val fillers = profile.fillers()
+    Profile.PLACEHOLDERS.forEach { placeholder ->
+        // Typing is kept locally so the field doesn't lag behind the saved value.
+        var draft by remember(placeholder) { mutableStateOf(fillers[placeholder].orEmpty()) }
+        CoastTextField(
+            value = draft,
+            onValueChange = {
+                draft = it
+                onChange(placeholder, it)
+            },
+            label = { Text(profileLabel(placeholder)) },
+            placeholder = { Text(profileExample(placeholder)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
 @Composable
 private fun SettingsCard(title: String, icon: ImageVector, content: @Composable ColumnScope.() -> Unit) {
     ContentCard(padding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 18.dp)) {

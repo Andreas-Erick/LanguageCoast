@@ -153,7 +153,7 @@ class DailySessionTest {
 
     @Test
     fun everyPlaceholderInTheBankIsAKnownOne() {
-        val known = setOf("name", "city", "country", "language", "number", "time", "word", "job", "place", "day", "month")
+        val known = setOf("name", "city", "country", "home country", "hometown", "language", "number", "time", "word", "job", "place", "day", "month", "destination")
         val used = PhraseBank.THEMES.flatMap { it.sentences }.flatMap { PhraseBank.placeholders(it) }.toSet()
 
         assertTrue(used.isNotEmpty())

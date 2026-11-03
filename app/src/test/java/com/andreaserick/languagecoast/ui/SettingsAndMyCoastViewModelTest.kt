@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.ui
 
 import androidx.lifecycle.SavedStateHandle
+import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.PhraseBank
@@ -251,7 +252,7 @@ class SettingsAndMyCoastViewModelTest {
         assertEquals(PhraseBank.THEMES.size - 1, topics.size)
         assertTrue(topics.none { it.theme.category == "Numbers" })
         val aboutMe = topics.single { it.theme.category == "About Me" }
-        assertEquals(listOf("name", "city", "country", "job"), aboutMe.profileBlanks)
+        assertEquals(listOf("name", "city", "country", "home country", "hometown", "job"), aboutMe.profileBlanks)
         // "I'm [number] years old." and the like need a value per sentence, so a whole-topic import leaves them out.
         assertTrue(aboutMe.sentenceCount < aboutMe.theme.sentences.size)
         assertTrue(aboutMe.sentenceCount >= 10)
@@ -293,7 +294,7 @@ class SettingsAndMyCoastViewModelTest {
         assertTrue("My name is Anna." in added)
         assertTrue("I live in Oslo." in added)
         assertTrue(added.none { "[" in it }) // No blank left unfilled.
-        assertTrue(added.none { it.startsWith("I'm from") }) // [country] wasn't given.
+        assertTrue(added.none { it.startsWith("I'm from") }) // [home country] wasn't given.
         assertTrue(added.none { it.startsWith("I work as") })
         assertEquals(1, added.count { it == "I'm here on holiday." }) // Already on the coast: not added twice.
     }
@@ -309,9 +310,33 @@ class SettingsAndMyCoastViewModelTest {
 
         assertEquals(colours.sentences.size, flashcards.cards.value.size)
         assertEquals("Farbe 1", flashcards.cards.value.first().targetText)
-        assertEquals(colours.sentences.size / StarterTranslator.BATCH_SIZE + 1, translator.prompts.size)
+        // One translation prompt and one natural-speech check per batch.
+        assertEquals(2 * (colours.sentences.size / StarterTranslator.BATCH_SIZE + 1), translator.prompts.size)
         assertTrue(translator.prompts.first().contains("dictionary form"))
+        assertTrue(translator.prompts[1].contains("native speaker of German"))
         assertEquals(0, translator.requests) // Nothing fell back to one-by-one translation.
+    }
+
+    @Test
+    fun theNaturalCheckRewritesWhatANativeWouldSayDifferently() = runTest {
+        flashcards.coasts.value = listOf(Coast(coastId = 1, language = "Spanish", region = "Mexico"))
+        settings.apiKey.value = "key"
+        val greetings = PhraseBank.theme("Greetings")!!
+        translator.completionFor = { prompt ->
+            if ("native speaker of Spanish from Mexico" in prompt) Completion("1 || ¿Qué tal? || In Mexico people greet more casually.")
+            else Completion(greetings.sentences.mapIndexed { i, _ -> "${i + 1} || Traducción ${i + 1}" }.joinToString("\n"))
+        }
+
+        importer.run(1, listOf("Greetings"), emptyMap())
+
+        val first = flashcards.cards.value.first()
+        assertEquals("¿Qué tal?", first.targetText)
+        assertEquals(listOf("Traducción 1"), first.alternatives)
+        assertEquals("In Mexico people greet more casually.", first.note)
+        val second = flashcards.cards.value[1]
+        assertEquals("Traducción 2", second.targetText)
+        assertTrue(second.alternatives.isEmpty())
+        assertTrue(translator.prompts.first().contains("Spanish as spoken in Mexico"))
     }
 
     @Test

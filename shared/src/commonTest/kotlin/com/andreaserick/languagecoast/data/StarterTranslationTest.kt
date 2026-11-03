@@ -12,7 +12,7 @@ class StarterTranslationTest {
 
     @Test
     fun promptNumbersTheEntriesAndCarriesTheTopicsRules() {
-        val prompt = buildStarterTranslationPrompt(PhraseBank.theme("Phone Settings")!!, "English", "German", listOf("Wi-Fi", "Turn off"))
+        val prompt = buildStarterTranslationPrompt(PhraseBank.theme("Phone Settings")!!, "English", "German", null, listOf("Wi-Fi", "Turn off"))
 
         assertTrue("1. Wi-Fi" in prompt)
         assertTrue("2. Turn off" in prompt)
@@ -23,10 +23,32 @@ class StarterTranslationTest {
 
     @Test
     fun promptAsksForBothSidesWhenTheUserIsNotEnglishSpeaking() {
-        val prompt = buildStarterTranslationPrompt(greetings, "Dutch", "German", listOf("Hello, how are you?"))
+        val prompt = buildStarterTranslationPrompt(greetings, "Dutch", "German", null, listOf("Hello, how are you?"))
 
         assertTrue("[number] || [the entry in Dutch] || [the entry in German]" in prompt)
         assertTrue("front of the card" in prompt)
+    }
+
+    @Test
+    fun promptsCarryTheRegionWhenOneIsGiven() {
+        val translate = buildStarterTranslationPrompt(greetings, "English", "Spanish", "Mexico", listOf("Hello!"))
+        val check = buildNaturalCheckPrompt(greetings, "English", "Spanish", "Mexico", listOf(ProposedSentence("Hello!", "¡Hola!", "Greetings")))
+        val suggest = buildSuggestionPrompt("Spanish", "English", null, 3, emptyList(), emptyList(), 0, region = "Mexico")
+
+        assertTrue("Spanish as spoken in Mexico" in translate)
+        assertTrue("register of Mexico" in translate)
+        assertTrue("native speaker of Spanish from Mexico" in check)
+        assertTrue("1. Hello! => ¡Hola!" in check)
+        assertTrue("use it in Mexico" in suggest)
+        assertTrue("the places where it is spoken" in buildNaturalCheckPrompt(greetings, "English", "Spanish", null, emptyList()))
+    }
+
+    @Test
+    fun naturalCheckParsesFixesAndIgnoresNone() {
+        assertTrue(parseNaturalCheck("NONE", 3).isEmpty())
+        val fixes = parseNaturalCheck("2 || ¿Qué onda? || In Mexico this is the casual greeting.\n3 || NONE || fine", 3)
+
+        assertEquals(mapOf(2 to ("¿Qué onda?" to "In Mexico this is the casual greeting.")), fixes)
     }
 
     @Test

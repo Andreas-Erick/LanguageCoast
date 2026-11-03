@@ -86,7 +86,11 @@ data class ProposedSentence(
     val nativeText: String,
     val targetText: String,
     val category: String,
-    val emoji: String? = null
+    val emoji: String? = null,
+    /** Another way to say it: the first translation, when the natural-speech check rewrote it. */
+    val alternatives: List<String> = emptyList(),
+    /** Why it was rewritten, if it was. */
+    val note: String? = null
 )
 
 /** Cards the user has start as "beginner" prompts; past this many the model may go a little further. */
@@ -98,6 +102,7 @@ const val BEGINNER_CARD_COUNT = 40
  * @param avoid Sentences (in [nativeLanguage]) the user already has or has skipped.
  * @param existingCategories Islands on the coast, to file the sentences under where one fits.
  * @param cardCount How many cards the coast has, as a rough level.
+ * @param region Where the language will be used, so the sentences use that place's words and forms; null for no preference.
  */
 fun buildSuggestionPrompt(
     targetLanguage: String,
@@ -106,8 +111,11 @@ fun buildSuggestionPrompt(
     count: Int,
     avoid: List<String>,
     existingCategories: List<String>,
-    cardCount: Int
+    cardCount: Int,
+    region: String? = null
 ): String {
+    val where = region?.trim()?.takeIf { it.isNotEmpty() }
+        ?.let { " They will use it in $it: use the words, forms, spelling and register of $it." } ?: ""
     val why = goal?.trim()?.takeIf { it.isNotEmpty() }
         ?.let { "Why they are learning it: \"$it\". Pick sentences they would want to say or understand for exactly that." }
         ?: "They haven't said why they are learning it, so pick sentences for everyday conversation."
@@ -118,7 +126,7 @@ fun buildSuggestionPrompt(
     else "File each sentence under one of these existing categories where one fits: ${existingCategories.joinToString(", ")}. Only invent a new short English category name if none fits."
 
     return """
-        You are helping someone learn $targetLanguage. Their native language is $nativeLanguage.
+        You are helping someone learn $targetLanguage. Their native language is $nativeLanguage.$where
         $why
         $level
 

@@ -174,7 +174,7 @@ private fun CreateContent(
     onDismissBatch: () -> Unit,
     onAddStarters: (List<StarterSentence>) -> Unit,
     onEditGoal: (Coast) -> Unit,
-    onSetGoal: (Coast, String) -> Unit,
+    onSetGoal: (Coast, String, String) -> Unit,
     onDismissGoalPrompt: () -> Unit,
     onStartDaily: (coastId: Int, language: String) -> Unit,
     onReviewCoast: (coastId: Int, coastName: String) -> Unit,
@@ -186,7 +186,7 @@ private fun CreateContent(
     var composerOpen by rememberSaveable { mutableStateOf(false) }
 
     uiState.goalPrompt?.let { coast ->
-        GoalSheet(coast = coast, onSave = { onSetGoal(coast, it) }, onDismiss = onDismissGoalPrompt)
+        GoalSheet(coast = coast, onSave = { goal, region -> onSetGoal(coast, goal, region) }, onDismiss = onDismissGoalPrompt)
     }
 
     var showStarters by remember { mutableStateOf(false) }
@@ -196,6 +196,7 @@ private fun CreateContent(
             coastLanguage = starterCoast.language,
             nativeLanguage = uiState.nativeLanguage,
             coastSentences = uiState.coastSentences,
+            profile = uiState.profile,
             onAdd = { picked ->
                 showStarters = false
                 onAddStarters(picked)
@@ -385,7 +386,12 @@ private fun DailyCard(
             IconTile(size = 40.dp) { Text(language?.flag ?: "🌍", fontSize = 20.sp) }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(coast.language, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    text = coast.region?.let { "${coast.language} · $it" } ?: coast.language,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 GoalLine(goal = coast.goal, onClick = onEditGoal)
             }
             if (coasts.size > 1) CoastPicker(coasts = coasts, selected = coast, onSelected = onCoastSelected)
@@ -532,8 +538,9 @@ private val GOAL_EXAMPLES = listOf("A trip to ", "Talking with ", "Work", "A sho
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GoalSheet(coast: Coast, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Unit, onDismiss: () -> Unit) {
     var text by remember(coast.coastId) { mutableStateOf(coast.goal.orEmpty()) }
+    var region by remember(coast.coastId) { mutableStateOf(coast.region.orEmpty()) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -571,7 +578,16 @@ private fun GoalSheet(coast: Coast, onSave: (String) -> Unit, onDismiss: () -> U
                     )
                 }
             }
-            CoastButton(onClick = { onSave(text) }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+            CoastTextField(
+                value = region,
+                onValueChange = { region = it },
+                label = { Text("Where will you use it? (optional)") },
+                placeholder = { Text("e.g., Mexico, Brazil, Switzerland") },
+                supportingText = { Text("Translations use that place's words, forms and register.", color = TextSecondary) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            CoastButton(onClick = { onSave(text, region) }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
                 Text("Save")
             }
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterHorizontally)) {

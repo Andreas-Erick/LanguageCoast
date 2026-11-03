@@ -48,8 +48,8 @@ interface FlashcardRepository {
     /** Deletes [coast] with its islands and cards, returning them for [restore]. */
     suspend fun deleteCoast(coast: Coast): DeletedContent
 
-    /** Stores why the user learns the language of coast [coastId]; blank or null clears it. */
-    suspend fun setCoastGoal(coastId: Int, goal: String?)
+    /** Stores why the user learns the language of coast [coastId] and where they will use it; blank or null clears either. */
+    suspend fun setCoastGoal(coastId: Int, goal: String?, region: String?)
 
     /** Records that [count] more starter sentences were offered on coast [coastId] (see [Coast.bankOffered]). */
     suspend fun recordBankOffered(coastId: Int, count: Int)
@@ -162,7 +162,8 @@ class OfflineFlashcardRepository(
         return content
     }
 
-    override suspend fun setCoastGoal(coastId: Int, goal: String?) = dao.setCoastGoal(coastId, goal?.trim()?.ifBlank { null })
+    override suspend fun setCoastGoal(coastId: Int, goal: String?, region: String?) =
+        dao.setCoastGoal(coastId, goal?.trim()?.ifBlank { null }, region?.trim()?.ifBlank { null })
 
     override suspend fun recordBankOffered(coastId: Int, count: Int) = dao.addBankOffered(coastId, count)
 

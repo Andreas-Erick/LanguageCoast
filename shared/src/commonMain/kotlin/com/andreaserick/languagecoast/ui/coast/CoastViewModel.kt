@@ -40,7 +40,9 @@ data class CoastUiState(
     /** Starter topics being added to this coast right now, or just added. */
     val import: ImportProgress? = null,
     /** The provider that will translate them. */
-    val translationProvider: TranslationProvider = TranslationProvider.OnDevice
+    val translationProvider: TranslationProvider = TranslationProvider.OnDevice,
+    /** The user's blanks from Settings, by placeholder, which a topic sheet starts from. */
+    val profile: Map<String, String> = emptyMap()
 )
 
 /**
@@ -64,10 +66,10 @@ class CoastViewModel(
         combine(
             flashcards.observeCoast(coastId),
             flashcards.observeIslandSummaries(coastId, now = clock.now().toEpochMilliseconds()),
-            settings.starterTopicsAdded,
+            combine(settings.starterTopicsAdded, settings.profile, ::Pair),
             importer.progress,
             settings.translationProvider
-        ) { coast, islands, added, progress, provider ->
+        ) { coast, islands, (added, profile), progress, provider ->
             val language = coast?.language.orEmpty()
             CoastUiState(
                 coastId = coastId,
@@ -88,7 +90,8 @@ class CoastViewModel(
                         )
                     },
                 import = progress?.takeIf { it.coastId == coastId },
-                translationProvider = provider
+                translationProvider = provider,
+                profile = profile.fillers()
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoastUiState(coastId = coastId, coastName = coastName))
 

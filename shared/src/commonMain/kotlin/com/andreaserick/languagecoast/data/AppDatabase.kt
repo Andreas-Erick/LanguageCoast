@@ -19,7 +19,7 @@ import kotlin.time.Clock
 /** The app's Room database: coasts, their islands, and the islands' flashcards. */
 @Database(
     entities = [Coast::class, LanguageIsland::class, Flashcard::class, SuggestedSentence::class],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -136,6 +136,15 @@ abstract class AppDatabase : RoomDatabase() {
                 connection.execSQL("ALTER TABLE `coasts` ADD COLUMN `bankOffered` INTEGER NOT NULL DEFAULT 0")
             }
         }
+
+        /** v10 adds the region a coast's language is learned for, and the natural-speech check's rewrite to suggestions. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `coasts` ADD COLUMN `region` TEXT")
+                connection.execSQL("ALTER TABLE `suggested_sentences` ADD COLUMN `alternatives` TEXT NOT NULL DEFAULT ''")
+                connection.execSQL("ALTER TABLE `suggested_sentences` ADD COLUMN `note` TEXT")
+            }
+        }
     }
 }
 
@@ -160,7 +169,8 @@ fun buildAppDatabase(builder: RoomDatabase.Builder<AppDatabase>, settings: DataS
             AppDatabase.MIGRATION_5_6,
             AppDatabase.MIGRATION_6_7,
             AppDatabase.MIGRATION_7_8,
-            AppDatabase.MIGRATION_8_9
+            AppDatabase.MIGRATION_8_9,
+            AppDatabase.MIGRATION_9_10
         )
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()

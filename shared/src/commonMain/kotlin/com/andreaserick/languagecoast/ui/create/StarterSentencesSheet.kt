@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.PhraseBank
 import com.andreaserick.languagecoast.data.normalizedWords
+import com.andreaserick.languagecoast.data.profileLabel
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
@@ -62,6 +63,7 @@ data class StarterSentence(val text: String, val category: String, val emoji: St
  * ticked again.
  *
  * @param coastSentences The coast's sentences, normalized as [normalizedWords] joined by spaces.
+ * @param profile The user's blanks from Settings, by placeholder; a field starts with that value.
  * @param onAdd Called with the ticked sentences, blanks filled in, when the user adds them.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +72,7 @@ internal fun StarterSentencesSheet(
     coastLanguage: String,
     nativeLanguage: String,
     coastSentences: Set<String>,
+    profile: Map<String, String>,
     onAdd: (List<StarterSentence>) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -79,7 +82,10 @@ internal fun StarterSentencesSheet(
     val fillers = remember { mutableStateMapOf<String, String>() }
     val automatic = mapOf(PhraseBank.LANGUAGE_PLACEHOLDER to coastLanguage)
 
-    fun filled(sentence: String): String? = PhraseBank.fill(sentence, automatic + fillers.filterKeys { it.startsWith("$sentence|") }.mapKeys { it.key.substringAfter('|') })
+    // A blank's value: what was typed for this sentence, else the profile's.
+    fun valueOf(sentence: String, placeholder: String): String = fillers["$sentence|$placeholder"] ?: profile[placeholder].orEmpty()
+    fun filled(sentence: String): String? =
+        PhraseBank.fill(sentence, automatic + PhraseBank.placeholders(sentence).associateWith { valueOf(sentence, it) })
     fun isOnCoast(sentence: String): Boolean = normalizedWords(sentence).joinToString(" ") in coastSentences
 
     val picked = PhraseBank.THEMES.flatMap { theme ->
@@ -164,9 +170,9 @@ internal fun StarterSentencesSheet(
                             PhraseBank.placeholders(sentence).filterNot { it == PhraseBank.LANGUAGE_PLACEHOLDER }.forEach { placeholder ->
                                 val key = "$sentence|$placeholder"
                                 CoastTextField(
-                                    value = fillers[key].orEmpty(),
+                                    value = valueOf(sentence, placeholder),
                                     onValueChange = { fillers[key] = it },
-                                    label = { Text("Fill in: $placeholder") },
+                                    label = { Text(if (placeholder in profile) profileLabel(placeholder) else "Fill in: $placeholder") },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth().padding(start = 48.dp, end = 12.dp, bottom = 8.dp)
                                 )

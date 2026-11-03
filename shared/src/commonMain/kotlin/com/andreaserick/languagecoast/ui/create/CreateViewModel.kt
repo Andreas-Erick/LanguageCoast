@@ -153,7 +153,9 @@ data class CreateUiState(
     /** An emoji for a new island named [category], when the source of the sentence knows one and the AI gives none. */
     val categoryEmoji: String? = null,
     /** What the sentence being saved is, for the model (see [TranslationRequest.context]). */
-    val translationContext: String? = null
+    val translationContext: String? = null,
+    /** The user's blanks from Settings, by placeholder, which the starter sheet fills in. */
+    val profile: Map<String, String> = emptyMap()
 ) {
     /** True when the selected coast is in the user's native language, so there's nothing to translate. */
     val isSameLanguage: Boolean get() = selectedCoast?.language == nativeLanguage
@@ -256,6 +258,7 @@ class CreateViewModel(
                 }
         }
         viewModelScope.launch { settings.lastStudyDate.collect { uiState = uiState.copy(lastStudy = it) } }
+        viewModelScope.launch { settings.profile.collect { uiState = uiState.copy(profile = it.fillers()) } }
         viewModelScope.launch { readySuggestions().collect { uiState = uiState.copy(readySuggestions = it) } }
         viewModelScope.launch {
             combine(selectedCoastId(), pool.preparing) { coastId, preparing -> coastId != null && coastId in preparing }
@@ -353,15 +356,16 @@ class CreateViewModel(
     }
 
     /**
-     * Stores why the user learns [coast]'s language (blank clears it). A changed goal throws away the
-     * sentences prepared for the old one and has new ones made.
+     * Stores why the user learns [coast]'s language and where they will use it (blank clears either). A
+     * change throws away the sentences prepared for the old goal and has new ones made.
      */
-    fun setGoal(coast: Coast, goal: String) {
+    fun setGoal(coast: Coast, goal: String, region: String = coast.region.orEmpty()) {
         uiState = uiState.copy(goalPrompt = null)
         val trimmed = goal.trim().ifBlank { null }
-        if (trimmed == coast.goal) return
+        val trimmedRegion = region.trim().ifBlank { null }
+        if (trimmed == coast.goal && trimmedRegion == coast.region) return
         viewModelScope.launch {
-            flashcards.setCoastGoal(coast.coastId, trimmed)
+            flashcards.setCoastGoal(coast.coastId, trimmed, trimmedRegion)
             flashcards.clearPendingSuggestions(coast.coastId)
             pool.forgetFailure(coast.coastId)
             pool.requestTopUp(coast.coastId)
@@ -639,7 +643,8 @@ class CreateViewModel(
                 userCategory = state.category.trim(),
                 existingCategories = flashcards.observeIslands(coast.coastId).first().map { it.name },
                 writtenInTarget = writtenInTarget,
-                context = state.translationContext
+                context = state.translationContext,
+                targetRegion = coast.region
             )
         )
         if (!translation.isSuccess) return SaveResult.Error(translation.errorMessage ?: "AI Translation Failed.")

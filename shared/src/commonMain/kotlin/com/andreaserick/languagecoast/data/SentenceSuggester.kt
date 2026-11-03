@@ -71,7 +71,8 @@ class SentenceSuggester(
             count = count,
             avoid = avoid.takeLast(AVOID_LIMIT),
             existingCategories = existingCategories,
-            cardCount = cardCount
+            cardCount = cardCount,
+            region = coast.region
         )
         val completion = translator.complete(engine, prompt)
         val text = completion.text
@@ -94,7 +95,7 @@ class SentenceSuggester(
         val picks = PhraseBank.pick(coast.goal, avoid, count, fillers)
         return picks.groupBy { it.category }.flatMap { (category, group) ->
             val theme = PhraseBank.theme(category) ?: return@flatMap emptyList()
-            starterTranslator.translate(usable, theme, nativeLanguage, coast.language, group.map { it.nativeText })
+            starterTranslator.translate(usable, theme, nativeLanguage, coast.language, coast.region, group.map { it.nativeText })
         }
     }
 
@@ -174,7 +175,12 @@ class SuggestionPool(
             } else {
                 failedAt.remove(coastId)
                 flashcards.addSuggestions(
-                    fresh.map { SuggestedSentence(coastId = coastId, nativeText = it.nativeText, targetText = it.targetText, category = it.category, emoji = it.emoji) }
+                    fresh.map {
+                        SuggestedSentence(
+                            coastId = coastId, nativeText = it.nativeText, targetText = it.targetText, category = it.category, emoji = it.emoji,
+                            alternatives = it.alternatives, note = it.note
+                        )
+                    }
                 )
                 if (suggestions.fromBank) flashcards.recordBankOffered(coastId, fresh.size)
             }

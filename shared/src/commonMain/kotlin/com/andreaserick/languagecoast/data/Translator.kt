@@ -93,6 +93,8 @@ sealed interface TranslationEngine {
  * @property writtenInTarget The user wrote [nativeSentence] in [targetLanguage] themselves: the model translates it
  *     back into [nativeLanguage] and corrects mistakes (see [TranslationResult.corrected]).
  * @property context What the sentence is, for the model (e.g. a phrasebook entry from a topic); null for a plain request.
+ * @property targetRegion Where [targetLanguage] will be used (e.g. "Mexico"), so the translation uses that place's words
+ *     and forms; null for no preference.
  */
 data class TranslationRequest(
     val engine: TranslationEngine,
@@ -102,7 +104,8 @@ data class TranslationRequest(
     val userCategory: String,
     val existingCategories: List<String>,
     val writtenInTarget: Boolean = false,
-    val context: String? = null
+    val context: String? = null,
+    val targetRegion: String? = null
 )
 
 /** Builds the prompt AI models (Gemini, OpenAI, Claude, Groq, DeepSeek, OpenRouter, Local AI) get for [request]. */
@@ -120,6 +123,8 @@ fun buildTranslationPrompt(request: TranslationRequest): String = with(request) 
 
     // Raw strings don't process escapes, so the context's line breaks are built outside it.
     val contextText = if (context == null) "" else "Context: $context\n\n        "
+    val regionText = targetRegion?.trim()?.takeIf { it.isNotEmpty() }
+        ?.let { "The learner will use $targetLanguage in $it: use the words, forms, spelling and register of $it, not of other places the language is spoken.\n\n        " } ?: ""
     val instructions = """
         You are a master language translator for a flashcard app.
         Translate the following input (which may be a single word or a full sentence) from $nativeLanguage into $targetLanguage.
@@ -128,7 +133,7 @@ fun buildTranslationPrompt(request: TranslationRequest): String = with(request) 
 
         Input text: $nativeSentence
 
-        ${contextText}$userCategoryText
+        ${contextText}${regionText}$userCategoryText
 
         $categoryText
 
