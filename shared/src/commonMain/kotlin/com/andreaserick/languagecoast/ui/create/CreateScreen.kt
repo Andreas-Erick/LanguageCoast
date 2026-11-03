@@ -33,7 +33,9 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material3.Checkbox
@@ -56,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.Coast
+import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.RecentCard
@@ -105,13 +109,17 @@ import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * The "Create" screen. Lets users create new flashcards from a sentence: translated by the provider
- * picked in Settings, written in the coast's language and checked by the AI, or typed by hand.
- * Whole paragraphs and photos can be captured as a batch of cards.
+ * The "Today" screen, the app's home: the focus coast with why the user learns it and one button that
+ * starts today's session (a few due cards, then a few new sentences prepared for that goal). Below it,
+ * folded away, the form for a card of the user's own: translated by the provider picked in Settings,
+ * written in the coast's language and checked by the AI, or typed by hand. Whole paragraphs and photos
+ * can be captured as a batch of cards.
  */
 @Composable
 fun CreateScreen(
-    onStartReview: () -> Unit,
+    onStartDaily: (coastId: Int, language: String) -> Unit,
+    onReviewCoast: (coastId: Int, coastName: String) -> Unit,
+    onReviewAll: () -> Unit,
     viewModel: CreateViewModel = koinViewModel()
 ) {
     CreateContent(
@@ -131,13 +139,19 @@ fun CreateScreen(
         onToggleBatchSentence = viewModel::toggleBatchSentence,
         onSaveBatch = viewModel::saveBatch,
         onDismissBatch = viewModel::dismissBatch,
-        onStartReview = onStartReview
+        onAddStarters = viewModel::addStarterSentences,
+        onEditGoal = viewModel::editGoal,
+        onSetGoal = viewModel::setGoal,
+        onDismissGoalPrompt = viewModel::dismissGoalPrompt,
+        onStartDaily = onStartDaily,
+        onReviewCoast = onReviewCoast,
+        onReviewAll = onReviewAll
     )
 }
 
 /**
- * The home screen's content: onboarding until there is a coast, otherwise today's reviews,
- * the new card form, the result of the last save and the most recently added cards.
+ * The home screen's content: onboarding until there is a coast, otherwise today's session on the focus
+ * coast, the folded-away new card form, the result of the last save and the most recently added cards.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -158,10 +172,37 @@ private fun CreateContent(
     onToggleBatchSentence: (Int) -> Unit,
     onSaveBatch: () -> Unit,
     onDismissBatch: () -> Unit,
-    onStartReview: () -> Unit
+    onAddStarters: (List<StarterSentence>) -> Unit,
+    onEditGoal: (Coast) -> Unit,
+    onSetGoal: (Coast, String) -> Unit,
+    onDismissGoalPrompt: () -> Unit,
+    onStartDaily: (coastId: Int, language: String) -> Unit,
+    onReviewCoast: (coastId: Int, coastName: String) -> Unit,
+    onReviewAll: () -> Unit
 ) {
     var showNewCoastDialog by remember { mutableStateOf(false) }
     var showBatchSheet by remember { mutableStateOf(false) }
+    // The form is folded away: the day starts with the session, and a sentence of your own is the exception.
+    var composerOpen by rememberSaveable { mutableStateOf(false) }
+
+    uiState.goalPrompt?.let { coast ->
+        GoalSheet(coast = coast, onSave = { onSetGoal(coast, it) }, onDismiss = onDismissGoalPrompt)
+    }
+
+    var showStarters by remember { mutableStateOf(false) }
+    val starterCoast = uiState.selectedCoast
+    if (showStarters && starterCoast != null) {
+        StarterSentencesSheet(
+            coastLanguage = starterCoast.language,
+            nativeLanguage = uiState.nativeLanguage,
+            coastSentences = uiState.coastSentences,
+            onAdd = { picked ->
+                showStarters = false
+                onAddStarters(picked)
+            },
+            onDismiss = { showStarters = false }
+        )
+    }
 
     if (showNewCoastDialog) {
         LanguagePickerDialog(
@@ -226,23 +267,41 @@ private fun CreateContent(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = ScreenMargin, vertical = 12.dp)
             ) {
-                if (uiState.hasCards) {
-                    TodayCard(dueCount = uiState.dueCount, dueCoastCount = uiState.dueCoastCount, onStartReview = onStartReview)
-                } else {
-                    FirstSentenceHint(coastLanguage = selectedCoast.language)
-                }
-
-                NewCardForm(
-                    uiState = uiState,
-                    selectedCoast = selectedCoast,
-                    onNativeSentenceChange = onNativeSentenceChange,
-                    onTargetSentenceChange = onTargetSentenceChange,
-                    onCategoryChange = onCategoryChange,
-                    onInputModeChange = onInputModeChange,
+                DailyCard(
+                    coast = selectedCoast,
+                    coasts = uiState.coasts,
+                    plan = uiState.plan,
+                    doneToday = uiState.doneToday,
+                    coastHasCards = (uiState.focusSummary?.cardCount ?: 0) > 0,
+                    isPreparing = uiState.isPreparingSentences,
+                    dueEverywhere = uiState.dueCount,
                     onCoastSelected = onCoastSelected,
-                    onSave = onSave,
-                    onAddMany = { showBatchSheet = true }
+                    onEditGoal = { onEditGoal(selectedCoast) },
+                    onStart = { onStartDaily(selectedCoast.coastId, selectedCoast.language) },
+                    onReviewCoast = { onReviewCoast(selectedCoast.coastId, selectedCoast.displayName) },
+                    onReviewAll = onReviewAll,
+                    onBrowseStarters = { showStarters = true },
+                    onAddOwn = { composerOpen = true }
                 )
+
+                ComposerHeader(open = composerOpen, onToggle = { composerOpen = !composerOpen })
+                AnimatedVisibility(
+                    visible = composerOpen,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    NewCardForm(
+                        uiState = uiState,
+                        selectedCoast = selectedCoast,
+                        onNativeSentenceChange = onNativeSentenceChange,
+                        onTargetSentenceChange = onTargetSentenceChange,
+                        onCategoryChange = onCategoryChange,
+                        onInputModeChange = onInputModeChange,
+                        onSave = onSave,
+                        onAddMany = { showBatchSheet = true },
+                        onBrowseStarters = { showStarters = true }
+                    )
+                }
 
                 // The preview appears below the form, often off screen; scroll to it once it has expanded.
                 val resultRequester = remember { BringIntoViewRequester() }
@@ -292,56 +351,257 @@ private fun StreakBadge(streak: Int) {
     )
 }
 
-/** How many cards are due today, with a button that starts reviewing them. */
+/**
+ * The heart of the Today screen: the focus coast, why the user learns it, and one button that starts
+ * today's session. The due pile is deliberately not the headline; what the session leaves over waits
+ * for another day.
+ *
+ * @param plan Today's session, or null before the coast's counts are known.
+ * @param doneToday A session was already completed today; another round is only offered as a link.
+ * @param coastHasCards Whether the coast has any cards, which tells an empty day from an empty coast.
+ * @param isPreparing Whether new sentences for the coast are being made right now.
+ * @param dueEverywhere Due cards on every coast together, offered as a link when other coasts have some.
+ */
 @Composable
-private fun TodayCard(dueCount: Int, dueCoastCount: Int, onStartReview: () -> Unit) {
-    ContentCard(padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
+private fun DailyCard(
+    coast: Coast,
+    coasts: List<Coast>,
+    plan: DailyPlan?,
+    doneToday: Boolean,
+    coastHasCards: Boolean,
+    isPreparing: Boolean,
+    dueEverywhere: Int,
+    onCoastSelected: (Coast) -> Unit,
+    onEditGoal: () -> Unit,
+    onStart: () -> Unit,
+    onReviewCoast: () -> Unit,
+    onReviewAll: () -> Unit,
+    onBrowseStarters: () -> Unit,
+    onAddOwn: () -> Unit
+) {
+    val language = Languages.byName(coast.language)
+    ContentCard(padding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            IconTile(size = 40.dp) { Text(language?.flag ?: "🌍", fontSize = 20.sp) }
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
+                Text(coast.language, style = MaterialTheme.typography.titleLarge)
+                GoalLine(goal = coast.goal, onClick = onEditGoal)
+            }
+            if (coasts.size > 1) CoastPicker(coasts = coasts, selected = coast, onSelected = onCoastSelected)
+        }
+        HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 14.dp))
+
+        when {
+            plan == null -> Unit
+            doneToday -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = Seafoam, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Done for today", style = MaterialTheme.typography.titleMedium)
+                }
                 Text(
-                    text = if (dueCount == 0) "All caught up" else "${plural(dueCount, "card")} due today",
+                    text = "You've studied today. The next session is ready tomorrow.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+                if (!plan.isEmpty) {
+                    // A little padding keeps the first and last glyphs clear of the button's clip; the offset lines the text up with the card's text.
+                    TextButton(onClick = onStart, contentPadding = PaddingValues(horizontal = 6.dp), modifier = Modifier.offset(x = (-6).dp)) {
+                        Text(
+                            text = "Another round · " + listOfNotNull(
+                                plan.reviewCount.takeIf { it > 0 }?.let { "$it to review" },
+                                plan.newCount.takeIf { it > 0 }?.let { "$it new" }
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Sunlit
+                        )
+                    }
+                }
+            }
+            !plan.isEmpty -> {
+                Text(
+                    text = if (plan.isWelcomeBack) "Welcome back" else "Today's session",
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    text = when {
-                        dueCount == 0 -> "Nothing to review right now."
-                        dueCoastCount > 1 -> "Across $dueCoastCount coasts, taking turns"
-                        else -> "Ready when you are"
-                    },
+                    text = if (plan.isWelcomeBack) "Just a small one to get going: ${sessionSummary(plan)}." else sessionSummary(plan),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                CoastButton(onClick = onStart, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                    Text(if (plan.isWelcomeBack) "Ease back in" else "Start · about ${plural(plan.minutes, "minute")}")
+                }
+                if (plan.leftOver > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                        Text(
+                            text = "${plural(plan.leftOver, "more card")} can wait for another day.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onReviewCoast, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            Text("Review all ${plan.dueOnCoast}", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                        }
+                    }
+                }
+            }
+            isPreparing -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = if (coastHasCards) "Nothing due. Preparing new sentences…" else "Preparing your first sentences…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                }
+            }
+            coastHasCards -> {
+                Text("All caught up", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Nothing due today and no new sentences ready. Add one of your own, or come back tomorrow.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+                TextButton(onClick = onReviewCoast, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                    Text("Practice anyway", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                }
+            }
+            else -> {
+                Text("Nothing here yet", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Start with the sentences everyone needs in ${coast.language}, or add one of your own. An AI provider in Settings can suggest sentences for your goal too.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
             }
-            if (dueCount > 0) {
-                Spacer(modifier = Modifier.width(12.dp))
-                CoastButton(
-                    onClick = onStartReview,
-                    contentPadding = PaddingValues(horizontal = 18.dp),
-                    modifier = Modifier.height(44.dp)
-                ) {
-                    Text("Review", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
-                }
+        }
+        if (plan != null && plan.isEmpty && !doneToday) {
+            Spacer(modifier = Modifier.height(8.dp))
+            CoastSecondaryButton(onClick = onBrowseStarters, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                Text("Browse starter sentences")
+            }
+            TextButton(onClick = onAddOwn, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text("Or add your own", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            }
+        }
+        if (plan != null && dueEverywhere > plan.dueOnCoast) {
+            TextButton(onClick = onReviewAll, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                Text("${plural(dueEverywhere, "card")} due across all coasts", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
             }
         }
     }
 }
 
-/** The last step of onboarding, shown until the first card exists. */
+/** "8 cards to review · 3 new sentences", leaving out whichever is zero. */
+private fun sessionSummary(plan: DailyPlan): String = listOfNotNull(
+    plan.reviewCount.takeIf { it > 0 }?.let { "${plural(it, "card")} to review" },
+    plan.newCount.takeIf { it > 0 }?.let { plural(it, "new sentence") }
+).joinToString(" · ")
+
+/** Why the user learns the coast's language, or an invitation to say; tapping opens the [GoalSheet]. */
 @Composable
-private fun FirstSentenceHint(coastLanguage: String) {
-    ContentCard(padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconTile(size = 40.dp) { Icon(Icons.Default.Lightbulb, contentDescription = null, tint = Sunlit) }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text("Step 3 of 3 · Your first sentence", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Type anything you'd like to say in $coastLanguage. It is translated and filed on an island for you.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
+private fun GoalLine(goal: String?, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = goal?.let { "Goal: $it. Tap to change" } ?: "Set a goal" }
+            .padding(top = 2.dp)
+    ) {
+        Icon(Icons.Default.Flag, contentDescription = null, tint = Sunlit, modifier = Modifier.size(14.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = goal ?: "Why are you learning it? Tap to say",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (goal == null) Sunlit else TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** Starting points for a goal; tapping one puts it in the field to finish. */
+private val GOAL_EXAMPLES = listOf("A trip to ", "Talking with ", "Work", "A show I watch", "Just for fun")
+
+/**
+ * Asks why the user learns [coast]'s language. The answer steers the sentences the daily session offers,
+ * which is the whole point of asking.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GoalSheet(coast: Coast, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember(coast.coastId) { mutableStateOf(coast.goal.orEmpty()) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
+        ) {
+            Text("Why ${coast.language}?", style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = "A trip, a person, a job, a show you love. Each day's new sentences are picked for it, so the more specific the better.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+            CoastTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Your reason") },
+                placeholder = { Text("e.g., A trip to Lisbon in March") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+            ) {
+                GOAL_EXAMPLES.forEach { example ->
+                    FilterChip(
+                        selected = false,
+                        onClick = { text = example },
+                        label = { Text(example.trim(), style = MaterialTheme.typography.labelMedium) },
+                        colors = coastChipColors(),
+                        border = coastChipBorder(enabled = true, selected = false),
+                        shape = MaterialTheme.shapes.small
+                    )
+                }
+            }
+            CoastButton(onClick = { onSave(text) }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                Text("Save")
+            }
+            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text(if (coast.goal == null) "Not now" else "Cancel", color = TextSecondary, style = MaterialTheme.typography.labelMedium)
             }
         }
+    }
+}
+
+/** The fold of the new card form: a title that opens and closes it. */
+@Composable
+private fun ComposerHeader(open: Boolean, onToggle: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(top = 4.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Add your own", style = MaterialTheme.typography.titleLarge)
+            if (!open) {
+                Text("Something you wanted to say today", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            }
+        }
+        Icon(
+            imageVector = if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = if (open) "Hide the form" else "Show the form",
+            tint = TextSecondary
+        )
     }
 }
 
@@ -357,17 +617,12 @@ private fun NewCardForm(
     onTargetSentenceChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
     onInputModeChange: (InputMode) -> Unit,
-    onCoastSelected: (Coast) -> Unit,
     onSave: () -> Unit,
-    onAddMany: () -> Unit
+    onAddMany: () -> Unit,
+    onBrowseStarters: () -> Unit
 ) {
     val mode = uiState.inputMode
     Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-            Text("New card", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            CoastPicker(coasts = uiState.coasts, selected = selectedCoast, onSelected = onCoastSelected)
-        }
-
         if (uiState.isSameLanguage) {
             Text(
                 text = sameLanguageMessage(selectedCoast.language),
@@ -504,19 +759,21 @@ private fun NewCardForm(
         }
 
         if (mode != InputMode.Manual) {
-            TextButton(
-                onClick = onAddMany,
-                contentPadding = PaddingValues(horizontal = 8.dp),
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            ) {
-                Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = TextSecondary, modifier = Modifier.padding(end = 6.dp).size(18.dp))
-                Text("Add many from text or a photo", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onBrowseStarters, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Sunlit, modifier = Modifier.padding(end = 6.dp).size(18.dp))
+                    Text("Starter sentences", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                }
+                TextButton(onClick = onAddMany, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = TextSecondary, modifier = Modifier.padding(end = 6.dp).size(18.dp))
+                    Text("From text or a photo", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                }
             }
         }
     }
 }
 
-/** The coast new cards are added to, as a compact button that opens a menu of all coasts. */
+/** Switches the focus coast (which today's session and new cards are on): a compact button that opens a menu of all coasts. */
 @Composable
 private fun CoastPicker(coasts: List<Coast>, selected: Coast, onSelected: (Coast) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
@@ -524,16 +781,10 @@ private fun CoastPicker(coasts: List<Coast>, selected: Coast, onSelected: (Coast
         TextButton(
             onClick = { expanded = true },
             contentPadding = PaddingValues(start = 12.dp, end = 4.dp),
-            modifier = Modifier.semantics { contentDescription = "Adding to ${selected.displayName}. Change coast" }
+            modifier = Modifier.semantics { contentDescription = "${selected.displayName} is the focus. Change coast" }
         ) {
-            Text(
-                selected.displayName,
-                color = TextPrimary,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TextPrimary)
+            Text("Change", color = Sunlit, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Sunlit)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             coasts.forEach { coast ->
@@ -661,7 +912,7 @@ private fun Onboarding(
             Text("Which language do you want to learn?", style = MaterialTheme.typography.headlineMedium, color = TextPrimary, textAlign = TextAlign.Center)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Each language is a coast. You can start more coasts later.",
+                "Each language is a coast. You can start more coasts later; one at a time is the point.",
                 color = TextSecondary,
                 textAlign = TextAlign.Center
             )

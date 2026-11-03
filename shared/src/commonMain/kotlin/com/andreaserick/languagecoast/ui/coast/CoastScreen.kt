@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.IslandSummary
+import com.andreaserick.languagecoast.data.PhraseBank
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
@@ -73,14 +74,37 @@ fun CoastScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current
+    var topicSheet by remember { mutableStateOf<List<StarterTopicOption>?>(null) }
+
+    topicSheet?.let { options ->
+        StarterTopicSheet(
+            options = options,
+            coastLanguage = uiState.coastLanguage,
+            provider = uiState.translationProvider,
+            onAdd = { fillers ->
+                viewModel.addStarterTopics(options.map { it.theme.category }, fillers)
+                topicSheet = null
+            },
+            onDismiss = { topicSheet = null }
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = uiState.coastName, subtitle = uiState.nativeName, onBack = onNavigateBack)
 
+        // Above the grid: a lazy grid keeps its first visible item in place, so a card inserted at its top would land out of view.
+        uiState.import?.let { progress ->
+            ImportProgressCard(
+                progress = progress,
+                onDismiss = viewModel::dismissImport,
+                modifier = Modifier.padding(start = ScreenMargin, end = ScreenMargin, top = 12.dp)
+            )
+        }
+
         when {
             // Show nothing while loading to avoid flashing the empty state.
             uiState.isLoading -> Unit
-            uiState.islands.isEmpty() -> EmptyState(
+            uiState.islands.isEmpty() && uiState.starterTopics.isEmpty() -> EmptyState(
                 icon = Icons.Default.BeachAccess,
                 title = "No islands yet",
                 body = "Create a flashcard and its island appears here."
@@ -92,6 +116,26 @@ fun CoastScreen(
                 contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
+                if (uiState.starterTopics.isNotEmpty()) {
+                    item(key = "starters", span = { GridItemSpan(maxLineSpan) }) {
+                        StarterTopicsRow(
+                            options = uiState.starterTopics,
+                            onPick = { topicSheet = listOf(it) },
+                            onAddAll = { topicSheet = uiState.starterTopics },
+                            modifier = Modifier.animateItem()
+                        )
+                    }
+                }
+                if (uiState.islands.isEmpty()) {
+                    item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            text = "No islands yet. Add a starter topic above, or create a card on Today, and it appears here.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
                 // One session for everything due on the coast, island by island.
                 val due = uiState.islands.sumOf { it.dueCount }
                 if (due > 0) {

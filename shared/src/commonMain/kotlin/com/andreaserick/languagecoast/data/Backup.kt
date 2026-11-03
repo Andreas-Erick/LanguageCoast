@@ -57,14 +57,20 @@ data class BackupSettings(
     val freezeUsedOn: String? = null,
     val themeMode: String? = null,
     val hapticsEnabled: Boolean = true,
-    val soundsEnabled: Boolean = true
+    val soundsEnabled: Boolean = true,
+    /** Starter topics added whole to a coast, as "coastId:topic". */
+    val starterTopicsAdded: List<String> = emptyList()
 )
 
 @Serializable
 data class BackupCoast(
     @SerialName("id") val coastId: Int,
     val language: String,
-    val creationDate: Long
+    val creationDate: Long,
+    /** Why the user learns the language, if they said. */
+    val goal: String? = null,
+    /** How many starter sentences the daily session has offered on the coast. */
+    val bankOffered: Int = 0
 )
 
 @Serializable

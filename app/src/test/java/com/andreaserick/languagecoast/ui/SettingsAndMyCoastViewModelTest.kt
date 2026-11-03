@@ -1,13 +1,18 @@
 package com.andreaserick.languagecoast.ui
 
 import androidx.lifecycle.SavedStateHandle
+import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.DeletedContent
+import com.andreaserick.languagecoast.data.PhraseBank
 import com.andreaserick.languagecoast.data.ReminderSettings
+import com.andreaserick.languagecoast.data.StarterImporter
+import com.andreaserick.languagecoast.data.StarterTranslator
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeReminderScheduler
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
+import com.andreaserick.languagecoast.testing.FakeTranslator
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
@@ -15,6 +20,8 @@ import com.andreaserick.languagecoast.ui.coast.CoastViewModel
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastViewModel
 import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
 import com.andreaserick.languagecoast.ui.theme.ThemeMode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -38,6 +45,11 @@ class SettingsAndMyCoastViewModelTest {
     private val flashcards = FakeFlashcardRepository()
     private val settings = FakeSettingsRepository()
     private val scheduler = FakeReminderScheduler()
+    private val translator = FakeTranslator()
+    private val importer by lazy { StarterImporter(flashcards, settings, StarterTranslator(translator), CoroutineScope(Job())) }
+
+    private fun coastViewModel(coastId: Int) =
+        CoastViewModel(SavedStateHandle(mapOf("coastId" to coastId, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE, importer)
 
     @Test
     fun savingApiKeyTrimsItAndShowsConfirmationUntilEdited() = runTest {
@@ -219,7 +231,7 @@ class SettingsAndMyCoastViewModelTest {
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
 
-        val viewModel = CoastViewModel(SavedStateHandle(mapOf("coastId" to 2, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
+        val viewModel = coastViewModel(coastId = 2)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         assertEquals("Icelandic Coast", viewModel.uiState.value.coastName)
@@ -228,9 +240,99 @@ class SettingsAndMyCoastViewModelTest {
     }
 
     @Test
+    fun coastOffersEveryStarterTopicItDoesNotHaveYet() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        settings.markStarterTopicAdded(1, "Numbers")
+        settings.markStarterTopicAdded(2, "Greetings") // Another coast's topics don't count.
+        val viewModel = coastViewModel(coastId = 1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        val topics = viewModel.uiState.value.starterTopics
+        assertEquals(PhraseBank.THEMES.size - 1, topics.size)
+        assertTrue(topics.none { it.theme.category == "Numbers" })
+        val aboutMe = topics.single { it.theme.category == "About Me" }
+        assertEquals(listOf("name", "city", "country", "job"), aboutMe.profileBlanks)
+        // "I'm [number] years old." and the like need a value per sentence, so a whole-topic import leaves them out.
+        assertTrue(aboutMe.sentenceCount < aboutMe.theme.sentences.size)
+        assertTrue(aboutMe.sentenceCount >= 10)
+        assertEquals("German", viewModel.uiState.value.coastLanguage)
+    }
+
+    @Test
+    fun addingAStarterTopicMakesAnIslandWithEverySentenceTranslated() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        settings.translationProvider.value = TranslationProvider.OnDevice
+        val greetings = PhraseBank.theme("Greetings")!!
+
+        importer.run(1, listOf("Greetings"), emptyMap())
+
+        val island = flashcards.islands.value.single()
+        assertEquals("Greetings", island.name)
+        assertEquals("👋", island.emoji)
+        assertEquals(greetings.sentences, flashcards.cards.value.map { it.nativeText })
+        assertTrue(flashcards.cards.value.all { it.targetText == "Hola" })
+        assertEquals(setOf("1:Greetings"), settings.starterTopicsAdded.value)
+        val progress = importer.progress.value!!
+        assertTrue(progress.isFinished)
+        assertEquals(greetings.sentences.size, progress.added)
+        assertEquals(0, progress.failed)
+        assertTrue(translator.lastRequest?.context!!.startsWith("A phrasebook entry from the topic \"Greetings\""))
+        assertEquals("Greetings", translator.lastRequest?.userCategory)
+    }
+
+    @Test
+    fun addingAStarterTopicFillsInTheProfileAndSkipsWhatItCannot() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        settings.translationProvider.value = TranslationProvider.OnDevice
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
+        flashcards.cards.value = flashcards.cards.value.map { it.copy(nativeText = "I'm here on holiday.") }
+
+        importer.run(1, listOf("About Me"), mapOf("name" to "Anna", "city" to "Oslo"))
+
+        val added = flashcards.cards.value.map { it.nativeText }
+        assertTrue("My name is Anna." in added)
+        assertTrue("I live in Oslo." in added)
+        assertTrue(added.none { "[" in it }) // No blank left unfilled.
+        assertTrue(added.none { it.startsWith("I'm from") }) // [country] wasn't given.
+        assertTrue(added.none { it.startsWith("I work as") })
+        assertEquals(1, added.count { it == "I'm here on holiday." }) // Already on the coast: not added twice.
+    }
+
+    @Test
+    fun addingStarterTopicsWithTheModelTranslatesInBatches() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        settings.apiKey.value = "key"
+        val colours = PhraseBank.theme("Colours")!!
+        translator.completion = Completion(colours.sentences.mapIndexed { i, _ -> "${i + 1} || Farbe ${i + 1}" }.joinToString("\n"))
+
+        importer.run(1, listOf("Colours"), emptyMap())
+
+        assertEquals(colours.sentences.size, flashcards.cards.value.size)
+        assertEquals("Farbe 1", flashcards.cards.value.first().targetText)
+        assertEquals(colours.sentences.size / StarterTranslator.BATCH_SIZE + 1, translator.prompts.size)
+        assertTrue(translator.prompts.first().contains("dictionary form"))
+        assertEquals(0, translator.requests) // Nothing fell back to one-by-one translation.
+    }
+
+    @Test
+    fun addingStarterTopicsWithoutAProviderReportsTheProblem() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        settings.translationProvider.value = TranslationProvider.Gemini
+        settings.apiKey.value = ""
+
+        importer.run(1, listOf("Greetings"), emptyMap())
+
+        val progress = importer.progress.value!!
+        assertTrue(progress.isFinished)
+        assertTrue(progress.error!!.contains("Gemini"))
+        assertTrue(flashcards.cards.value.isEmpty())
+        assertTrue(settings.starterTopicsAdded.value.isEmpty())
+    }
+
+    @Test
     fun deletingIslandRemovesItAndItsCards() = runTest {
         flashcards.seed(islandId = 1, cardCount = 2)
-        val viewModel = CoastViewModel(SavedStateHandle(mapOf("coastId" to 1, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE)
+        val viewModel = coastViewModel(coastId = 1)
 
         viewModel.deleteIsland(flashcards.islands.value.single()) {}
 

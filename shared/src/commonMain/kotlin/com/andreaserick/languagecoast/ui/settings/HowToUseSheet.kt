@@ -28,9 +28,21 @@ private class GuideSection(val title: String, val tips: List<String>)
 
 private val GUIDE = listOf(
     GuideSection(
+        "Today",
+        listOf(
+            "Today is the whole routine: one short session a day on the coast you focus on. It reviews a few due cards (never the whole pile), then offers a few new sentences to keep or skip.",
+            "Tap the flag line to say why you're learning the language: a trip, a person, a job, a show. The new sentences are picked for that reason, by your AI provider or from a built-in phrase bank.",
+            "A kept sentence becomes a card and you practice it at the end of the session. A skipped one isn't offered again.",
+            "After a few days away the session shrinks to a welcome-back size. Whatever a session leaves over waits for another day; \"Review all\" is there if you want it.",
+            "\"Change\" next to the coast switches the focus coast.",
+            "The basics come first: for about the first six weeks the new sentences come from the starter bank (greetings, getting by, small talk, about you, then the situations your goal points to), translated by your provider. After that your AI provider suggests sentences for your goal."
+        )
+    ),
+    GuideSection(
         "Coasts and islands",
         listOf(
             "Each language you learn gets its own coast. Start one from My Coasts with \"New Coast\".",
+            "On a coast, \"Starter topics\" adds a whole topic (Greetings, Numbers, Phone Settings, ...) as an island in one tap, translated for you in the background. Topics that use your name, city, country or job ask for them once; sentences with other blanks stay in the Starter sentences list on Today. \"Add all\" adds every remaining topic, but a few topics at a time is the better pace.",
             "On a coast, your cards are grouped into islands by topic, like Travel or Restaurant.",
             "Set your native language here in Settings, so translations go the right way."
         )
@@ -38,8 +50,9 @@ private val GUIDE = listOf(
     GuideSection(
         "Creating cards",
         listOf(
-            "On Create, type what you want to say in your own language and tap \"Translate & Save\".",
-            "Tap the coast name to pick which coast the card goes to.",
+            "On Today, open \"Add your own\", type what you want to say in your own language and tap \"Translate & Save\".",
+            "\"Starter sentences\" is a bank of about 650 sentences and words everyone needs, in 27 topics: greetings, getting by in the language, small talk, about me, restaurant, directions, airport, getting around, hotel, shopping, help and health, making plans, phone and internet, money, renting, paperwork, wishes, time, days and months, numbers (enough to build any number), everyday words, question words, family, colours, food and drink, signs, and the words your phone's Settings app uses once you switch it to the language. Tick what you'd say, fill in blanks like [city] or [name], and they become cards.",
+            "The card goes to the focus coast shown at the top of Today.",
             "Choose \"I write it\" to write in the language you're learning: the AI fills in your language and corrects slips. \"Manual\" lets you type both sides.",
             "\"Add many\" turns a pasted paragraph or a photo of a page into sentences to tick, one card each.",
             "Tap an existing island chip or type a category to choose the island yourself. Leave it empty and your AI provider picks one for you. While you type, a likely island is suggested.",
@@ -61,7 +74,7 @@ private val GUIDE = listOf(
     GuideSection(
         "Studying",
         listOf(
-            "\"Review\" on Create studies everything due today across your coasts. Open a coast or an island to study just that. Spaced repetition decides when each card comes back.",
+            "Today's session is the daily routine. Open a coast or an island from My Coasts to study just that. Spaced repetition decides when each card comes back.",
             "Flip: tap \"Show answer\", then grade yourself with Again, Hard, Good or Easy. " +
                 "You can also swipe left for Again and right for Good.",
             "Type: type the translation and tap \"Check answer\". Capitals and punctuation don't matter, accents do. A slip of a letter counts as Hard.",

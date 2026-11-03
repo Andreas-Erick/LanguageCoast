@@ -92,6 +92,7 @@ sealed interface TranslationEngine {
  * @property existingCategories Already created categories, to help the AI stay consistent.
  * @property writtenInTarget The user wrote [nativeSentence] in [targetLanguage] themselves: the model translates it
  *     back into [nativeLanguage] and corrects mistakes (see [TranslationResult.corrected]).
+ * @property context What the sentence is, for the model (e.g. a phrasebook entry from a topic); null for a plain request.
  */
 data class TranslationRequest(
     val engine: TranslationEngine,
@@ -100,7 +101,8 @@ data class TranslationRequest(
     val targetLanguage: String,
     val userCategory: String,
     val existingCategories: List<String>,
-    val writtenInTarget: Boolean = false
+    val writtenInTarget: Boolean = false,
+    val context: String? = null
 )
 
 /** Builds the prompt AI models (Gemini, OpenAI, Claude, Groq, DeepSeek, OpenRouter, Local AI) get for [request]. */
@@ -116,6 +118,8 @@ fun buildTranslationPrompt(request: TranslationRequest): String = with(request) 
         }. Only create a brand new category (with the name of the category in English) if none of these fit. For example, possible categories could be: Small Talk, About Me, Asking for Help, Restaurant, Hotel, My Passions, Sport, Academia, Household Items and so on."
     }
 
+    // Raw strings don't process escapes, so the context's line breaks are built outside it.
+    val contextText = if (context == null) "" else "Context: $context\n\n        "
     val instructions = """
         You are a master language translator for a flashcard app.
         Translate the following input (which may be a single word or a full sentence) from $nativeLanguage into $targetLanguage.
@@ -124,7 +128,7 @@ fun buildTranslationPrompt(request: TranslationRequest): String = with(request) 
 
         Input text: $nativeSentence
 
-        $userCategoryText
+        ${contextText}$userCategoryText
 
         $categoryText
 
@@ -313,7 +317,7 @@ private fun stripPromptBrackets(value: String): String {
 }
 
 /** A short string with no letters or digits, i.e. an emoji (possibly with modifiers) rather than a word. */
-private fun looksLikeEmoji(text: String): Boolean =
+internal fun looksLikeEmoji(text: String): Boolean =
     text.isNotEmpty() && text.length <= 8 && text.none { it.isLetterOrDigit() }
 
 /**

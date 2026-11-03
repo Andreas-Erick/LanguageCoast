@@ -85,6 +85,10 @@ interface SettingsRepository {
     val streakCount: Flow<Int>
     /** Days with a completed study session; at least the current streak's days, plus recent days recorded since. */
     val studyDays: Flow<Set<LocalDate>>
+    /** The day of the last completed study session, or null if there was none yet. */
+    val lastStudyDate: Flow<LocalDate?> get() = flowOf(null)
+    /** Starter topics added whole to a coast, as "coastId:topic" (see [starterTopicKey]). */
+    val starterTopicsAdded: Flow<Set<String>> get() = flowOf(emptySet())
     /** Whether and when the daily study reminder is shown. */
     val reminderSettings: Flow<ReminderSettings>
     /** Whether cards are studied the other way round: from the coast's language to the native language. */
@@ -140,6 +144,9 @@ interface SettingsRepository {
     suspend fun setThemeMode(mode: String) = Unit
     suspend fun setHapticsEnabled(enabled: Boolean) = Unit
     suspend fun setSoundsEnabled(enabled: Boolean) = Unit
+
+    /** Records that starter [topic] was added whole to coast [coastId]. */
+    suspend fun markStarterTopicAdded(coastId: Int, topic: String) = Unit
 
     /** Records a completed study session for today and updates the streak. */
     suspend fun recordStudySession()
@@ -229,6 +236,14 @@ class DataStoreSettingsRepository(
         val streak = preferences[STREAK_COUNT] ?: 0
         if (lastStudy != null) (0 until streak).forEach { recorded += lastStudy.minus(it, DateTimeUnit.DAY) }
         recorded
+    }
+
+    override val lastStudyDate: Flow<LocalDate?> = dataStore.data.map { preferences -> preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) } }
+
+    override val starterTopicsAdded: Flow<Set<String>> = dataStore.data.map { it[STARTER_TOPICS_ADDED].orEmpty() }
+
+    override suspend fun markStarterTopicAdded(coastId: Int, topic: String) {
+        dataStore.edit { it[STARTER_TOPICS_ADDED] = it[STARTER_TOPICS_ADDED].orEmpty() + starterTopicKey(coastId, topic) }
     }
 
     override val reminderSettings: Flow<ReminderSettings> = dataStore.data.map { preferences ->
@@ -329,7 +344,8 @@ class DataStoreSettingsRepository(
             freezeUsedOn = preferences[FREEZE_USED_ON],
             themeMode = preferences[THEME_MODE],
             hapticsEnabled = preferences[HAPTICS_ENABLED] ?: true,
-            soundsEnabled = preferences[SOUNDS_ENABLED] ?: true
+            soundsEnabled = preferences[SOUNDS_ENABLED] ?: true,
+            starterTopicsAdded = preferences[STARTER_TOPICS_ADDED].orEmpty().sorted()
         )
     }
 
@@ -361,6 +377,7 @@ class DataStoreSettingsRepository(
             put(THEME_MODE, backup.themeMode)
             put(HAPTICS_ENABLED, backup.hapticsEnabled)
             put(SOUNDS_ENABLED, backup.soundsEnabled)
+            put(STARTER_TOPICS_ADDED, backup.starterTopicsAdded.toSet().takeIf { it.isNotEmpty() })
         }
     }
 
@@ -399,9 +416,13 @@ class DataStoreSettingsRepository(
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val HAPTICS_ENABLED = booleanPreferencesKey("haptics_enabled")
         val SOUNDS_ENABLED = booleanPreferencesKey("sounds_enabled")
+        val STARTER_TOPICS_ADDED = stringSetPreferencesKey("starter_topics_added")
         const val STUDY_DAYS_KEPT = 28
     }
 }
+
+/** The entry in [SettingsRepository.starterTopicsAdded] for [topic] on coast [coastId]. */
+fun starterTopicKey(coastId: Int, topic: String): String = "$coastId:$topic"
 
 /** The DataStore holding the settings, stored in the file at [path]. Only one may exist per file. */
 fun createSettingsDataStore(path: String): DataStore<Preferences> =

@@ -15,6 +15,10 @@ import kotlin.time.Clock
  * @property coastId Unique identifier for the coast (auto-generated).
  * @property language The target language studied on this coast (one coast per language).
  * @property creationDate Timestamp of when the coast was created.
+ * @property goal Why the user learns this language, in their own words (e.g. "A trip to Lisbon in March"), or null
+ *     if they haven't said. The daily session's new sentences are picked to fit it.
+ * @property bankOffered How many starter sentences ([PhraseBank]) the daily session has offered on this coast. The
+ *     basics come first: until [BASICS_FROM_BANK] of them were offered, new sentences come from the bank, not the AI.
  */
 @Entity(
     tableName = "coasts",
@@ -23,10 +27,45 @@ import kotlin.time.Clock
 data class Coast(
     @PrimaryKey(autoGenerate = true) val coastId: Int = 0,
     val language: String,
-    val creationDate: Long = Clock.System.now().toEpochMilliseconds()
+    val creationDate: Long = Clock.System.now().toEpochMilliseconds(),
+    val goal: String? = null,
+    @ColumnInfo(defaultValue = "0") val bankOffered: Int = 0
 ) {
     val displayName: String get() = "$language Coast"
 }
+
+/**
+ * A sentence the app suggests learning next on a coast, prepared ahead of the daily session so it opens
+ * without waiting for the AI. Kept until the user keeps it (it becomes a card and the row is deleted) or
+ * skips it (it stays, marked [skipped], so it isn't suggested twice).
+ *
+ * @property nativeText The sentence in the user's language.
+ * @property targetText Its translation in the coast's language.
+ * @property category The island it would go on.
+ * @property emoji An emoji for [category], if the AI gave one.
+ */
+@Entity(
+    tableName = "suggested_sentences",
+    foreignKeys = [
+        ForeignKey(
+            entity = Coast::class,
+            parentColumns = ["coastId"],
+            childColumns = ["coastId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("coastId")]
+)
+data class SuggestedSentence(
+    @PrimaryKey(autoGenerate = true) val suggestionId: Int = 0,
+    val coastId: Int,
+    val nativeText: String,
+    val targetText: String,
+    val category: String,
+    val emoji: String? = null,
+    val skipped: Boolean = false,
+    val creationDate: Long = Clock.System.now().toEpochMilliseconds()
+)
 
 /**
  * A [Coast] with what the coast overview shows about it.

@@ -89,7 +89,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.AnswerMatch
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Grade
+import com.andreaserick.languagecoast.data.SuggestedSentence
 import com.andreaserick.languagecoast.data.checkAnswer
+import com.andreaserick.languagecoast.data.emojiForCategory
 import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CardOptionsMenu
@@ -162,14 +164,16 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
         )
     }
 
-    val inSession = uiState.hasCards && !uiState.isCaughtUp && !uiState.isSessionComplete && currentCard != null
+    val learning = uiState.learning
+    val inSession = uiState.hasCards && !uiState.isCaughtUp && !uiState.isSessionComplete && (currentCard != null || learning != null)
 
     Column(modifier = Modifier.fillMaxSize()) {
-        if (inSession && currentCard != null) {
+        if (inSession) {
             SessionTopBar(
                 uiState = uiState,
                 onClose = onNavigateBack,
                 onShowCards = onShowCards,
+                showCardOptions = currentCard != null,
                 onPrevious = viewModel::previous,
                 onSkip = viewModel::next,
                 onEdit = { editingCard = currentCard },
@@ -207,8 +211,17 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                 reviewedCount = uiState.totalCards,
                 againCount = uiState.againCount,
                 streakCount = uiState.streakCount,
+                keptCount = uiState.keptCount,
                 onPracticeAll = viewModel::practiceAll,
                 onBack = onNavigateBack
+            )
+            learning != null -> LearnView(
+                sentence = learning,
+                index = uiState.learnTotal - uiState.learnLeft + 1,
+                total = uiState.learnTotal,
+                onKeep = viewModel::keepSuggestion,
+                onSkip = viewModel::skipSuggestion,
+                onSpeak = { viewModel.speak(learning.targetText) }.takeIf { uiState.canSpeak }
             )
             currentCard != null && currentPlaced != null -> {
                 StudyModeRow(
@@ -290,6 +303,7 @@ private fun SessionTopBar(
     uiState: StudyUiState,
     onClose: () -> Unit,
     onShowCards: (() -> Unit)?,
+    showCardOptions: Boolean,
     onPrevious: () -> Unit,
     onSkip: () -> Unit,
     onEdit: () -> Unit,
@@ -318,13 +332,13 @@ private fun SessionTopBar(
                 .height(6.dp)
         )
         Text(
-            text = "${uiState.sessionCards.size} left",
+            text = if (uiState.learning != null) "${uiState.learnLeft} new" else "${uiState.sessionCards.size} left",
             style = MaterialTheme.typography.labelMedium,
             color = TextSecondary,
             maxLines = 1,
-            modifier = Modifier.padding(start = 12.dp, end = 4.dp)
+            modifier = Modifier.padding(start = 12.dp, end = if (showCardOptions) 4.dp else 16.dp)
         )
-        CardOptionsMenu(
+        if (showCardOptions) CardOptionsMenu(
             onEdit = onEdit,
             onDelete = onDelete,
             tint = TextPrimary,
@@ -898,6 +912,7 @@ fun CaughtUpView(nextDueInDays: Int?, onPracticeAll: () -> Unit, onBack: () -> U
  *
  * @param reviewedCount Cards in the session.
  * @param againCount How often "Again" was pressed.
+ * @param keptCount New sentences kept in a daily session.
  * @param onPracticeAll Callback to study every card of the island again.
  * @param onBack Callback to navigate back to the previous screen.
  */
@@ -908,7 +923,8 @@ fun SessionCompleteView(
     streakCount: Int,
     onPracticeAll: () -> Unit,
     onBack: () -> Unit,
-    scope: StudyScope = StudyScope.Island
+    scope: StudyScope = StudyScope.Island,
+    keptCount: Int = 0
 ) {
     val markScale = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
@@ -942,7 +958,12 @@ fun SessionCompleteView(
                 textAlign = TextAlign.Center
             )
             Text(
-                text = if (againCount == 0) "Every card on the first try. Brilliant!" else "You worked through every card.",
+                text = when {
+                    scope == StudyScope.Daily && keptCount > 0 -> "${plural(keptCount, "new sentence")} kept. That's today done; see you tomorrow."
+                    scope == StudyScope.Daily -> "That's today done; see you tomorrow."
+                    againCount == 0 -> "Every card on the first try. Brilliant!"
+                    else -> "You worked through every card."
+                },
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 6.dp, bottom = 24.dp)
@@ -955,7 +976,8 @@ fun SessionCompleteView(
                     .height(IntrinsicSize.Min)
             ) {
                 StatTile(value = "$reviewedCount", label = if (reviewedCount == 1) "card" else "cards", modifier = Modifier.weight(1f).fillMaxHeight())
-                StatTile(value = "$againCount", label = "needed again", modifier = Modifier.weight(1f).fillMaxHeight())
+                if (scope == StudyScope.Daily) StatTile(value = "$keptCount", label = "new", modifier = Modifier.weight(1f).fillMaxHeight())
+                else StatTile(value = "$againCount", label = "needed again", modifier = Modifier.weight(1f).fillMaxHeight())
                 StatTile(value = "$streakCount", label = "day streak", modifier = Modifier.weight(1f).fillMaxHeight())
             }
 

@@ -16,6 +16,7 @@ import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.SuggestedSentence
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.TranslationResult
@@ -23,6 +24,7 @@ import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.emojiForCategory
+import com.andreaserick.languagecoast.data.starterTopicKey
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import com.andreaserick.languagecoast.speech.Speaker
@@ -50,6 +52,7 @@ class FakeFlashcardRepository : FlashcardRepository {
     val coasts = MutableStateFlow<List<Coast>>(emptyList())
     val islands = MutableStateFlow<List<LanguageIsland>>(emptyList())
     val cards = MutableStateFlow<List<Flashcard>>(emptyList())
+    val suggestions = MutableStateFlow<List<SuggestedSentence>>(emptyList())
 
     override fun observeCoastSummaries(studiedSince: Long, now: Long): Flow<List<CoastSummary>> =
         combine(coasts, islands, cards) { coasts, islands, cards ->
@@ -90,6 +93,38 @@ class FakeFlashcardRepository : FlashcardRepository {
         islands.update { all -> all.filterNot { it.islandId in ids } }
         cards.update { all -> all.filterNot { it.islandId in ids } }
         return content
+    }
+
+    override suspend fun setCoastGoal(coastId: Int, goal: String?) {
+        coasts.update { all -> all.map { if (it.coastId == coastId) it.copy(goal = goal?.trim()?.ifBlank { null }) else it } }
+    }
+
+    override suspend fun recordBankOffered(coastId: Int, count: Int) {
+        coasts.update { all -> all.map { if (it.coastId == coastId) it.copy(bankOffered = it.bankOffered + count) else it } }
+    }
+
+    override fun observeSuggestions(coastId: Int): Flow<List<SuggestedSentence>> =
+        suggestions.map { all -> all.filter { it.coastId == coastId && !it.skipped } }
+
+    override suspend fun getAllSuggestions(coastId: Int): List<SuggestedSentence> = suggestions.value.filter { it.coastId == coastId }
+
+    override suspend fun addSuggestions(suggestions: List<SuggestedSentence>) {
+        this.suggestions.update { existing ->
+            var nextId = nextId(existing.map { it.suggestionId })
+            existing + suggestions.map { it.copy(suggestionId = nextId++) }
+        }
+    }
+
+    override suspend fun skipSuggestion(suggestionId: Int) {
+        suggestions.update { all -> all.map { if (it.suggestionId == suggestionId) it.copy(skipped = true) else it } }
+    }
+
+    override suspend fun removeSuggestion(suggestionId: Int) {
+        suggestions.update { all -> all.filterNot { it.suggestionId == suggestionId } }
+    }
+
+    override suspend fun clearPendingSuggestions(coastId: Int) {
+        suggestions.update { all -> all.filterNot { it.coastId == coastId && !it.skipped } }
     }
 
     override fun observeIslands(coastId: Int): Flow<List<LanguageIsland>> =
@@ -266,6 +301,8 @@ class FakeSettingsRepository : SettingsRepository {
     override val deepSeekModel = MutableStateFlow(SettingsDefaults.DEEPSEEK_MODEL)
     override val streakCount = MutableStateFlow(0)
     override val studyDays = MutableStateFlow<Set<LocalDate>>(emptySet())
+    override val lastStudyDate = MutableStateFlow<LocalDate?>(null)
+    override val starterTopicsAdded = MutableStateFlow<Set<String>>(emptySet())
     override val reminderSettings = MutableStateFlow(ReminderSettings())
     override val studyReversed = MutableStateFlow(false)
     override val weeklyGoal = MutableStateFlow(SettingsDefaults.WEEKLY_GOAL)
@@ -301,6 +338,10 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setThemeMode(mode: String) { themeMode.value = mode }
     override suspend fun setHapticsEnabled(enabled: Boolean) { hapticsEnabled.value = enabled }
     override suspend fun setSoundsEnabled(enabled: Boolean) { soundsEnabled.value = enabled }
+
+    override suspend fun markStarterTopicAdded(coastId: Int, topic: String) {
+        starterTopicsAdded.update { it + starterTopicKey(coastId, topic) }
+    }
 
     override suspend fun recordStudySession() {
         studySessionsRecorded++
@@ -363,9 +404,12 @@ class FakeTranslator(
 ) : Translator {
     var lastRequest: TranslationRequest? = null
         private set
+    var requests = 0
+        private set
 
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
         lastRequest = request
+        requests++
         return result
     }
 
