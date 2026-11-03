@@ -305,7 +305,7 @@ class SettingsViewModel(
 
     /** Stores one of the profile's blanks ([placeholder], see [Profile.PLACEHOLDERS]) as [value]. */
     fun setProfileField(placeholder: String, value: String) {
-        viewModelScope.launch { settings.setProfile(settings.profile.first().with(placeholder, value)) }
+        viewModelScope.launch { settings.setProfileField(placeholder, value) }
     }
 
     /** Scans or re-scans the user's phone hardware to recommend compatible local AI models. */

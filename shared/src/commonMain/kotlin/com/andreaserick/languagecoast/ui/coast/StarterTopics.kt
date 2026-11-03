@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.ImportProgress
 import com.andreaserick.languagecoast.data.PROFILE_PLACEHOLDERS
 import com.andreaserick.languagecoast.data.PhraseBank
@@ -42,6 +43,7 @@ import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.ContentCard
+import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.coastChipBorder
 import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.plural
@@ -211,48 +213,77 @@ internal fun importEstimate(count: Int, provider: TranslationProvider): String {
     }
 }
 
-/** How adding starter topics is going, at the top of the coast: a bar while it runs, the outcome once it is done. */
+/**
+ * How adding starter topics is going, at the top of the coast: the topic's tile, a bar while it runs, and
+ * once it is done what was added and one button to clear it.
+ */
 @Composable
 internal fun ImportProgressCard(progress: ImportProgress, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
-    ContentCard(modifier = modifier, padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
-        when {
-            progress.error != null -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Error, contentDescription = null, tint = CoralText)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(progress.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+    val theme = PhraseBank.theme(progress.topic)
+    val several = progress.topicCount > 1
+    ContentCard(modifier = modifier, padding = PaddingValues(start = 16.dp, top = 14.dp, end = 8.dp, bottom = if (progress.isFinished) 6.dp else 14.dp)) {
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+            IconTile {
+                when {
+                    progress.error != null -> Icon(Icons.Default.Error, contentDescription = null, tint = CoralText)
+                    progress.isFinished -> Icon(Icons.Default.Check, contentDescription = null, tint = Seafoam)
+                    else -> Text(theme?.emoji ?: "📚", fontSize = 22.sp)
                 }
             }
-            progress.isFinished -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Check, contentDescription = null, tint = Seafoam)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("${plural(progress.added, "card")} added", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                when {
+                    progress.error != null -> {
+                        Text("Couldn't finish", style = MaterialTheme.typography.titleMedium)
+                        Text(progress.error, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
+                    }
+                    progress.isFinished -> {
+                        Text(
+                            text = if (several) "${plural(progress.topicCount, "topic")} added" else "${theme?.emoji?.let { "$it " } ?: ""}${progress.topic} added",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (several) "${plural(progress.added, "card")}, each topic on its own island." else "${plural(progress.added, "card")} on the ${progress.topic} island, ready for today's session.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
                         if (progress.failed > 0) {
-                            Text("${progress.failed} couldn't be translated; they are still in the Starter sentences list.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            Text(
+                                text = "${progress.failed} couldn't be translated; they're still in the Starter sentences list on Today.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
+                    }
+                    else -> {
+                        Text("Adding ${progress.topic}…", style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { if (progress.total == 0) 0f else progress.done.toFloat() / progress.total },
+                            color = Sunlit,
+                            trackColor = SurfaceRaised,
+                            strokeCap = StrokeCap.Round,
+                            gapSize = 0.dp,
+                            drawStopIndicator = {},
+                            modifier = Modifier.fillMaxWidth().height(6.dp)
+                        )
+                        Text(
+                            text = if (several) "${progress.done} of ${progress.total} translated, ${plural(progress.topicCount, "topic")} in all" else "${progress.done} of ${progress.total} translated",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
                     }
                 }
             }
-            else -> {
-                Text("Adding ${progress.topic}…", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { if (progress.total == 0) 0f else progress.done.toFloat() / progress.total },
-                    color = Sunlit,
-                    trackColor = SurfaceRaised,
-                    strokeCap = StrokeCap.Round,
-                    gapSize = 0.dp,
-                    drawStopIndicator = {},
-                    modifier = Modifier.fillMaxWidth().height(6.dp)
-                )
-                Text("${progress.done} of ${progress.total} translated", style = MaterialTheme.typography.bodySmall, color = TextSecondary, modifier = Modifier.padding(top = 6.dp))
-            }
         }
         if (progress.isFinished) {
-            TextButton(onClick = onDismiss, contentPadding = PaddingValues(horizontal = 0.dp)) {
-                Text("Done", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onDismiss) {
+                    Text(if (progress.error != null) "OK" else "Done", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                }
             }
         }
     }

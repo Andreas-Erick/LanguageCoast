@@ -25,6 +25,18 @@ class ProfileTest {
     }
 
     @Test
+    fun previewReadsLikeTheSentencesWillAndSkipsWhatIsMissing() {
+        assertEquals(null, profilePreview(Profile()))
+        assertEquals("My name is Anna.", profilePreview(Profile(name = "Anna")))
+        assertEquals("I live in Oslo, Norway. I was born in Bologna.", profilePreview(Profile(city = "Oslo", country = "Norway", hometown = "Bologna")))
+        assertEquals(
+            "My name is Anna. I work as a nurse. I live in Oslo, Norway. I'm from Italy, born in Bologna.",
+            profilePreview(Profile(name = "Anna", city = "Oslo", country = "Norway", homeCountry = "Italy", hometown = "Bologna", job = "nurse"))
+        )
+        Profile.PLACEHOLDERS.forEach { assertTrue(profileShortLabel(it).first().isUpperCase(), it) }
+    }
+
+    @Test
     fun theProfileFillsTheAboutMeTopicExceptPerSentenceBlanks() {
         val aboutMe = PhraseBank.theme("About Me")!!
         val profile = Profile(name = "Anna", city = "Oslo", country = "Norway", homeCountry = "Italy", hometown = "Bologna", job = "nurse")
