@@ -444,7 +444,10 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
                 selected = uiState.geminiModel,
                 onSelected = viewModel::setGeminiModel
             )
-            Hint("gemini-2.5-flash is recommended for fast, natural translations, island categorization and alternative phrasings.")
+            Hint(
+                "gemini-3.5-flash-lite answers in under a second and is plenty for translations, island sorting and alternatives. " +
+                    "The other models think before they answer, so they take a few seconds longer."
+            )
             Spacer(modifier = Modifier.height(16.dp))
             ApiKeySection(
                 title = "Google Gemini API key",

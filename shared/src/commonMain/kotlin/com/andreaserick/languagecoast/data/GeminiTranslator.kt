@@ -17,8 +17,8 @@ import kotlinx.serialization.json.Json
  * [Translator] backed by Google Gemini through its REST API
  * (https://ai.google.dev/api/generate-content); expects a [TranslationEngine.Gemini] request.
  *
- * Includes automatic normalization for deprecated/invalid model names, a fallback to
- * [SettingsDefaults.GEMINI_MODEL] if a chosen preview model returns 404, a transient retry on 503/429,
+ * Includes automatic normalization for retired model names, a fallback to the replacement Google names
+ * (or [SettingsDefaults.GEMINI_MODEL]) if the chosen model returns 404, a transient retry on 503/500,
  * and clear user-facing error messages.
  */
 class GeminiTranslator(private val client: HttpClient) : Translator {
@@ -39,11 +39,17 @@ class GeminiTranslator(private val client: HttpClient) : Translator {
         return try {
             var (status, responseText) = postGenerateContent(apiKey, primaryModel, promptBody)
 
-            // If a custom or preview model is unavailable (404), automatically fall back to gemini-2.5-flash.
-            if (status == 404 && primaryModel != SettingsDefaults.GEMINI_MODEL) {
-                val fallback = postGenerateContent(apiKey, SettingsDefaults.GEMINI_MODEL, promptBody)
-                status = fallback.first
-                responseText = fallback.second
+            if (status == 404) {
+                // Google retires models often, and its 404 names the replacement ("use models/gemini-x"):
+                // try that, or else the default, so a stale choice keeps translating.
+                val replacement = suggestedGeminiModel(responseText)?.takeIf { it != primaryModel }
+                    ?: SettingsDefaults.GEMINI_MODEL.takeIf { it != primaryModel }
+                if (replacement != null) {
+                    logError(TAG, "Model $primaryModel not found, retrying with $replacement")
+                    val fallback = postGenerateContent(apiKey, replacement, promptBody)
+                    status = fallback.first
+                    responseText = fallback.second
+                }
             } else if (status == 503 || status == 500) {
                 // Brief retry on transient Gemini server overload.
                 delay(400)
@@ -77,18 +83,25 @@ class GeminiTranslator(private val client: HttpClient) : Translator {
 }
 
 /**
- * Maps legacy or invalid Gemini model identifiers that previously existed in settings to valid
- * v1beta Gemini models so requests don't fail with HTTP 404.
+ * Maps Gemini model ids that Google has retired (or is about to) to their current replacements, so a
+ * choice saved by an earlier version of the app doesn't fail with HTTP 404. Unknown ids pass through.
  */
 internal fun normalizeGeminiModel(rawModel: String): String {
     val cleaned = rawModel.trim().removePrefix("models/")
     return when (cleaned) {
-        "", "gemini-3.5-flash", "gemini-1.5-flash" -> SettingsDefaults.GEMINI_MODEL
-        "gemini-3.1-pro-preview", "gemini-1.5-pro" -> "gemini-2.5-pro"
-        "gemini-3.1-flash-lite-preview" -> "gemini-2.5-flash-lite"
+        "", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash",
+        "gemini-2.5-flash-lite", "gemini-3.1-flash-lite-preview" -> SettingsDefaults.GEMINI_MODEL
+        "gemini-1.5-pro", "gemini-2.5-pro", "gemini-3-pro-preview" -> "gemini-3.1-pro-preview"
         else -> cleaned
     }
 }
+
+/**
+ * The model Google's 404 tells callers to switch to ("Please update your code to use
+ * models/gemini-3.5-flash-lite for the latest features"), or null if the message names none.
+ */
+internal fun suggestedGeminiModel(errorBody: String): String? =
+    Regex("use models/([A-Za-z0-9.\\-]+)").find(errorBody)?.groupValues?.get(1)
 
 private val json = Json { ignoreUnknownKeys = true }
 
@@ -151,7 +164,7 @@ internal fun geminiAnswer(status: Int, body: String): Completion {
             status == 401 || status == 403 ->
                 "Gemini API key was rejected or lacks permission. Check your key in Settings."
             status == 404 ->
-                "The selected Gemini model wasn't found. Pick gemini-2.5-flash in Settings."
+                "The selected Gemini model wasn't found. Pick ${SettingsDefaults.GEMINI_MODEL} in Settings."
             status == 429 ->
                 "Gemini rate limit or quota reached. Wait a moment or switch to another provider."
             status >= 500 ->
