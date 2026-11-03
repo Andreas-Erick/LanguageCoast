@@ -168,12 +168,19 @@ internal fun Completion.toTranslation(unreadable: String = "The model's answer c
     return parseTranslationResponse(answer).let { if (it.isSuccess) it else TranslationResult.failure(unreadable) }
 }
 
+/**
+ * The Messages API requires `max_tokens`. It must not have a default here: kotlinx.serialization leaves out
+ * fields equal to their default, and the API then answers "max_tokens: Field required".
+ */
 @Serializable
 private data class ClaudeRequest(
     val model: String,
-    val max_tokens: Int = 512,
+    val max_tokens: Int,
     val messages: List<ClaudeMessage>
 )
+
+/** A ceiling, not a cost: a batch of fifteen translations or a native-speaker check in a language that tokenizes badly (Japanese, Russian) needs up to about 1500; 4096 leaves room for a chatty model. */
+internal const val CLAUDE_MAX_TOKENS = 4096
 
 @Serializable
 private data class ClaudeMessage(val role: String, val content: String)
@@ -190,7 +197,7 @@ private data class ClaudeContentBlock(val type: String? = null, val text: String
 internal fun claudeRequestBody(model: String, prompt: String): String =
     cloudJson.encodeToString(
         ClaudeRequest.serializer(),
-        ClaudeRequest(model = model, max_tokens = 512, messages = listOf(ClaudeMessage("user", prompt)))
+        ClaudeRequest(model = model, max_tokens = CLAUDE_MAX_TOKENS, messages = listOf(ClaudeMessage("user", prompt)))
     )
 
 /** [parseClaudeResponse] without reading the answer as a translation. */
