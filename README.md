@@ -24,15 +24,18 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 ## 📱 Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/create.png" alt="Home screen with today's due cards, the new card form and recently added cards" width="200" />
-  <img src="docs/screenshots/my-coast.png" alt="My Coasts with the study streak and German, Spanish and Italian coasts, each showing its due cards" width="200" />
-  <img src="docs/screenshots/coast.png" alt="German Coast with a button to review its busiest island, and its Language Islands with how many cards on each are due" width="200" />
-  <img src="docs/screenshots/island-cards.png" alt="The cards of the Small Talk island with their translations, alternatives and when each is due" width="200" />
-  <img src="docs/screenshots/study.png" alt="Flipped flashcard with the study direction, a read-aloud button and Again, Hard, Good and Easy buttons showing when the card comes back (Again: soon, in this session)" width="200" />
+  <img src="docs/screenshots/create.png" alt="Home screen with today's due cards across all coasts, a Review button, the new card form with its three ways in (AI translates, I write it, Manual) and the island chips" width="200" />
+  <img src="docs/screenshots/my-coast.png" alt="My Coasts with the study streak and weekly island goal, a leaky words session, and German, Spanish and Italian coasts, each showing its due cards" width="200" />
+  <img src="docs/screenshots/coast.png" alt="German Coast with a button to review the whole coast, and its Language Islands with how many cards on each are due" width="200" />
+  <img src="docs/screenshots/island-cards.png" alt="The cards of the Small talk island with their translations, alternatives and when each is due" width="200" />
+  <img src="docs/screenshots/study.png" alt="Flipped flashcard with the Flip, Type and Fill gap modes, the study direction, a read-aloud button, tappable words to explain, and Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
+  <img src="docs/screenshots/fill-gap.png" alt="Fill gap mode: the translation with its key word blanked out and the English sentence as the hint" width="200" />
   <img src="docs/screenshots/alternatives.png" alt="Sheet with other ways to say a sentence, with read-aloud and Make main buttons" width="200" />
   <img src="docs/screenshots/search.png" alt="Search results across all coasts, each showing its coast, island and when it is due" width="200" />
+  <img src="docs/screenshots/recap.png" alt="This month's recap: days studied, cards reviewed, streak, cards that stuck, new islands, leaky words and each coast's share" width="200" />
+  <img src="docs/screenshots/create-light.png" alt="The home screen in the light theme" width="200" />
   <img src="docs/screenshots/settings.png" alt="Settings with the native language and the choice of on-device, Local AI or cloud translation" width="200" />
-  <img src="docs/screenshots/notification.png" alt="Daily study reminder saying how many cards are due" width="200" />
+  <img src="docs/screenshots/notification.png" alt="Daily study reminder quoting a due card, with a Reveal button" width="200" />
   <img src="docs/screenshots/widget.png" alt="Home-screen widget with the study streak and the cards due today" width="200" />
 </p>
 

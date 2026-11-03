@@ -22,8 +22,6 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
 import kotlin.time.Clock
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.days
 
 data class MyCoastUiState(
     val coasts: List<CoastSummary> = emptyList(),
@@ -46,9 +44,6 @@ data class MyCoastUiState(
     val leakyCount: Int = 0,
     val isLoading: Boolean = true
 )
-
-/** How far back an island's last session counts towards a coast's weekly progress. */
-val RECENT_STUDY_WINDOW: Duration = 7.days
 
 /** The overview of all coasts (one per language being studied) and the study streak. */
 class MyCoastViewModel(
@@ -78,7 +73,8 @@ class MyCoastViewModel(
     private data class Progress(val weeklyGoal: Int, val islandsThisWeek: Int, val freezeUsedOn: LocalDate?, val leakyCount: Int)
 
     val uiState: StateFlow<MyCoastUiState> = combine(
-        flashcards.observeCoastSummaries(studiedSince = clock.now().toEpochMilliseconds() - RECENT_STUDY_WINDOW.inWholeMilliseconds, now = clock.now().toEpochMilliseconds()),
+        // "This week" starts on Monday, like the streak bars and the weekly goal.
+        flashcards.observeCoastSummaries(studiedSince = startOfWeek(clock.todayIn(timeZone)).atStartOfDayIn(timeZone).toEpochMilliseconds(), now = clock.now().toEpochMilliseconds()),
         settings.nativeLanguage,
         settings.streakCount,
         settings.studyDays,
