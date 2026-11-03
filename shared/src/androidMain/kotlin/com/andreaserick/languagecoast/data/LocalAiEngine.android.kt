@@ -14,6 +14,7 @@ import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.ThinkingConfig
 import java.io.File
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CancellationException
@@ -363,7 +364,7 @@ actual class LocalAiTranslator actual constructor() : Translator {
             ?: return TranslationResult.failure(NO_MODEL_MESSAGE)
 
         val answer = withContext(dispatcher) {
-            mutex.withLock { generateLocked(buildTranslationPrompt(request), modelFile) }
+            mutex.withLock { generateLocked(buildTranslationPrompt(request), modelFile, localEngine.modelId) }
         }
         val text = answer.text ?: return TranslationResult.failure(answer.errorMessage ?: "Local AI sent no answer.")
         return parseLocalModelResponse(text, request)
@@ -374,7 +375,7 @@ actual class LocalAiTranslator actual constructor() : Translator {
         val modelFile = LocalAiPaths.resolveModelFile(localEngine.modelId, localEngine.modelPath)
             ?: return Completion.failure(NO_MODEL_MESSAGE)
         return withContext(dispatcher) {
-            mutex.withLock { generateLocked(prompt, modelFile) }
+            mutex.withLock { generateLocked(prompt, modelFile, localEngine.modelId) }
         }.let { answer ->
             // Reasoning models think out loud first; the answer is what follows.
             answer.text?.let { Completion(it.replace(THINK_BLOCK, "").trim().ifEmpty { it }) } ?: answer
@@ -396,18 +397,25 @@ actual class LocalAiTranslator actual constructor() : Translator {
         if (engine != null && loadedModelPath == targetPath) return engine
         closeEngineLocked()
         val cacheDir = LocalAiPaths.cacheDir?.absolutePath ?: modelFile.parentFile?.absolutePath
+        val started = System.currentTimeMillis()
         val initialized = initializeEngineWithFallback(targetPath, cacheDir, preferGpu = LocalAiPaths.gpuSupported) ?: return null
+        logInfo(TAG, "Loaded ${modelFile.name} on ${initialized.engineConfig.backend} in ${System.currentTimeMillis() - started} ms")
         engine = initialized
         loadedModelPath = targetPath
         return initialized
     }
 
-    /** Sends [prompt] to the loaded model and returns its whole reply, retrying once on the CPU if the GPU backend fails. */
-    private suspend fun generateLocked(prompt: String, modelFile: File): Completion {
+    /**
+     * Sends [prompt] to the loaded model and returns its whole reply, retrying once on the CPU if the GPU backend fails.
+     * [modelId] picks the model-specific way of keeping the reply short.
+     */
+    private suspend fun generateLocked(prompt: String, modelFile: File, modelId: String): Completion {
         val activeEngine = ensureEngineLocked(modelFile)
             ?: return Completion.failure("Couldn't load the local AI model (${modelFile.name}). Ensure your phone has enough free RAM and try again.")
+        // Qwen 3 also honours this soft switch in the message itself, in case the template ignores ThinkingConfig.
+        val fullPrompt = if (LocalAiCatalog.byId(modelId)?.family == "Qwen 3") "$prompt /no_think" else prompt
         return try {
-            Completion(sendLocked(activeEngine, prompt))
+            Completion(sendLocked(activeEngine, fullPrompt))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -442,18 +450,26 @@ actual class LocalAiTranslator actual constructor() : Translator {
     /** One conversation with [activeEngine]: [prompt] in, the whole reply out. */
     private suspend fun sendLocked(activeEngine: Engine, prompt: String): String {
         var conversation: Conversation? = null
+        val started = System.currentTimeMillis()
         try {
             conversation = activeEngine.createConversation(
                 ConversationConfig(
                     systemInstruction = Contents.of(
                         "You are an expert multilingual flashcard translator and language teacher. Follow the requested output format strictly."
                     ),
-                    samplerConfig = SamplerConfig(topK = 20, topP = 0.90, temperature = 0.3)
+                    samplerConfig = SamplerConfig(topK = 20, topP = 0.90, temperature = 0.3),
+                    // Qwen 3 and Gemma 4 reason out loud by default: hundreds of tokens, minutes on a phone,
+                    // before the first word of a three-line answer. The answer alone is what we want.
+                    thinkingConfig = ThinkingConfig(enableThinking = false),
+                    // A flashcard answer is a few lines; a model that rambles on shouldn't keep the phone busy.
+                    maxOutputToken = MAX_OUTPUT_TOKENS
                 )
             )
             val replyBuilder = StringBuilder()
             conversation.sendMessageAsync(prompt).collect { chunk -> replyBuilder.append(chunk.toString()) }
-            return replyBuilder.toString().trim()
+            val reply = replyBuilder.toString().trim()
+            logInfo(TAG, "Replied ${reply.length} chars in ${System.currentTimeMillis() - started} ms")
+            return reply
         } catch (e: CancellationException) {
             runCatching { conversation?.cancelProcess() }
             throw e
@@ -496,9 +512,14 @@ actual class LocalAiTranslator actual constructor() : Translator {
     private companion object {
         const val TAG = "LocalAiTranslator"
         const val NO_MODEL_MESSAGE = "No local AI model is installed yet. Open Settings → Translation → Local AI to scan your phone and install a model."
-        val THINK_BLOCK = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
+
+        /** Enough for a translation with alternatives and a note, or a 90-word explanation, with room to spare. */
+        const val MAX_OUTPUT_TOKENS = 512
     }
 }
+
+/** A model's reasoning, which isn't part of its answer; one cut short by the output cap runs to the end of the text. */
+private val THINK_BLOCK = Regex("<think>[\\s\\S]*?(</think>|$)", RegexOption.IGNORE_CASE)
 
 /**
  * Parses a local LLM's output using [parseTranslationResponse], with a graceful fallback for ultra-compact
@@ -506,7 +527,7 @@ actual class LocalAiTranslator actual constructor() : Translator {
  */
 internal fun parseLocalModelResponse(rawReply: String, request: TranslationRequest): TranslationResult {
     // Strip optional <think>...</think> reasoning blocks emitted by Qwen3 / DeepSeek style models
-    val cleaned = rawReply.replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "").trim()
+    val cleaned = rawReply.replace(THINK_BLOCK, "").trim()
     // A small model often has no category to offer; that's no reason to lose its translation.
     val structured = parseTranslationResponse(cleaned, fallbackCategory = request.userCategory.ifBlank { DEFAULT_CATEGORY })
     if (structured.isSuccess) return structured

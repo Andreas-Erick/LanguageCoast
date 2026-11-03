@@ -136,12 +136,21 @@ class TranslationResponseParserTest {
     }
 
     @Test
-    fun normalizesLegacyGeminiModelsToValidIds() {
-        assertEquals("gemini-2.5-flash", normalizeGeminiModel("gemini-3.5-flash"))
-        assertEquals("gemini-2.5-pro", normalizeGeminiModel("gemini-3.1-pro-preview"))
-        assertEquals("gemini-2.5-flash-lite", normalizeGeminiModel("gemini-3.1-flash-lite-preview"))
-        assertEquals("gemini-2.5-flash", normalizeGeminiModel(""))
-        assertEquals("gemini-2.0-flash", normalizeGeminiModel("models/gemini-2.0-flash"))
+    fun normalizesRetiredGeminiModelsToCurrentIds() {
+        assertEquals("gemini-3.5-flash-lite", normalizeGeminiModel("gemini-2.5-flash"))
+        assertEquals("gemini-3.5-flash-lite", normalizeGeminiModel("models/gemini-2.0-flash"))
+        assertEquals("gemini-3.5-flash-lite", normalizeGeminiModel(""))
+        assertEquals("gemini-3.1-pro-preview", normalizeGeminiModel("gemini-2.5-pro"))
+        assertEquals("gemini-3.8-flash", normalizeGeminiModel(" gemini-3.8-flash "))
+        assertEquals("gemini-3.5-flash", normalizeGeminiModel("gemini-3.5-flash"))
+    }
+
+    @Test
+    fun readsTheReplacementModelOutOfGooglesNotFoundError() {
+        val body = """{"error":{"code":404,"message":"This model models/gemini-2.5-pro is no longer available to new users. """ +
+            """Please update your code to use models/gemini-3.1-pro-preview for the latest features and improvements.","status":"NOT_FOUND"}}"""
+        assertEquals("gemini-3.1-pro-preview", suggestedGeminiModel(body))
+        assertEquals(null, suggestedGeminiModel("""{"error":{"code":404,"message":"models/foo is not found"}}"""))
     }
 
     @Test

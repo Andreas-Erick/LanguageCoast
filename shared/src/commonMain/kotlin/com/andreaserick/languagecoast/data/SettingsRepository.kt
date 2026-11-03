@@ -180,7 +180,8 @@ class DataStoreSettingsRepository(
         dataStore.data.map { it[API_KEY] ?: "" }
 
     override val geminiModel: Flow<String> =
-        dataStore.data.map { it[GEMINI_MODEL] ?: SettingsDefaults.GEMINI_MODEL }
+        // A model picked in an earlier version may be retired by now; show and use its replacement.
+        dataStore.data.map { normalizeGeminiModel(it[GEMINI_MODEL] ?: SettingsDefaults.GEMINI_MODEL) }
 
     override val openRouterKey: Flow<String> =
         dataStore.data.map { it[OPENROUTER_KEY] ?: "" }

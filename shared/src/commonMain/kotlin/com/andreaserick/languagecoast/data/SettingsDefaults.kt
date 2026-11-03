@@ -3,7 +3,7 @@ package com.andreaserick.languagecoast.data
 /** Default values and the options offered in Settings. */
 object SettingsDefaults {
     const val NATIVE_LANGUAGE = "English"
-    const val GEMINI_MODEL = "gemini-2.5-flash"
+    const val GEMINI_MODEL = "gemini-3.5-flash-lite"
     const val OPENAI_MODEL = "gpt-4.1-mini"
     const val CLAUDE_MODEL = "claude-haiku-4-5"
     const val GROQ_MODEL = "llama-3.3-70b-versatile"
@@ -21,11 +21,16 @@ object SettingsDefaults {
     /** OpenRouter's Auto Router, which picks a suitable model for each request. */
     const val OPENROUTER_MODEL = "openrouter/auto"
 
+    /**
+     * Checked against the live model list on 2026-11-03. Google retires models within a year or so, and the
+     * 2.0 and 2.5 ones returned 404; [normalizeGeminiModel] maps those to these, and a 404 falls back to the
+     * replacement Google names in its error.
+     */
     val GEMINI_MODELS = listOf(
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-pro",
-        "gemini-2.0-flash"
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-3.1-pro-preview",
+        "gemini-4-argon"
     )
 
     val OPENAI_MODELS = listOf(
