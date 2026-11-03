@@ -46,18 +46,22 @@ android {
 
     buildTypes {
         release {
-            if (hasReleaseKeystore) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            // Without the release keystore (local builds), sign with the debug key so the APK still installs.
+            signingConfig = if (hasReleaseKeystore) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
             // On-device translation (ML Kit) ships a ~15 MB native library per CPU type. Released APKs keep
             // only the ones phones use; debug builds keep all, so x86 emulators still work.
-            ndk {
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            // `-PallAbis=true` keeps them all, to test a release build on an x86 emulator.
+            if (project.findProperty("allAbis") != "true") {
+                ndk {
+                    abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+                }
             }
             isShrinkResources = true
             optimization {
                 enable = true
             }
+            // Keep what LiteRT-LM's native code reaches through JNI; see proguard-rules.pro.
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     compileOptions {
