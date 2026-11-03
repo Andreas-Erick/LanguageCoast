@@ -63,9 +63,9 @@ interface LanguageCoastDao {
     @Delete
     suspend fun deleteCoast(coast: Coast)
 
-    /** Stores why the user learns the language of coast [coastId]; null clears it. */
-    @Query("UPDATE coasts SET goal = :goal WHERE coastId = :coastId")
-    suspend fun setCoastGoal(coastId: Int, goal: String?)
+    /** Stores why the user learns the language of coast [coastId] and where they will use it; null clears either. */
+    @Query("UPDATE coasts SET goal = :goal, region = :region WHERE coastId = :coastId")
+    suspend fun setCoastGoal(coastId: Int, goal: String?, region: String?)
 
     /** Adds [count] to how many starter sentences the daily session has offered on coast [coastId]. */
     @Query("UPDATE coasts SET bankOffered = bankOffered + :count WHERE coastId = :coastId")

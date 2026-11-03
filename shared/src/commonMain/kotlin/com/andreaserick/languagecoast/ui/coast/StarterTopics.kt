@@ -36,6 +36,8 @@ import com.andreaserick.languagecoast.data.ImportProgress
 import com.andreaserick.languagecoast.data.PROFILE_PLACEHOLDERS
 import com.andreaserick.languagecoast.data.PhraseBank
 import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.profileExample
+import com.andreaserick.languagecoast.data.profileLabel
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
@@ -103,7 +105,8 @@ internal fun StarterTopicsRow(
 
 /**
  * Confirms adding [options] (one topic, or all that are left) to the coast: what it will do, the person's
- * blanks the topics use, how long it will take with [provider], and the button.
+ * blanks the topics use (started from [profile], the values from Settings, and only asked for when missing),
+ * how long it will take with [provider], and the button.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,11 +114,13 @@ internal fun StarterTopicSheet(
     options: List<StarterTopicOption>,
     coastLanguage: String,
     provider: TranslationProvider,
+    profile: Map<String, String>,
     onAdd: (fillers: Map<String, String>) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val fillers = remember { mutableStateMapOf<String, String>() }
+    val fillers = remember { mutableStateMapOf<String, String>().apply { putAll(profile) } }
     val blanks = PROFILE_PLACEHOLDERS.filter { blank -> options.any { blank in it.profileBlanks } }
+    val missing = blanks.filter { profile[it].isNullOrBlank() }
     val language = mapOf(PhraseBank.LANGUAGE_PLACEHOLDER to coastLanguage)
     // Sentences whose blanks are filled (or that have none) count; the rest are left out.
     val filled = fillers.filterValues { it.isNotBlank() } + language
@@ -147,7 +152,11 @@ internal fun StarterTopicSheet(
             )
             if (blanks.isNotEmpty()) {
                 Text(
-                    text = "Some sentences use your own details. Fill in what applies; a sentence with a blank you leave empty is left out.",
+                    text = when {
+                        missing.isEmpty() -> "Some sentences use your own details, filled in from Settings › About you. Change them here for this topic only."
+                        missing.size < blanks.size -> "Some sentences use your own details. The ones from Settings › About you are filled in; add the rest if you like. A sentence with a blank you leave empty is left out."
+                        else -> "Some sentences use your own details. Fill in what applies, or do it once in Settings › About you; a sentence with a blank you leave empty is left out."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
@@ -155,8 +164,8 @@ internal fun StarterTopicSheet(
                     CoastTextField(
                         value = fillers[blank].orEmpty(),
                         onValueChange = { fillers[blank] = it },
-                        label = { Text("Your $blank") },
-                        placeholder = { Text(blankExample(blank)) },
+                        label = { Text(profileLabel(blank)) },
+                        placeholder = { Text(profileExample(blank)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -186,14 +195,6 @@ internal fun StarterTopicSheet(
             }
         }
     }
-}
-
-private fun blankExample(blank: String): String = when (blank) {
-    "name" -> "e.g., Anna"
-    "city" -> "e.g., Oslo"
-    "country" -> "e.g., Norway"
-    "job" -> "e.g., nurse"
-    else -> ""
 }
 
 /** A rough duration for translating [count] sentences with [provider]: a model takes a batch at a time, the device one each. */

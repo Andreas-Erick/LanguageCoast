@@ -381,7 +381,9 @@ class StudyViewModel(
         // Take it off the queue right away, so a second tap can't keep it twice.
         updateSession { s -> s.copy(learnQueue = s.learnQueue.drop(1), keptCount = s.keptCount + 1, pendingKeeps = s.pendingKeeps + 1) }
         viewModelScope.launch {
-            val added = flashcards.addFlashcard(coastId, suggestion.nativeText, suggestion.targetText, suggestion.category, suggestion.emoji)
+            val added = flashcards.addFlashcard(
+                coastId, suggestion.nativeText, suggestion.targetText, suggestion.category, suggestion.emoji, suggestion.alternatives, suggestion.note
+            )
             flashcards.removeSuggestion(suggestion.suggestionId)
             val island = added.createdIsland ?: flashcards.observeIslands(coastId).first().first { it.islandId == added.card.islandId }
             val placed = PlacedCard(added.card, island.name, island.emoji, coastId, dailyLanguage)

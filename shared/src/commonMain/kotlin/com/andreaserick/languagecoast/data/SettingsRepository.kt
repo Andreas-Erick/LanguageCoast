@@ -89,6 +89,8 @@ interface SettingsRepository {
     val lastStudyDate: Flow<LocalDate?> get() = flowOf(null)
     /** Starter topics added whole to a coast, as "coastId:topic" (see [starterTopicKey]). */
     val starterTopicsAdded: Flow<Set<String>> get() = flowOf(emptySet())
+    /** The user's name, city and so on, for the blanks in starter sentences. */
+    val profile: Flow<Profile> get() = flowOf(Profile())
     /** Whether and when the daily study reminder is shown. */
     val reminderSettings: Flow<ReminderSettings>
     /** Whether cards are studied the other way round: from the coast's language to the native language. */
@@ -147,6 +149,9 @@ interface SettingsRepository {
 
     /** Records that starter [topic] was added whole to coast [coastId]. */
     suspend fun markStarterTopicAdded(coastId: Int, topic: String) = Unit
+
+    /** Stores the user's [profile]. */
+    suspend fun setProfile(profile: Profile) = Unit
 
     /** Records a completed study session for today and updates the streak. */
     suspend fun recordStudySession()
@@ -241,6 +246,17 @@ class DataStoreSettingsRepository(
     override val lastStudyDate: Flow<LocalDate?> = dataStore.data.map { preferences -> preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) } }
 
     override val starterTopicsAdded: Flow<Set<String>> = dataStore.data.map { it[STARTER_TOPICS_ADDED].orEmpty() }
+
+    override val profile: Flow<Profile> = dataStore.data.map { it.readProfile() }
+
+    override suspend fun setProfile(profile: Profile) {
+        dataStore.edit { preferences ->
+            PROFILE_KEYS.forEach { (placeholder, key) ->
+                val value = profile.fillers()[placeholder]
+                if (value == null) preferences.remove(key) else preferences[key] = value
+            }
+        }
+    }
 
     override suspend fun markStarterTopicAdded(coastId: Int, topic: String) {
         dataStore.edit { it[STARTER_TOPICS_ADDED] = it[STARTER_TOPICS_ADDED].orEmpty() + starterTopicKey(coastId, topic) }
@@ -345,7 +361,8 @@ class DataStoreSettingsRepository(
             themeMode = preferences[THEME_MODE],
             hapticsEnabled = preferences[HAPTICS_ENABLED] ?: true,
             soundsEnabled = preferences[SOUNDS_ENABLED] ?: true,
-            starterTopicsAdded = preferences[STARTER_TOPICS_ADDED].orEmpty().sorted()
+            starterTopicsAdded = preferences[STARTER_TOPICS_ADDED].orEmpty().sorted(),
+            profile = preferences.readProfile().fillers()
         )
     }
 
@@ -378,6 +395,7 @@ class DataStoreSettingsRepository(
             put(HAPTICS_ENABLED, backup.hapticsEnabled)
             put(SOUNDS_ENABLED, backup.soundsEnabled)
             put(STARTER_TOPICS_ADDED, backup.starterTopicsAdded.toSet().takeIf { it.isNotEmpty() })
+            PROFILE_KEYS.forEach { (placeholder, key) -> put(key, backup.profile[placeholder]?.takeIf { it.isNotBlank() }) }
         }
     }
 
@@ -385,6 +403,9 @@ class DataStoreSettingsRepository(
     private suspend fun <T> set(key: Preferences.Key<T>, value: T) {
         dataStore.edit { it[key] = value }
     }
+
+    private fun Preferences.readProfile(): Profile =
+        PROFILE_KEYS.entries.fold(Profile()) { profile, (placeholder, key) -> profile.with(placeholder, this[key].orEmpty()) }
 
     private companion object {
         val NATIVE_LANG = stringPreferencesKey("native_language")
@@ -417,6 +438,9 @@ class DataStoreSettingsRepository(
         val HAPTICS_ENABLED = booleanPreferencesKey("haptics_enabled")
         val SOUNDS_ENABLED = booleanPreferencesKey("sounds_enabled")
         val STARTER_TOPICS_ADDED = stringSetPreferencesKey("starter_topics_added")
+        /** One key per profile blank, named after the placeholder. */
+        val PROFILE_KEYS: Map<String, Preferences.Key<String>> =
+            Profile.PLACEHOLDERS.associateWith { stringPreferencesKey("profile_" + it.replace(' ', '_')) }
         const val STUDY_DAYS_KEPT = 28
     }
 }

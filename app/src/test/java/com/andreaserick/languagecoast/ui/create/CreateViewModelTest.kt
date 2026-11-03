@@ -90,8 +90,21 @@ class CreateViewModelTest {
     }
 
     @Test
+    fun theRegionIsStoredWithTheGoalAndReachesTheTranslation() = runTest {
+        val coast = flashcards.coasts.value.single()
+        settings.apiKey.value = "key"
+
+        viewModel.setGoal(coast, "A trip", " Mexico ")
+        viewModel.onNativeSentenceChange("Hello")
+        viewModel.save()
+
+        assertEquals("Mexico", flashcards.coasts.value.single().region)
+        assertEquals("Mexico", translator.lastRequest?.targetRegion)
+    }
+
+    @Test
     fun sameGoalAgainKeepsThePreparedSentences() = runTest {
-        flashcards.setCoastGoal(1, "Work")
+        flashcards.setCoastGoal(1, "Work", null)
         flashcards.addSuggestions(listOf(SuggestedSentence(coastId = 1, nativeText = "n", targetText = "t", category = "C")))
 
         viewModel.setGoal(flashcards.coasts.value.single(), "Work ")

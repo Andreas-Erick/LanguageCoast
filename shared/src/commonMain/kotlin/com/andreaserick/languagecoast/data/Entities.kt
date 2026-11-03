@@ -19,6 +19,8 @@ import kotlin.time.Clock
  *     if they haven't said. The daily session's new sentences are picked to fit it.
  * @property bankOffered How many starter sentences ([PhraseBank]) the daily session has offered on this coast. The
  *     basics come first: until [BASICS_FROM_BANK] of them were offered, new sentences come from the bank, not the AI.
+ * @property region Where the language will be used (e.g. "Mexico", "Switzerland"), so translations use that place's
+ *     words, forms and register; null for no preference.
  */
 @Entity(
     tableName = "coasts",
@@ -29,7 +31,8 @@ data class Coast(
     val language: String,
     val creationDate: Long = Clock.System.now().toEpochMilliseconds(),
     val goal: String? = null,
-    @ColumnInfo(defaultValue = "0") val bankOffered: Int = 0
+    @ColumnInfo(defaultValue = "0") val bankOffered: Int = 0,
+    val region: String? = null
 ) {
     val displayName: String get() = "$language Coast"
 }
@@ -43,6 +46,8 @@ data class Coast(
  * @property targetText Its translation in the coast's language.
  * @property category The island it would go on.
  * @property emoji An emoji for [category], if the AI gave one.
+ * @property alternatives Another way to say it (the first translation, when the natural-speech check rewrote it).
+ * @property note Why the translation was rewritten, if it was; see [StarterTranslator].
  */
 @Entity(
     tableName = "suggested_sentences",
@@ -64,7 +69,9 @@ data class SuggestedSentence(
     val category: String,
     val emoji: String? = null,
     val skipped: Boolean = false,
-    val creationDate: Long = Clock.System.now().toEpochMilliseconds()
+    val creationDate: Long = Clock.System.now().toEpochMilliseconds(),
+    @ColumnInfo(defaultValue = "") val alternatives: List<String> = emptyList(),
+    val note: String? = null
 )
 
 /**

@@ -12,6 +12,7 @@ import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.PlacedCard
+import com.andreaserick.languagecoast.data.Profile
 import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
@@ -95,8 +96,8 @@ class FakeFlashcardRepository : FlashcardRepository {
         return content
     }
 
-    override suspend fun setCoastGoal(coastId: Int, goal: String?) {
-        coasts.update { all -> all.map { if (it.coastId == coastId) it.copy(goal = goal?.trim()?.ifBlank { null }) else it } }
+    override suspend fun setCoastGoal(coastId: Int, goal: String?, region: String?) {
+        coasts.update { all -> all.map { if (it.coastId == coastId) it.copy(goal = goal?.trim()?.ifBlank { null }, region = region?.trim()?.ifBlank { null }) else it } }
     }
 
     override suspend fun recordBankOffered(coastId: Int, count: Int) {
@@ -303,6 +304,7 @@ class FakeSettingsRepository : SettingsRepository {
     override val studyDays = MutableStateFlow<Set<LocalDate>>(emptySet())
     override val lastStudyDate = MutableStateFlow<LocalDate?>(null)
     override val starterTopicsAdded = MutableStateFlow<Set<String>>(emptySet())
+    override val profile = MutableStateFlow(Profile())
     override val reminderSettings = MutableStateFlow(ReminderSettings())
     override val studyReversed = MutableStateFlow(false)
     override val weeklyGoal = MutableStateFlow(SettingsDefaults.WEEKLY_GOAL)
@@ -341,6 +343,10 @@ class FakeSettingsRepository : SettingsRepository {
 
     override suspend fun markStarterTopicAdded(coastId: Int, topic: String) {
         starterTopicsAdded.update { it + starterTopicKey(coastId, topic) }
+    }
+
+    override suspend fun setProfile(profile: Profile) {
+        this.profile.value = profile
     }
 
     override suspend fun recordStudySession() {
@@ -414,12 +420,14 @@ class FakeTranslator(
     }
 
     var completion: Completion = Completion("A short explanation.")
+    /** Answers by prompt, when a test needs different replies to different prompts; null uses [completion]. */
+    var completionFor: ((String) -> Completion)? = null
     val prompts = mutableListOf<String>()
     val prepared = mutableListOf<TranslationEngine>()
 
     override suspend fun complete(engine: TranslationEngine, prompt: String): Completion {
         prompts += prompt
-        return completion
+        return completionFor?.invoke(prompt) ?: completion
     }
 
     override suspend fun prepare(engine: TranslationEngine) { prepared += engine }

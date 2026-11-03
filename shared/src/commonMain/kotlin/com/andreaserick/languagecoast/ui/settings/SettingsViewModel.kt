@@ -16,6 +16,7 @@ import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.Profile
 import com.andreaserick.languagecoast.data.nativeLanguageOptions
 import com.andreaserick.languagecoast.data.recommendModelsForHardware
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
@@ -71,6 +72,8 @@ data class SettingsUiState(
     val soundsEnabled: Boolean = true,
     /** Islands to study per week. */
     val weeklyGoal: Int = SettingsDefaults.WEEKLY_GOAL,
+    /** The user's name, city and so on, for the blanks in starter sentences. */
+    val profile: Profile = Profile(),
     /** A model whose download is waiting for the user to accept that it goes over mobile data. */
     val meteredWarningModelId: String? = null
 )
@@ -207,9 +210,9 @@ class SettingsViewModel(
         combine(settings.nativeLanguage, flashcards.observeCoasts(), ::Pair),
         cloudState,
         localAiState,
-        combine(settings.translationProvider, settings.reminderSettings, ::Pair),
+        combine(settings.translationProvider, settings.reminderSettings, settings.profile, ::Triple),
         preferences
-    ) { (native, coasts), cloud, local, (provider, reminder), prefs ->
+    ) { (native, coasts), cloud, local, (provider, reminder, profile), prefs ->
         val recommendations = local.hardwareProfile?.let(::recommendModelsForHardware) ?: defaultRecommendations()
         SettingsUiState(
             nativeLanguage = native,
@@ -245,7 +248,8 @@ class SettingsViewModel(
             hapticsEnabled = prefs.hapticsEnabled,
             soundsEnabled = prefs.soundsEnabled,
             weeklyGoal = prefs.weeklyGoal,
-            meteredWarningModelId = prefs.meteredWarningModelId
+            meteredWarningModelId = prefs.meteredWarningModelId,
+            profile = profile
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -297,6 +301,11 @@ class SettingsViewModel(
     /** Sets how many islands the user aims to study each week. */
     fun setWeeklyGoal(islands: Int) {
         viewModelScope.launch { settings.setWeeklyGoal(islands) }
+    }
+
+    /** Stores one of the profile's blanks ([placeholder], see [Profile.PLACEHOLDERS]) as [value]. */
+    fun setProfileField(placeholder: String, value: String) {
+        viewModelScope.launch { settings.setProfile(settings.profile.first().with(placeholder, value)) }
     }
 
     /** Scans or re-scans the user's phone hardware to recommend compatible local AI models. */

@@ -31,7 +31,7 @@ private val GUIDE = listOf(
         "Today",
         listOf(
             "Today is the whole routine: one short session a day on the coast you focus on. It reviews a few due cards (never the whole pile), then offers a few new sentences to keep or skip.",
-            "Tap the flag line to say why you're learning the language: a trip, a person, a job, a show. The new sentences are picked for that reason, by your AI provider or from a built-in phrase bank.",
+            "Tap the flag line to say why you're learning the language: a trip, a person, a job, a show. The new sentences are picked for that reason, by your AI provider or from a built-in phrase bank. Say where you'll use it too (Mexico, Brazil, Switzerland): every translation then uses that place's words, forms and register.",
             "A kept sentence becomes a card and you practice it at the end of the session. A skipped one isn't offered again.",
             "After a few days away the session shrinks to a welcome-back size. Whatever a session leaves over waits for another day; \"Review all\" is there if you want it.",
             "\"Change\" next to the coast switches the focus coast.",
@@ -42,7 +42,7 @@ private val GUIDE = listOf(
         "Coasts and islands",
         listOf(
             "Each language you learn gets its own coast. Start one from My Coasts with \"New Coast\".",
-            "On a coast, \"Starter topics\" adds a whole topic (Greetings, Numbers, Phone Settings, ...) as an island in one tap, translated for you in the background. Topics that use your name, city, country or job ask for them once; sentences with other blanks stay in the Starter sentences list on Today. \"Add all\" adds every remaining topic, but a few topics at a time is the better pace.",
+            "On a coast, \"Starter topics\" adds a whole topic (Greetings, Numbers, Phone Settings, ...) as an island in one tap, translated for you in the background. With an AI provider, a native-speaker check then rewrites anything people wouldn't really say; the first version stays as an alternative and the note says why. Blanks like your name, city or job are filled in from Settings › About you (or asked for if you left them empty); sentences with other blanks stay in the Starter sentences list on Today. \"Add all\" adds every remaining topic, but a few topics at a time is the better pace.",
             "On a coast, your cards are grouped into islands by topic, like Travel or Restaurant.",
             "Set your native language here in Settings, so translations go the right way."
         )

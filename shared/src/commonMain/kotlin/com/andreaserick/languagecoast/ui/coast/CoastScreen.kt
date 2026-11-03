@@ -81,6 +81,7 @@ fun CoastScreen(
             options = options,
             coastLanguage = uiState.coastLanguage,
             provider = uiState.translationProvider,
+            profile = uiState.profile,
             onAdd = { fillers ->
                 viewModel.addStarterTopics(options.map { it.theme.category }, fillers)
                 topicSheet = null

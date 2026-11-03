@@ -106,9 +106,10 @@ object PhraseBank {
             listOf("introduce", "myself", "me", "move", "moving", "live", "living", "abroad", "new", "study", "university", "school"),
             listOf(
                 "My name is [name].",
-                "I'm from [country].",
+                "I'm from [home country].",
                 "I live in [city].",
-                "I was born in [city].",
+                "I live in [country] now.",
+                "I was born in [hometown].",
                 "I'm [number] years old.",
                 "How old are you?",
                 "I'm turning [number] next year.",
@@ -171,7 +172,7 @@ object PhraseBank {
             listOf(
                 "Where is the check-in desk for [place]?",
                 "I'd like a window seat, please.",
-                "Is this the gate for the flight to [city]?",
+                "Is this the gate for the flight to [destination]?",
                 "How much does the extra bag cost?",
                 "My flight is delayed.",
                 "Where is passport control?",
@@ -190,7 +191,7 @@ object PhraseBank {
             listOf("train", "trains", "bus", "metro", "subway", "taxi", "tram", "commute", "ticket", "drive", "driving", "car"),
             listOf(
                 "Where is the train station?",
-                "One ticket to [city], please.",
+                "One ticket to [destination], please.",
                 "How much is a ticket to the city center?",
                 "Which platform does the train leave from?",
                 "Does this bus go to [place]?",
