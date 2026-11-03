@@ -63,9 +63,9 @@ And this line under PRIVATE BY DESIGN:
 
 ## Screenshots
 
-`screenshots/android/` has six Play Store phone screenshots (1080 × 1920, 9:16): Create, My Coasts, a coast's islands, Flip Cards, Active Type and an island's cards. Play needs at least 2, and no side may be more than twice the other, so taller phones like the Pixel 9 Pro XL don't qualify.
+`screenshots/android/` has eight Play Store phone screenshots (1080 × 1920, 9:16): Create, My Coasts, a coast's islands, Flip, Type, an island's cards, Fill gap and the monthly recap. Play needs at least 2, and no side may be more than twice the other, so taller phones like the Pixel 9 Pro XL don't qualify.
 
-They show the demo data in `demo-backup.json` (3 coasts, 27 cards, a 12-day streak). To redo them, restore that file under Settings → Backup on an emulator with a 1080 × 1920 screen (the "pixel" device profile). Turn on the emulator's demo mode for a tidy status bar.
+They show the demo data in `demo-backup.json` (3 coasts, 27 cards, a 12-day streak, two leaky words, reviews in the current month). To redo them, restore that file under Settings → Backup on an emulator with a 1080 × 1920 screen (the "pixel" device profile). Turn on the emulator's demo mode for a tidy status bar.
 
 The App Store needs at least one screenshot for the 6.9" iPhone display (1320 × 2868 px). The iPhone app can't restore backups yet, so those need data entered by hand on the simulator.
 
