@@ -19,7 +19,7 @@
 
 ---
 
-Language Coast is a flashcard app that changes how you build vocabulary. It combines AI translation with a coastal-themed UI. Each language you learn gets its own **Coast** (e.g. a *German Coast* and an *Icelandic Coast*). Type what you want to say, and the AI translates it and files it into one of that coast's "Language Islands", ready to study.
+Language Coast is a flashcard app that changes how you build vocabulary. It combines AI translation with a coastal-themed UI. Each language you learn gets its own **Coast** (e.g. a *German Coast* and an *Icelandic Coast*), and each coast has a reason: a trip, a person, a job. Every day, Today offers one short session: a few due cards, then a few new sentences picked for that reason, to keep or skip. Type your own sentence whenever you like, and the AI translates it and files it into one of that coast's "Language Islands", ready to study.
 
 ## 📱 Screenshots
 
@@ -41,10 +41,15 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 
 ## ✨ Features
 
-### 🏠 Home screen
-- **Today at a glance**: how many cards are due across your coasts, and a *Review* button that starts one session over all of them, with the coasts taking turns.
-- **Your streak** in the header, the **new card form** with a compact coast picker, and the **cards you added most recently** to that coast.
-- **Three-step onboarding**: the language you speak, your first coast, then your first sentence.
+### ☀️ Today
+- **One session a day, always finishable**: Today shows the coast you focus on and one button. The session reviews at most 12 due cards (the rest wait for another day, with *Review all* if you insist), then offers up to 3 new sentences.
+- **A goal per coast**: say why you learn the language (*A trip to Lisbon in March*, *Talking with Anna's parents*). It is shown on Today, and the new sentences are picked for it.
+- **Sentences come to you**: a pool of sentences is prepared in the background by your AI provider (local or cloud), fitted to the goal, your level and the islands you have, avoiding what you already know. Without an AI model, the starter sentences are translated on the device instead. Each new sentence is shown with both sides; *Keep it* makes it a card that you practice at the end of the session, *Skip* means it isn't offered again.
+- **Starter sentences**: about 650 sentences and words everyone needs, in 27 topics. Situations: greetings and politeness, getting by in the language, small talk and weather, about me (including your age), restaurant, directions, airport, getting around, hotel, shopping, help and health, making plans, phone and internet, money and bank, home and renting, paperwork, wishes and toasts, telling the time. Building blocks: days, months and seasons, numbers (0 to 30 in full, the tens, hundreds, thousands up to a billion, ordinals, halves, percent, years: everything any number is built from), everyday words, question words, family and people, colours, food and drink, signs you read on the street, and the words your phone's Settings app uses once you switch it to the language (Wi-Fi, notifications, permissions, Save, Allow, Turn off...). Tick the ones you'd say, fill in blanks like *[city]* or *[name]* (*[language]* fills itself), and they are translated and filed on islands. Sentences your coast already has are marked.
+- **The basics first**: for about the first six weeks (120 sentences) the new sentences come from the starter bank, in a sensible order (greetings, getting by, small talk, about you, then the situations your goal points to), translated by your provider. After that the AI suggests sentences for your goal, and the bank stays the fallback.
+- **Welcome back, not a backlog**: after three or more days away, the session shrinks to 5 cards and 2 new sentences.
+- **Your streak** in the header, the **new card form** folded away under *Add your own*, and the **cards you added most recently** to that coast.
+- **Three-step onboarding**: the language you speak, your first coast, then why you learn it.
 
 ### 🤖 AI-powered card creation
 - **Translate however you like**, picked in Settings:
@@ -59,18 +64,19 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Add many at once**: paste a paragraph, or read the text off a photo of a page or a sign (Android, on the phone), tick the sentences you want and they become cards one after the other.
 - **Island suggestion**: while you type, the island whose cards share the most words with your sentence is suggested before the AI sees it.
 - **Instant preview with undo and edit**: after saving you see the card that was created, can undo it right away, or fix the translation in place with the pencil.
-- **Patient with local models**: the model is loaded as soon as Create opens, the button shows how long it has been thinking, and after two unreadable answers a cloud provider you have a key for is offered instead.
+- **Patient with local models**: the model is loaded as soon as Today opens, the button shows how long it has been thinking, and after two unreadable answers a cloud provider you have a key for is offered instead.
 - **Alternatives for longer sentences**: for sentences of 6 words or more, the AI models also suggest up to two other translations with a note on how they differ (e.g. formal vs. informal). They are saved with the card: after flipping it, *2 alternatives* opens a sheet with the note, a read-aloud button for each and *Make main* to swap one with the card's translation. Alternatives also count as correct in Active Type and are included in exports.
 
 ### 🏝️ My Coasts
-- **One coast per language**: study several languages side by side, each with its flag and its own islands. Pick which coast new cards go to right on the Create screen.
+- **One coast per language**: study several languages side by side, each with its flag and its own islands. The focus coast, which Today's session and new cards are on, is switched right on Today.
+- **Starter topics as islands**: a coast lists the starter topics it doesn't have yet (*+ 🔢 Numbers · 88*). One tap adds the whole topic as an island, translated in the background with a progress bar you can walk away from. Topics that use your name, city, country or job ask for them once; sentences with a blank per sentence (*[number]*, *[time]*) stay in the starter list on Today. A language model translates a topic 15 sentences at a time with one prompt that carries the topic's rules (natural wording, the polite form of address with strangers, dictionary forms with articles for single words, numbers as words, the phone's own wording for its settings), so the entries are consistent with each other; the on-device translator goes sentence by sentence. *Add all* adds every remaining topic at once, with a count and a time estimate, if you really want it.
 - **Language Islands**: on each coast, your vocabulary is grouped into islands by category, each with its emoji, card count and how many cards are due. A coast with cards due offers one session over all of its islands.
 - **Progress at a glance**: coasts show how many islands you explored this week, and the streak card tracks your **weekly island goal** (3, 5, 7 or 10, picked in Settings).
 - **Leaky words**: cards you have forgotten twice, or that the scheduler rates hard, are gathered into a short booster session of their own.
 - **Monthly recap**: days studied, cards reviewed, cards that stuck, new islands and each coast's share, as a page and as a picture to share (Android).
 - **Island card list**: *See cards* in an island's ⋮ menu (or *All cards* in the ⋮ menu while studying) shows every card with its translation, alternatives and when it is due next.
 - **Search**: the search icon on My Coasts finds cards on every coast by their native text, translation or alternatives, and shows which coast and island each is on.
-- **Duplicate hint**: while you type a new card, Create tells you if the coast already has that sentence and on which island.
+- **Duplicate hint**: while you type a new card, Today tells you if the coast already has that sentence and on which island.
 - **Edit cards**: fix a card's native text, translation or alternatives, or move it to another island, without losing its review progress.
 - **Daily streaks with a freeze**: a streak counter and a bar for each day of the week track your study days. One missed day a week is covered automatically by a streak freeze, shown on the bar.
 - **Undo instead of "Are you sure?"**: deleted coasts, islands and cards can be restored from the snackbar.

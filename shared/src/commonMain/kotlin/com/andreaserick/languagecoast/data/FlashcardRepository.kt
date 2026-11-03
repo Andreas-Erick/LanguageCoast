@@ -48,6 +48,30 @@ interface FlashcardRepository {
     /** Deletes [coast] with its islands and cards, returning them for [restore]. */
     suspend fun deleteCoast(coast: Coast): DeletedContent
 
+    /** Stores why the user learns the language of coast [coastId]; blank or null clears it. */
+    suspend fun setCoastGoal(coastId: Int, goal: String?)
+
+    /** Records that [count] more starter sentences were offered on coast [coastId] (see [Coast.bankOffered]). */
+    suspend fun recordBankOffered(coastId: Int, count: Int)
+
+    /** The sentences suggested for coast [coastId] that the user hasn't skipped, oldest first. */
+    fun observeSuggestions(coastId: Int): Flow<List<SuggestedSentence>>
+
+    /** Every suggestion ever made for coast [coastId], skipped or not, so new ones can avoid repeats. */
+    suspend fun getAllSuggestions(coastId: Int): List<SuggestedSentence>
+
+    /** Adds [suggestions] to the pool. */
+    suspend fun addSuggestions(suggestions: List<SuggestedSentence>)
+
+    /** Marks a suggestion skipped: it is kept so it isn't suggested again, but no longer offered. */
+    suspend fun skipSuggestion(suggestionId: Int)
+
+    /** Removes a suggestion, e.g. once it became a card. */
+    suspend fun removeSuggestion(suggestionId: Int)
+
+    /** Drops the pending suggestions of coast [coastId], so fresh ones are made (e.g. for a new goal). */
+    suspend fun clearPendingSuggestions(coastId: Int)
+
     /** The islands on coast [coastId], newest first. */
     fun observeIslands(coastId: Int): Flow<List<LanguageIsland>>
     /** @param now The time due cards are counted at. */
@@ -137,6 +161,22 @@ class OfflineFlashcardRepository(
         dao.deleteCoast(coast) // Cascades to islands and cards.
         return content
     }
+
+    override suspend fun setCoastGoal(coastId: Int, goal: String?) = dao.setCoastGoal(coastId, goal?.trim()?.ifBlank { null })
+
+    override suspend fun recordBankOffered(coastId: Int, count: Int) = dao.addBankOffered(coastId, count)
+
+    override fun observeSuggestions(coastId: Int): Flow<List<SuggestedSentence>> = dao.getSuggestions(coastId)
+
+    override suspend fun getAllSuggestions(coastId: Int): List<SuggestedSentence> = dao.getSuggestionsOnce(coastId)
+
+    override suspend fun addSuggestions(suggestions: List<SuggestedSentence>) = dao.insertSuggestions(suggestions)
+
+    override suspend fun skipSuggestion(suggestionId: Int) = dao.skipSuggestion(suggestionId)
+
+    override suspend fun removeSuggestion(suggestionId: Int) = dao.deleteSuggestion(suggestionId)
+
+    override suspend fun clearPendingSuggestions(coastId: Int) = dao.clearPendingSuggestions(coastId)
 
     override fun observeIslands(coastId: Int): Flow<List<LanguageIsland>> = dao.getIslandsForCoast(coastId)
 

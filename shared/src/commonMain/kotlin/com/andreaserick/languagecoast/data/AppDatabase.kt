@@ -18,8 +18,8 @@ import kotlin.time.Clock
 
 /** The app's Room database: coasts, their islands, and the islands' flashcards. */
 @Database(
-    entities = [Coast::class, LanguageIsland::class, Flashcard::class],
-    version = 7,
+    entities = [Coast::class, LanguageIsland::class, Flashcard::class, SuggestedSentence::class],
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -115,6 +115,27 @@ abstract class AppDatabase : RoomDatabase() {
                 connection.execSQL("ALTER TABLE `flashcards` ADD COLUMN `lapses` INTEGER NOT NULL DEFAULT 0")
             }
         }
+
+        /** v8 gives each coast a goal (why the user learns it) and stores the sentences suggested for the daily session. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `coasts` ADD COLUMN `goal` TEXT")
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `suggested_sentences` (`suggestionId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`coastId` INTEGER NOT NULL, `nativeText` TEXT NOT NULL, `targetText` TEXT NOT NULL, `category` TEXT NOT NULL, " +
+                        "`emoji` TEXT, `skipped` INTEGER NOT NULL, `creationDate` INTEGER NOT NULL, " +
+                        "FOREIGN KEY(`coastId`) REFERENCES `coasts`(`coastId`) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                connection.execSQL("CREATE INDEX IF NOT EXISTS `index_suggested_sentences_coastId` ON `suggested_sentences` (`coastId`)")
+            }
+        }
+
+        /** v9 counts how many starter sentences the daily session has offered on each coast, so the basics come first. */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `coasts` ADD COLUMN `bankOffered` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
     }
 }
 
@@ -137,7 +158,9 @@ fun buildAppDatabase(builder: RoomDatabase.Builder<AppDatabase>, settings: DataS
             AppDatabase.MIGRATION_3_4,
             AppDatabase.MIGRATION_4_5,
             AppDatabase.MIGRATION_5_6,
-            AppDatabase.MIGRATION_6_7
+            AppDatabase.MIGRATION_6_7,
+            AppDatabase.MIGRATION_7_8,
+            AppDatabase.MIGRATION_8_9
         )
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()

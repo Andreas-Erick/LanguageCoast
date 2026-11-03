@@ -11,6 +11,10 @@ import com.andreaserick.languagecoast.data.OfflineFlashcardRepository
 import com.andreaserick.languagecoast.data.OnDeviceTranslator
 import com.andreaserick.languagecoast.data.OpenRouterTranslator
 import com.andreaserick.languagecoast.data.RoutingTranslator
+import com.andreaserick.languagecoast.data.SentenceSuggester
+import com.andreaserick.languagecoast.data.StarterImporter
+import com.andreaserick.languagecoast.data.StarterTranslator
+import com.andreaserick.languagecoast.data.SuggestionPool
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.Translator
 import io.ktor.client.HttpClient
@@ -36,6 +40,12 @@ val sharedModule = module {
     single<SettingsRepository> { DataStoreSettingsRepository(get(), get(), get()) }
 
     factoryOf(::BackupManager)
+
+    /** Sentences for the daily session, kept ready in the background, and the starter bank's translation and import. */
+    factoryOf(::StarterTranslator)
+    factoryOf(::SentenceSuggester)
+    single { SuggestionPool(get(), get(), get(), get()) }
+    single { StarterImporter(get(), get(), get()) }
 
     /** The clock used for due dates, streaks and reminders, and the time zone days are counted in; tests fix both. */
     single<Clock> { Clock.System }

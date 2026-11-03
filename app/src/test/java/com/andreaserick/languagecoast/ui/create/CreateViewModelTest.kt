@@ -1,6 +1,12 @@
 package com.andreaserick.languagecoast.ui.create
 
+import com.andreaserick.languagecoast.data.DAILY_NEW_SENTENCES
+import com.andreaserick.languagecoast.data.DAILY_REVIEW_CAP
+import com.andreaserick.languagecoast.data.SentenceSuggester
 import com.andreaserick.languagecoast.data.SettingsDefaults
+import com.andreaserick.languagecoast.data.StarterTranslator
+import com.andreaserick.languagecoast.data.SuggestedSentence
+import com.andreaserick.languagecoast.data.SuggestionPool
 import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationResult
@@ -10,6 +16,8 @@ import com.andreaserick.languagecoast.testing.FakeTranslator
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -31,10 +39,96 @@ class CreateViewModelTest {
     private val translator = FakeTranslator()
     private lateinit var viewModel: CreateViewModel
 
+    /** A pool whose background top-ups never run, so they can't race the assertions on the fakes. */
+    private fun pool() = SuggestionPool(flashcards, settings, SentenceSuggester(translator, settings, StarterTranslator(translator)), TEST_CLOCK, CoroutineScope(Job().apply { cancel() }))
+
     @Before
     fun setUp() {
         flashcards.seedCoast(coastId = 1, language = "Spanish")
-        viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
+        viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE, pool())
+    }
+
+    @Test
+    fun planCapsTodaysReviewsAndNewSentences() = runTest {
+        flashcards.seed(islandId = 1, cardCount = DAILY_REVIEW_CAP + 3, coastId = 1)
+        flashcards.addSuggestions((1..5).map { SuggestedSentence(coastId = 1, nativeText = "n$it", targetText = "t$it", category = "C") })
+
+        val plan = viewModel.uiState.plan!!
+
+        assertEquals(DAILY_REVIEW_CAP, plan.reviewCount)
+        assertEquals(DAILY_NEW_SENTENCES, plan.newCount)
+        assertEquals(3, plan.leftOver)
+        assertFalse(plan.isWelcomeBack)
+        assertEquals(5, viewModel.uiState.readySuggestions)
+    }
+
+    @Test
+    fun startingACoastAsksForItsGoal() = runTest {
+        viewModel.addCoast("German")
+
+        val prompt = viewModel.uiState.goalPrompt!!
+        assertEquals("German", prompt.language)
+        assertEquals(prompt.coastId, settings.activeCoastId.value)
+
+        viewModel.setGoal(prompt, "  A trip to Berlin  ")
+
+        assertNull(viewModel.uiState.goalPrompt)
+        assertEquals("A trip to Berlin", flashcards.coasts.value.first { it.language == "German" }.goal)
+    }
+
+    @Test
+    fun changingTheGoalThrowsAwayTheSentencesMadeForTheOldOne() = runTest {
+        val coast = flashcards.coasts.value.single()
+        flashcards.addSuggestions(listOf(SuggestedSentence(coastId = 1, nativeText = "n", targetText = "t", category = "C")))
+        flashcards.addSuggestions(listOf(SuggestedSentence(coastId = 1, nativeText = "s", targetText = "u", category = "C", skipped = true)))
+
+        viewModel.setGoal(coast, "Work")
+
+        // The pending one goes; the skipped one stays so it isn't suggested again.
+        assertEquals(listOf("s"), flashcards.suggestions.value.map { it.nativeText })
+        assertEquals("Work", flashcards.coasts.value.single().goal)
+    }
+
+    @Test
+    fun sameGoalAgainKeepsThePreparedSentences() = runTest {
+        flashcards.setCoastGoal(1, "Work")
+        flashcards.addSuggestions(listOf(SuggestedSentence(coastId = 1, nativeText = "n", targetText = "t", category = "C")))
+
+        viewModel.setGoal(flashcards.coasts.value.single(), "Work ")
+
+        assertEquals(1, flashcards.suggestions.value.size)
+    }
+
+    @Test
+    fun starterSentencesBecomeCardsOnTheirTopicsIslands() = runTest {
+        settings.apiKey.value = "key"
+        translator.result = TranslationResult("Hola", "Restaurant", isSuccess = true)
+
+        viewModel.addStarterSentences(listOf(StarterSentence("A table for two, please.", "Restaurant", "🍽️"), StarterSentence("I live in Oslo.", "About Me", "🙋")))
+
+        val batch = viewModel.uiState.batch!!
+        assertTrue(batch.isDone)
+        assertEquals(0, batch.failed)
+        assertEquals(listOf("A table for two, please.", "I live in Oslo."), flashcards.cards.value.map { it.nativeText })
+        // The island takes the topic's emoji when the AI gives none and keeps the topic as the category.
+        assertEquals("🍽️", flashcards.islands.value.single { it.name == "Restaurant" }.emoji)
+        assertEquals("About Me", translator.lastRequest?.userCategory)
+        assertEquals("English", translator.lastRequest?.nativeLanguage)
+        assertTrue(viewModel.uiState.coastSentences.contains("i live in oslo"))
+    }
+
+    @Test
+    fun starterSentencesAreTranslatedIntoTheUsersLanguageFirst() = runTest {
+        settings.apiKey.value = "key"
+        settings.nativeLanguage.value = "Dutch"
+
+        viewModel.addStarterSentences(listOf(StarterSentence("Hello, how are you?", "Greetings")))
+
+        // The canned translator answers "Hola" to everything: the English was turned into "Dutch" first, then that was translated.
+        val card = flashcards.cards.value.single()
+        assertEquals("Hola", card.nativeText)
+        assertEquals("Hola", card.targetText)
+        assertEquals(2, translator.requests)
     }
 
     @Test
@@ -279,7 +373,7 @@ class CreateViewModelTest {
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
         settings.streakCount.value = 4
-        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE, pool())
 
         assertTrue(viewModel.uiState.hasCards)
         assertEquals(3, viewModel.uiState.dueCount)
@@ -293,7 +387,7 @@ class CreateViewModelTest {
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
         flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
         settings.activeCoastId.value = 1
-        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE)
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE, pool())
 
         assertEquals(listOf("n4", "n3", "n2"), viewModel.uiState.recentCards.map { it.card.nativeText })
         assertEquals("Island 1", viewModel.uiState.recentCards.first().islandName)

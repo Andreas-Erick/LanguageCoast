@@ -343,11 +343,13 @@ internal fun completionTitle(scope: StudyScope): String = when (scope) {
     StudyScope.Coast -> "Coast explored!"
     StudyScope.Today -> "Today's review done!"
     StudyScope.Leaky -> "Leaks plugged!"
+    StudyScope.Daily -> "Done for today!"
 }
 
 /** What the "all caught up" screen says for [scope] when nothing is due. */
 internal fun caughtUpBody(scope: StudyScope, nextDueInDays: Int?): String = when {
     scope == StudyScope.Leaky -> "No card has slipped away twice. Nothing is leaking right now."
+    scope == StudyScope.Daily && nextDueInDays == null -> "Nothing is due and no new sentences are ready yet. Add one of your own, or come back tomorrow."
     nextDueInDays == null -> "No cards are due right now."
     nextDueInDays == 1 -> "The next cards are due tomorrow."
     else -> "The next cards are due in $nextDueInDays days."
@@ -358,4 +360,5 @@ internal fun backLabel(scope: StudyScope): String = when (scope) {
     StudyScope.Island -> "Back to islands"
     StudyScope.Coast -> "Back to coast"
     StudyScope.Today, StudyScope.Leaky -> "Back to coasts"
+    StudyScope.Daily -> "Back to Today"
 }

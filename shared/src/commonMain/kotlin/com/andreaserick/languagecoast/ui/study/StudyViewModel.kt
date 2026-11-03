@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.Cloze
+import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.EngineChoice
 import com.andreaserick.languagecoast.data.Flashcard
@@ -14,11 +15,13 @@ import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.SuggestedSentence
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.buildExplainPrompt
 import com.andreaserick.languagecoast.data.clozeOf
 import com.andreaserick.languagecoast.data.currentEngine
+import com.andreaserick.languagecoast.data.dailyPlan
 import com.andreaserick.languagecoast.data.interleaveByCoast
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.data.isLeaky
@@ -40,8 +43,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.todayIn
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -52,7 +57,9 @@ enum class StudyScope(val key: String) {
     /** Today's due cards on every coast, with the coasts taking turns. */
     Today(StudyScreenRoute.SCOPE_TODAY),
     /** The cards the user keeps forgetting (see [isLeaky]), due or not. */
-    Leaky(StudyScreenRoute.SCOPE_LEAKY);
+    Leaky(StudyScreenRoute.SCOPE_LEAKY),
+    /** One coast's daily session: a few due cards, then a few new sentences to keep or skip (see [dailyPlan]). */
+    Daily(StudyScreenRoute.SCOPE_DAILY);
 
     companion object {
         fun fromKey(key: String?): StudyScope = entries.firstOrNull { it.key == key } ?: Island
@@ -106,7 +113,16 @@ data class StudyUiState(
     /** Cards are shown in the coast's language and answered in [nativeLanguage], training recognition instead of recall. */
     val isReversed: Boolean = false,
     /** An explanation being shown (or fetched) for a word on the current card. */
-    val explanation: WordExplanation? = null
+    val explanation: WordExplanation? = null,
+    /** In a daily session: the new sentence being offered, once the due cards are done; null while reviewing. */
+    val learning: SuggestedSentence? = null,
+    /** New sentences the daily session started with, and how many are still to be offered. */
+    val learnTotal: Int = 0,
+    val learnLeft: Int = 0,
+    /** New sentences the user kept in this session (they became cards). */
+    val keptCount: Int = 0,
+    /** The daily session was shrunk because the user was away for days. */
+    val isWelcomeBack: Boolean = false
 ) {
     val currentPlaced: PlacedCard? get() = sessionCards.getOrNull(currentIndex)
     val currentCard: Flashcard? get() = currentPlaced?.card
@@ -126,15 +142,19 @@ data class StudyUiState(
     /** The current card's translation with its key word blanked, in [StudyMode.Cloze]; null when it is a single word. */
     val cloze: Cloze? get() = if (mode == StudyMode.Cloze) currentCard?.let { clozeOf(it.targetText) } else null
 
-    /** Share of the session's cards already passed (graded anything but "Again"), from 0 to 1. */
-    val progress: Float get() = if (totalCards == 0) 0f else (totalCards - sessionCards.size).toFloat() / totalCards
+    /** Share of the session already done: cards passed (graded anything but "Again") and new sentences decided, from 0 to 1. */
+    val progress: Float get() {
+        val steps = totalCards + learnTotal
+        return if (steps == 0) 0f else ((totalCards - sessionCards.size) + (learnTotal - learnLeft)).toFloat() / steps
+    }
 }
 
 /**
  * Runs a study session over the cards in its [StudyScope]: an island's or a coast's due cards, today's
- * due cards across every coast, or the leaky words. Every grade reschedules the card with
- * [reviewOutcomes]; "Again" also moves it to the end of the session, any other grade removes it.
- * The session is complete once no cards are left.
+ * due cards across every coast, the leaky words, or a coast's daily session. Every grade reschedules the
+ * card with [reviewOutcomes]; "Again" also moves it to the end of the session, any other grade removes it.
+ * A daily session reviews a capped number of due cards, then offers its new sentences one by one; the kept
+ * ones become cards and are practiced once before the session is complete.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StudyViewModel(
@@ -164,8 +184,31 @@ class StudyViewModel(
         val isLoading: Boolean = true,
         val mode: StudyMode = StudyMode.Flip,
         /** The islands the session's cards came from, marked studied when it is completed. */
-        val islandIds: Set<Int> = emptySet()
-    )
+        val islandIds: Set<Int> = emptySet(),
+        /** New sentences still to offer (daily sessions). */
+        val learnQueue: List<SuggestedSentence> = emptyList(),
+        val learnTotal: Int = 0,
+        /** Sentences kept so far, practiced once the last one is decided. */
+        val kept: List<PlacedCard> = emptyList(),
+        val keptCount: Int = 0,
+        /** Kept sentences still being saved as cards; the practice round waits for them. */
+        val pendingKeeps: Int = 0,
+        val plan: DailyPlan? = null
+    ) {
+        /** Nothing left to review, offer or practice (and there was something to begin with). */
+        val isComplete: Boolean
+            get() = isStarted && cards.isEmpty() && learnQueue.isEmpty() && kept.isEmpty() && pendingKeeps == 0 && (total > 0 || learnTotal > 0)
+
+        /** The scope has cards, but the session had nothing to do from the start. */
+        val isCaughtUp: Boolean
+            get() = isStarted && allCards.isNotEmpty() && total == 0 && learnTotal == 0
+
+        /** The new sentence to offer: once the due cards are done, the next in the queue. */
+        val learning: SuggestedSentence? get() = if (cards.isEmpty()) learnQueue.firstOrNull() else null
+    }
+
+    /** The coast's language for a daily session, which may have no cards yet to read it from. */
+    private var dailyLanguage: String = ""
 
     private val session = MutableStateFlow(Session())
     private val explanation = MutableStateFlow<WordExplanation?>(null)
@@ -173,7 +216,7 @@ class StudyViewModel(
 
     /** The languages of the session's coasts that have a voice. */
     private val spokenLanguages: Flow<Set<String>> = session
-        .map { s -> s.allCards.map { it.language }.distinct() }
+        .map { s -> (s.allCards.map { it.language } + listOfNotNull(dailyLanguage.takeIf { it.isNotEmpty() })).distinct() }
         .distinctUntilChanged()
         .flatMapLatest { languages ->
             if (languages.isEmpty()) flowOf(emptySet())
@@ -194,13 +237,13 @@ class StudyViewModel(
             islandName = title,
             scope = scope,
             isLoading = s.isLoading,
-            hasCards = s.allCards.isNotEmpty(),
+            hasCards = s.allCards.isNotEmpty() || s.learnTotal > 0 || s.keptCount > 0,
             sessionCards = s.cards,
             totalCards = s.total,
             currentIndex = s.index,
             mode = s.mode,
-            isSessionComplete = s.isStarted && s.total > 0 && s.cards.isEmpty(),
-            isCaughtUp = s.isStarted && s.allCards.isNotEmpty() && s.total == 0,
+            isSessionComplete = s.isComplete,
+            isCaughtUp = s.isCaughtUp,
             nextDueInDays = daysUntilNextDue(s.allCards.map { it.card }, now),
             gradeIntervals = s.cards.getOrNull(s.index)
                 ?.let { placed -> reviewOutcomes(placed.card, now, timeZone).mapValues { it.value.intervalDays } }
@@ -208,30 +251,54 @@ class StudyViewModel(
             againCount = s.againCount,
             streakCount = streak,
             nativeLanguage = nativeLanguage,
-            scopeLanguage = if (scope == StudyScope.Island || scope == StudyScope.Coast) s.allCards.firstOrNull()?.language.orEmpty() else "",
+            scopeLanguage = when (scope) {
+                StudyScope.Island, StudyScope.Coast -> s.allCards.firstOrNull()?.language.orEmpty()
+                StudyScope.Daily -> dailyLanguage
+                else -> ""
+            },
             spokenLanguages = spoken,
             allIslands = islands,
             isReversed = reversed,
-            explanation = explanation
+            explanation = explanation,
+            learning = s.learning,
+            learnTotal = s.learnTotal,
+            learnLeft = s.learnQueue.size,
+            keptCount = s.keptCount,
+            isWelcomeBack = s.plan?.isWelcomeBack == true
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StudyUiState(islandName = title, scope = scope))
 
+    /** What a daily session is sized by, read once before it starts. */
+    private var dailySuggestions: List<SuggestedSentence> = emptyList()
+    private var lastStudy: LocalDate? = null
+
     init {
         viewModelScope.launch {
+            if (scope == StudyScope.Daily) {
+                dailyLanguage = flashcards.observeCoast(coastId).first()?.language.orEmpty()
+                dailySuggestions = flashcards.observeSuggestions(coastId).first()
+                lastStudy = settings.lastStudyDate.first()
+            }
             flashcards.observeAllCards().map { cards -> cards.filter(::inScope) }.collect(::onCardsChanged)
         }
     }
 
     private fun inScope(placed: PlacedCard): Boolean = when (scope) {
         StudyScope.Island -> placed.card.islandId == islandId
-        StudyScope.Coast -> placed.coastId == coastId
+        StudyScope.Coast, StudyScope.Daily -> placed.coastId == coastId
         StudyScope.Today, StudyScope.Leaky -> true
     }
 
-    /** Starts the session once the cards first load; later updates only refresh or drop cards already in it. */
+    /**
+     * Starts the session once the cards first load; later updates only refresh or drop cards already in it.
+     * A daily session also starts on a coast without cards, since it may still have new sentences to offer.
+     */
     private fun onCardsChanged(cards: List<PlacedCard>) = updateSession { s ->
-        if (!s.isStarted && cards.isNotEmpty()) {
-            val opening = openingCards(cards)
+        if (!s.isStarted && (cards.isNotEmpty() || scope == StudyScope.Daily)) {
+            val due = openingCards(cards)
+            val plan = if (scope == StudyScope.Daily) dailyPlan(due.size, dailySuggestions.size, lastStudy, clock.todayIn(timeZone)) else null
+            val opening = if (plan != null) due.take(plan.reviewCount) else due
+            val learnQueue = if (plan != null) dailySuggestions.take(plan.newCount) else emptyList()
             s.copy(
                 allCards = cards,
                 cards = opening,
@@ -239,7 +306,10 @@ class StudyViewModel(
                 index = 0,
                 isStarted = true,
                 isLoading = false,
-                islandIds = opening.mapTo(HashSet()) { it.card.islandId }
+                islandIds = opening.mapTo(HashSet()) { it.card.islandId },
+                learnQueue = learnQueue,
+                learnTotal = learnQueue.size,
+                plan = plan
             )
         } else {
             // Keep the session order, but use the saved cards and drop those deleted from the database.
@@ -299,6 +369,32 @@ class StudyViewModel(
             if (grade == Grade.Again) s.copy(cards = rest + placed.copy(card = reviewed), againCount = s.againCount + 1) else s.copy(cards = rest)
         }
         viewModelScope.launch { flashcards.saveReview(reviewed) }
+    }
+
+    /**
+     * Keeps the new sentence being offered: it becomes a card on the session's coast (and leaves the pool),
+     * to be practiced once the last sentence is decided.
+     */
+    fun keepSuggestion() {
+        val suggestion = session.value.learning ?: return
+        speaker.stop()
+        // Take it off the queue right away, so a second tap can't keep it twice.
+        updateSession { s -> s.copy(learnQueue = s.learnQueue.drop(1), keptCount = s.keptCount + 1, pendingKeeps = s.pendingKeeps + 1) }
+        viewModelScope.launch {
+            val added = flashcards.addFlashcard(coastId, suggestion.nativeText, suggestion.targetText, suggestion.category, suggestion.emoji)
+            flashcards.removeSuggestion(suggestion.suggestionId)
+            val island = added.createdIsland ?: flashcards.observeIslands(coastId).first().first { it.islandId == added.card.islandId }
+            val placed = PlacedCard(added.card, island.name, island.emoji, coastId, dailyLanguage)
+            updateSession { s -> s.copy(kept = s.kept + placed, islandIds = s.islandIds + island.islandId, pendingKeeps = s.pendingKeeps - 1) }
+        }
+    }
+
+    /** Passes on the new sentence being offered; it isn't suggested again. */
+    fun skipSuggestion() {
+        val suggestion = session.value.learning ?: return
+        speaker.stop()
+        updateSession { s -> s.copy(learnQueue = s.learnQueue.drop(1)) }
+        viewModelScope.launch { flashcards.skipSuggestion(suggestion.suggestionId) }
     }
 
     /** Moves to the next card without grading the current one. */
@@ -377,10 +473,18 @@ class StudyViewModel(
      */
     private fun updateSession(transform: (Session) -> Session) {
         val before = session.value
-        val after = transform(before).let { it.copy(index = it.index.coerceIn(0, maxOf(0, it.cards.lastIndex))) }
+        val after = transform(before)
+            .let { s ->
+                // Once every new sentence is decided (and saved), the kept ones are practiced.
+                if (s.cards.isEmpty() && s.learnQueue.isEmpty() && s.pendingKeeps == 0 && s.kept.isNotEmpty()) {
+                    s.copy(cards = s.kept, total = s.total + s.kept.size, kept = emptyList(), index = 0)
+                } else s
+            }
+            .let { it.copy(index = it.index.coerceIn(0, maxOf(0, it.cards.lastIndex))) }
         session.value = after
 
-        val justCompleted = before.cards.isNotEmpty() && after.cards.isEmpty() && after.total > 0
+        // Skipping every offered sentence ends the session too, but isn't a day studied.
+        val justCompleted = !before.isComplete && after.isComplete && (after.total > 0 || after.keptCount > 0)
         if (justCompleted) {
             viewModelScope.launch {
                 settings.recordStudySession()

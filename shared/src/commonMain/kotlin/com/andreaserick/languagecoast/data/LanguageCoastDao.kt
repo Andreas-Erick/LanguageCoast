@@ -63,6 +63,37 @@ interface LanguageCoastDao {
     @Delete
     suspend fun deleteCoast(coast: Coast)
 
+    /** Stores why the user learns the language of coast [coastId]; null clears it. */
+    @Query("UPDATE coasts SET goal = :goal WHERE coastId = :coastId")
+    suspend fun setCoastGoal(coastId: Int, goal: String?)
+
+    /** Adds [count] to how many starter sentences the daily session has offered on coast [coastId]. */
+    @Query("UPDATE coasts SET bankOffered = bankOffered + :count WHERE coastId = :coastId")
+    suspend fun addBankOffered(coastId: Int, count: Int)
+
+    // --- Suggested sentences ---
+    /** The sentences suggested for coast [coastId] that weren't skipped, oldest first. */
+    @Query("SELECT * FROM suggested_sentences WHERE coastId = :coastId AND skipped = 0 ORDER BY suggestionId ASC")
+    fun getSuggestions(coastId: Int): Flow<List<SuggestedSentence>>
+
+    /** Every suggestion for coast [coastId], skipped or not, read once. */
+    @Query("SELECT * FROM suggested_sentences WHERE coastId = :coastId")
+    suspend fun getSuggestionsOnce(coastId: Int): List<SuggestedSentence>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSuggestions(suggestions: List<SuggestedSentence>)
+
+    /** Marks suggestion [suggestionId] skipped, so it stays known but isn't offered again. */
+    @Query("UPDATE suggested_sentences SET skipped = 1 WHERE suggestionId = :suggestionId")
+    suspend fun skipSuggestion(suggestionId: Int)
+
+    @Query("DELETE FROM suggested_sentences WHERE suggestionId = :suggestionId")
+    suspend fun deleteSuggestion(suggestionId: Int)
+
+    /** Drops the suggestions for coast [coastId] that weren't skipped, e.g. once its goal changes. */
+    @Query("DELETE FROM suggested_sentences WHERE coastId = :coastId AND skipped = 0")
+    suspend fun clearPendingSuggestions(coastId: Int)
+
     // --- Islands ---
     /** Inserts [island] and returns its new ID. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)

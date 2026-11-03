@@ -4,7 +4,11 @@ import androidx.lifecycle.SavedStateHandle
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.Completion
+import com.andreaserick.languagecoast.data.DAILY_REVIEW_CAP
 import com.andreaserick.languagecoast.data.Grade
+import com.andreaserick.languagecoast.data.SuggestedSentence
+import com.andreaserick.languagecoast.data.WELCOME_BACK_NEW_SENTENCES
+import com.andreaserick.languagecoast.data.WELCOME_BACK_REVIEW_CAP
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.FakeSpeaker
@@ -401,6 +405,104 @@ class StudyViewModelTest {
         assertTrue(viewModel.state.isSessionComplete)
         assertTrue(flashcards.islands.value.all { it.lastStudied == TEST_CLOCK.now().toEpochMilliseconds() })
         assertEquals(1, settings.studySessionsRecorded)
+    }
+
+    private fun suggest(vararg sentences: String) {
+        flashcards.suggestions.value = sentences.mapIndexed { i, text ->
+            SuggestedSentence(suggestionId = i + 1, coastId = 1, nativeText = text, targetText = "$text!", category = "Travel", emoji = "✈️")
+        }
+    }
+
+    @Test
+    fun dailySessionReviewsACappedNumberThenOffersNewSentences() = runTest {
+        flashcards.seed(islandId = 1, cardCount = DAILY_REVIEW_CAP + 5)
+        suggest("s1", "s2", "s3", "s4")
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+
+        assertEquals(DAILY_REVIEW_CAP, viewModel.state.sessionCards.size)
+        assertEquals(3, viewModel.state.learnTotal)
+        assertEquals(null, viewModel.state.learning)
+        assertEquals("Spanish", viewModel.state.targetLanguage)
+        assertFalse(viewModel.state.isWelcomeBack)
+
+        repeat(DAILY_REVIEW_CAP) { viewModel.onGrade(Grade.Good) }
+
+        assertEquals("s1", viewModel.state.learning?.nativeText)
+        assertEquals(3, viewModel.state.learnLeft)
+        assertFalse(viewModel.state.isSessionComplete)
+    }
+
+    @Test
+    fun keptSentencesBecomeCardsAndArePracticedAtTheEnd() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        suggest("s1", "s2", "s3")
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+        viewModel.onGrade(Grade.Good)
+
+        viewModel.keepSuggestion()
+        viewModel.skipSuggestion()
+        assertEquals("s3", viewModel.state.learning?.nativeText)
+        viewModel.keepSuggestion()
+
+        // The two kept sentences are now cards on the coast's Travel island, up for a first practice.
+        assertEquals(null, viewModel.state.learning)
+        assertEquals(listOf("s1", "s3"), viewModel.state.sessionCards.map { it.card.nativeText })
+        assertEquals("Travel", viewModel.state.currentPlaced?.islandName)
+        assertEquals(listOf("s1", "s3"), flashcards.cards.value.drop(1).map { it.nativeText })
+        assertEquals(listOf(2), flashcards.suggestions.value.map { it.suggestionId })
+        assertTrue(flashcards.suggestions.value.single().skipped)
+        assertFalse(viewModel.state.isSessionComplete)
+        assertEquals(0, settings.studySessionsRecorded)
+
+        viewModel.onGrade(Grade.Good)
+        viewModel.onGrade(Grade.Good)
+
+        assertTrue(viewModel.state.isSessionComplete)
+        assertEquals(2, viewModel.state.keptCount)
+        assertEquals(3, viewModel.state.totalCards)
+        assertEquals(1, settings.studySessionsRecorded)
+        assertTrue(flashcards.islands.value.all { it.lastStudied == TEST_CLOCK.now().toEpochMilliseconds() })
+    }
+
+    @Test
+    fun dailySessionOnAnEmptyCoastStartsWithTheNewSentences() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "Spanish")
+        suggest("s1", "s2")
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+
+        assertTrue(viewModel.state.hasCards)
+        assertFalse(viewModel.state.isCaughtUp)
+        assertEquals("s1", viewModel.state.learning?.nativeText)
+        assertEquals("Spanish", viewModel.state.targetLanguage)
+
+        viewModel.skipSuggestion()
+        viewModel.skipSuggestion()
+
+        assertTrue(viewModel.state.isSessionComplete)
+        assertEquals(0, viewModel.state.keptCount)
+    }
+
+    @Test
+    fun dailySessionAfterDaysAwayIsSmall() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 10)
+        suggest("s1", "s2", "s3")
+        settings.lastStudyDate.value = LocalDate(2026, 10, 1)
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+
+        assertTrue(viewModel.state.isWelcomeBack)
+        assertEquals(WELCOME_BACK_REVIEW_CAP, viewModel.state.sessionCards.size)
+        assertEquals(WELCOME_BACK_NEW_SENTENCES, viewModel.state.learnTotal)
+    }
+
+    @Test
+    fun dailySessionWithNothingDueAndNothingReadyIsCaughtUp() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        setDue("n1", startOfDay("2026-10-12"))
+        setDue("n2", startOfDay("2026-10-12"))
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+
+        assertTrue(viewModel.state.isCaughtUp)
+        assertFalse(viewModel.state.isSessionComplete)
     }
 
     @Test

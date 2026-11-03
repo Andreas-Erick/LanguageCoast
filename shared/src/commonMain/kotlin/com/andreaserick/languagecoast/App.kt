@@ -10,12 +10,12 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Sailing
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.outlined.Sailing
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -89,9 +89,9 @@ private data class TopLevelDestination(
 private val topLevelDestinations = listOf(
     TopLevelDestination(
         route = CreateScreenRoute,
-        label = "Create",
-        selectedIcon = Icons.Filled.EditNote,
-        unselectedIcon = Icons.Outlined.EditNote
+        label = "Today",
+        selectedIcon = Icons.Filled.WbSunny,
+        unselectedIcon = Icons.Outlined.WbSunny
     ) { it.hasRoute<CreateScreenRoute>() },
     // A coast is only opened from My Coasts, so it keeps that tab selected.
     TopLevelDestination(
@@ -151,7 +151,7 @@ private fun AppContent() {
                             HorizontalDivider(color = CardEdge, thickness = 1.dp)
                             NavigationBar(containerColor = NavGround, tonalElevation = 0.dp) {
                                 // A screen on top of a study session belongs to the tab the session was opened from
-                                // (My Coasts or Create's review button), so select the tab of the newest screen that has one.
+                                // (My Coasts or Today's session button), so select the tab of the newest screen that has one.
                                 val tabDestination = backStack.lastOrNull { entry ->
                                     topLevelDestinations.any { tab -> entry.destination.hierarchy.any(tab.isSelected) }
                                 }?.destination
@@ -203,7 +203,11 @@ private fun AppContent() {
                     exitTransition = { fadeOut(tween(TRANSITION_MILLIS)) }
                 ) {
                     composable<CreateScreenRoute> {
-                        CreateScreen(onStartReview = { navController.navigate(StudyScreenRoute.Today) })
+                        CreateScreen(
+                            onStartDaily = { id, language -> navController.navigate(StudyScreenRoute.daily(id, language)) },
+                            onReviewCoast = { id, name -> navController.navigate(StudyScreenRoute.coast(id, name)) },
+                            onReviewAll = { navController.navigate(StudyScreenRoute.Today) }
+                        )
                     }
                     composable<MyCoastScreenRoute> {
                         MyCoastScreen(

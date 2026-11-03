@@ -7,7 +7,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.Coast
+import com.andreaserick.languagecoast.data.CoastSummary
+import com.andreaserick.languagecoast.data.DAILY_NEW_SENTENCES
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
+import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.EngineChoice
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
@@ -16,18 +19,21 @@ import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.SuggestionPool
 import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.availableCoastLanguages
 import com.andreaserick.languagecoast.data.currentEngine
+import com.andreaserick.languagecoast.data.dailyPlan
 import com.andreaserick.languagecoast.data.fallbackCloudEngine
 import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.data.normalizedWords
 import com.andreaserick.languagecoast.data.splitSentences
 import com.andreaserick.languagecoast.data.suggestIsland
+import com.andreaserick.languagecoast.data.topicRules
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -35,11 +41,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
 import kotlin.time.Clock
 
 /** Category used for manual cards when the user leaves the category blank. */
@@ -50,6 +60,9 @@ const val RESULT_VISIBLE_MILLIS = 8_000L
 
 /** How many recently added cards the screen lists. */
 const val RECENT_CARDS = 3
+
+/** The language the starter sentences ([com.andreaserick.languagecoast.data.PhraseBank]) are written in. */
+private const val BANK_LANGUAGE = "English"
 
 /** After this many unreadable answers in a row from the local model, a cloud provider is offered instead. */
 const val LOCAL_FAILURES_BEFORE_FALLBACK = 2
@@ -64,18 +77,25 @@ enum class InputMode {
     Manual
 }
 
-/** A sentence offered by a batch capture (pasted text or a photo), ticked to become a card. */
-data class BatchSentence(val text: String, val checked: Boolean = true)
+/**
+ * A sentence offered by a batch capture (pasted text, a photo or the starter sentences), ticked to become a card.
+ *
+ * @property category The island to file it on, if the source knows (the starter sentences' topic), with its [emoji].
+ */
+data class BatchSentence(val text: String, val checked: Boolean = true, val category: String? = null, val emoji: String? = null)
 
 /**
  * A batch capture in progress: the sentences found, and once saving, how far along it is.
  *
  * @property saved How many cards were saved so far; null until saving starts.
+ * @property fromEnglish The sentences are the starter sentences, written in English: when the user's language
+ *     is another one, each is translated into it first so the card's front is in the user's language.
  */
 data class BatchState(
     val sentences: List<BatchSentence>,
     val saved: Int? = null,
-    val failed: Int = 0
+    val failed: Int = 0,
+    val fromEnglish: Boolean = false
 ) {
     val isSaving: Boolean get() = saved != null && saved < sentences.count { it.checked }
     val isDone: Boolean get() = saved != null && !isSaving
@@ -116,11 +136,41 @@ data class CreateUiState(
     /** A cloud provider to retry with after the local model's answers couldn't be read; null if none is set up. */
     val fallbackProvider: TranslationProvider? = null,
     /** A batch capture being reviewed or saved. */
-    val batch: BatchState? = null
+    val batch: BatchState? = null,
+    /** Every coast with its card and due counts, for the daily session of the selected one. */
+    val coastSummaries: List<CoastSummary> = emptyList(),
+    /** Sentences prepared for the selected coast and not yet offered. */
+    val readySuggestions: Int = 0,
+    /** Whether sentences for the selected coast are being prepared right now. */
+    val isPreparingSentences: Boolean = false,
+    /** The day of the last study session (for the welcome-back rule) and today. */
+    val lastStudy: LocalDate? = null,
+    val today: LocalDate? = null,
+    /** A coast just started, whose goal the screen asks for; null once answered or dismissed. */
+    val goalPrompt: Coast? = null,
+    /** The selected coast's sentences, normalized ([normalizedWords] joined by spaces), to mark starter sentences it has. */
+    val coastSentences: Set<String> = emptySet(),
+    /** An emoji for a new island named [category], when the source of the sentence knows one and the AI gives none. */
+    val categoryEmoji: String? = null,
+    /** What the sentence being saved is, for the model (see [TranslationRequest.context]). */
+    val translationContext: String? = null
 ) {
     /** True when the selected coast is in the user's native language, so there's nothing to translate. */
     val isSameLanguage: Boolean get() = selectedCoast?.language == nativeLanguage
     val isManualMode: Boolean get() = inputMode == InputMode.Manual
+
+    /** The selected coast's counts, once known. */
+    val focusSummary: CoastSummary? get() = coastSummaries.firstOrNull { it.coast.coastId == selectedCoast?.coastId }
+
+    /** A session was completed today, so Today's job is done; another round is offered, not pushed. */
+    val doneToday: Boolean get() = lastStudy != null && lastStudy == today
+
+    /** Today's session on the selected coast, or null before the coast and the day are known. */
+    val plan: DailyPlan? get() {
+        val coast = selectedCoast ?: return null
+        val day = today ?: return null
+        return dailyPlan(focusSummary?.dueCount ?: 0, readySuggestions, lastStudy, day)
+    }
 }
 
 /** Outcome of the last save, shown as a feedback card. */
@@ -151,11 +201,12 @@ class CreateViewModel(
     private val settings: SettingsRepository,
     private val translator: Translator,
     private val clock: Clock,
-    private val timeZone: TimeZone
+    private val timeZone: TimeZone,
+    private val pool: SuggestionPool
 ) : ViewModel() {
 
     // Compose state rather than StateFlow so text fields update synchronously while typing.
-    var uiState by mutableStateOf(CreateUiState())
+    var uiState by mutableStateOf(CreateUiState(today = clock.todayIn(timeZone)))
         private set
 
     private var dismissJob: Job? = null
@@ -199,9 +250,31 @@ class CreateViewModel(
                         streakCount = streak,
                         hasCards = coasts.any { it.cardCount > 0 },
                         dueCount = coasts.sumOf { it.dueCount },
-                        dueCoastCount = coasts.count { it.dueCount > 0 }
+                        dueCoastCount = coasts.count { it.dueCount > 0 },
+                        coastSummaries = coasts
                     )
                 }
+        }
+        viewModelScope.launch { settings.lastStudyDate.collect { uiState = uiState.copy(lastStudy = it) } }
+        viewModelScope.launch { readySuggestions().collect { uiState = uiState.copy(readySuggestions = it) } }
+        viewModelScope.launch {
+            combine(selectedCoastId(), pool.preparing) { coastId, preparing -> coastId != null && coastId in preparing }
+                .collect { uiState = uiState.copy(isPreparingSentences = it) }
+        }
+        viewModelScope.launch {
+            // Keep a few sentences ready for the selected coast, so today's session always has something new.
+            combine(selectedCoastId(), readySuggestions()) { coastId, ready -> coastId?.takeIf { ready < DAILY_NEW_SENTENCES } }
+                .distinctUntilChanged()
+                .collect { coastId -> if (coastId != null) pool.requestTopUp(coastId) }
+        }
+        viewModelScope.launch {
+            // A different provider may manage where the last one failed.
+            settings.translationProvider.distinctUntilChanged().drop(1).collect {
+                selectedCoastId().first()?.let { coastId ->
+                    pool.forgetFailure(coastId)
+                    pool.requestTopUp(coastId)
+                }
+            }
         }
         viewModelScope.launch {
             selectedCoastId()
@@ -219,7 +292,8 @@ class CreateViewModel(
                     coastCards = cards
                     uiState = uiState.copy(
                         duplicate = findDuplicate(uiState.nativeSentence, cards),
-                        suggestedIsland = suggestion(uiState.nativeSentence, uiState.category)
+                        suggestedIsland = suggestion(uiState.nativeSentence, uiState.category),
+                        coastSentences = cards.mapTo(HashSet()) { normalizedWords(it.card.nativeText).joinToString(" ") }
                     )
                 }
         }
@@ -247,16 +321,50 @@ class CreateViewModel(
             (coasts.firstOrNull { it.coastId == activeCoastId } ?: coasts.firstOrNull())?.coastId
         }.distinctUntilChanged()
 
+    /** How many prepared sentences the selected coast has waiting. */
+    private fun readySuggestions(): Flow<Int> =
+        selectedCoastId()
+            .flatMapLatest { coastId -> if (coastId == null) flowOf(emptyList()) else flashcards.observeSuggestions(coastId) }
+            .map { it.size }
+            .distinctUntilChanged()
+
     /** Makes [coast] the one new cards are added to. */
     fun onCoastSelected(coast: Coast) {
         viewModelScope.launch { settings.setActiveCoastId(coast.coastId) }
     }
 
-    /** Starts a coast for [language] and selects it. */
+    /** Starts a coast for [language], selects it and asks why the user learns it. */
     fun addCoast(language: String) {
         viewModelScope.launch {
             val coastId = flashcards.addCoast(language)
             settings.setActiveCoastId(coastId)
+            uiState = uiState.copy(goalPrompt = flashcards.observeCoast(coastId).first())
+        }
+    }
+
+    /** Asks for the goal of [coast] (the selected one, from the Today card). */
+    fun editGoal(coast: Coast) {
+        uiState = uiState.copy(goalPrompt = coast)
+    }
+
+    /** Closes the goal question without an answer. */
+    fun dismissGoalPrompt() {
+        uiState = uiState.copy(goalPrompt = null)
+    }
+
+    /**
+     * Stores why the user learns [coast]'s language (blank clears it). A changed goal throws away the
+     * sentences prepared for the old one and has new ones made.
+     */
+    fun setGoal(coast: Coast, goal: String) {
+        uiState = uiState.copy(goalPrompt = null)
+        val trimmed = goal.trim().ifBlank { null }
+        if (trimmed == coast.goal) return
+        viewModelScope.launch {
+            flashcards.setCoastGoal(coast.coastId, trimmed)
+            flashcards.clearPendingSuggestions(coast.coastId)
+            pool.forgetFailure(coast.coastId)
+            pool.requestTopUp(coast.coastId)
         }
     }
 
@@ -430,6 +538,27 @@ class CreateViewModel(
         uiState = uiState.copy(batch = batch.copy(sentences = sentences))
     }
 
+    /**
+     * Saves the starter sentences the user picked as cards, one after the other, each on its topic's island
+     * unless the AI knows better. Shown and reported like a batch capture.
+     */
+    fun addStarterSentences(sentences: List<StarterSentence>) {
+        if (sentences.isEmpty() || uiState.batch?.isSaving == true) return
+        uiState = uiState.copy(batch = BatchState(sentences.map { BatchSentence(it.text, category = it.category, emoji = it.emoji) }, fromEnglish = true))
+        saveBatch()
+    }
+
+    /** [text] (English, from the starter sentences) in the user's language; null if it couldn't be translated. */
+    private suspend fun englishToNative(text: String): String? {
+        val native = settings.nativeLanguage.first()
+        if (native == BANK_LANGUAGE) return text
+        val engine = (settings.currentEngine() as? EngineChoice.Ready)?.engine ?: return null
+        val result = translator.translateAndCategorize(
+            TranslationRequest(engine, text, nativeLanguage = BANK_LANGUAGE, targetLanguage = native, userCategory = "", existingCategories = emptyList())
+        )
+        return result.translatedText.takeIf { result.isSuccess }
+    }
+
     /** Saves a card for every ticked sentence of the batch, one after the other, reporting progress. */
     fun saveBatch() {
         val batch = uiState.batch ?: return
@@ -441,9 +570,23 @@ class CreateViewModel(
             var saved = 0
             var failed = 0
             for (sentence in picked) {
-                val state = uiState.copy(nativeSentence = sentence.text)
                 val result = try {
-                    createCard(state, engineOverride = null)
+                    if (batch.fromEnglish) {
+                        val native = englishToNative(sentence.text)
+                        if (native == null) SaveResult.Error("Couldn't translate into ${uiState.nativeLanguage}.")
+                        else createCard(
+                            uiState.copy(
+                                nativeSentence = native,
+                                inputMode = InputMode.Translate,
+                                category = sentence.category.orEmpty(),
+                                categoryEmoji = sentence.emoji,
+                                translationContext = sentence.category?.let { "A phrasebook entry from the topic \"$it\" for a learner; ${topicRules(it)}" }
+                            ),
+                            engineOverride = null
+                        )
+                    } else {
+                        createCard(uiState.copy(nativeSentence = sentence.text), engineOverride = null)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -495,7 +638,8 @@ class CreateViewModel(
                 targetLanguage = coast.language,
                 userCategory = state.category.trim(),
                 existingCategories = flashcards.observeIslands(coast.coastId).first().map { it.name },
-                writtenInTarget = writtenInTarget
+                writtenInTarget = writtenInTarget,
+                context = state.translationContext
             )
         )
         if (!translation.isSuccess) return SaveResult.Error(translation.errorMessage ?: "AI Translation Failed.")
@@ -507,7 +651,7 @@ class CreateViewModel(
             nativeText = if (writtenInTarget) translation.translatedText else typed,
             targetText = if (writtenInTarget) translation.corrected ?: typed else translation.translatedText,
             category = translation.finalCategory,
-            emoji = translation.emoji,
+            emoji = translation.emoji ?: state.categoryEmoji?.takeIf { translation.finalCategory.equals(state.category.trim(), ignoreCase = true) },
             alternatives = if (writtenInTarget) emptyList() else translation.alternatives,
             note = if (writtenInTarget) null else translation.note
         )
