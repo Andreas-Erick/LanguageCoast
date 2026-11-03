@@ -349,6 +349,10 @@ class FakeSettingsRepository : SettingsRepository {
         this.profile.value = profile
     }
 
+    override suspend fun setProfileField(placeholder: String, value: String) {
+        profile.update { it.with(placeholder, value) }
+    }
+
     override suspend fun recordStudySession() {
         studySessionsRecorded++
     }

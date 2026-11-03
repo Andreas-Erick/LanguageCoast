@@ -59,6 +59,41 @@ fun profileLabel(placeholder: String): String = when (placeholder) {
     else -> "Your $placeholder"
 }
 
+/** A short label for a profile blank when the field sits next to another under a group heading: "Name", "City", ... */
+fun profileShortLabel(placeholder: String): String = when (placeholder) {
+    "name" -> "Name"
+    "city" -> "City"
+    "country" -> "Country"
+    "home country" -> "Country"
+    "hometown" -> "Town"
+    "job" -> "Job"
+    else -> placeholder.replaceFirstChar { it.uppercase() }
+}
+
+/**
+ * How the starter sentences will read with [profile] filled in, e.g. "My name is Anna. I work as a nurse.
+ * I live in Oslo, Norway. I'm from Italy, born in Bologna." Null while nothing is filled in.
+ */
+fun profilePreview(profile: Profile): String? {
+    val f = profile.fillers()
+    if (f.isEmpty()) return null
+    val lives = listOfNotNull(f["city"], f["country"]).joinToString(", ")
+    val homeCountry = f["home country"]
+    val hometown = f["hometown"]
+    val from = when {
+        homeCountry != null && hometown != null -> "I'm from $homeCountry, born in $hometown."
+        homeCountry != null -> "I'm from $homeCountry."
+        hometown != null -> "I was born in $hometown."
+        else -> null
+    }
+    return listOfNotNull(
+        f["name"]?.let { "My name is $it." },
+        f["job"]?.let { "I work as a $it." },
+        lives.takeIf { it.isNotEmpty() }?.let { "I live in $it." },
+        from
+    ).joinToString(" ")
+}
+
 /** An example for a profile blank's field. */
 fun profileExample(placeholder: String): String = when (placeholder) {
     "name" -> "e.g., Anna"

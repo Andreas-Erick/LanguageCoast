@@ -27,7 +27,9 @@ data class ImportProgress(
     val added: Int = 0,
     val failed: Int = 0,
     val isFinished: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    /** How many topics this run adds. */
+    val topicCount: Int = 1
 )
 
 /**
@@ -80,7 +82,7 @@ class StarterImporter(
             theme to usableSentences(theme, coast.language, fillers).filterNot { sentence -> known.any { isSameSentence(it, sentence) } }
         }
         val total = plan.sumOf { it.second.size }
-        var progress = ImportProgress(coastId, themes.first().category, done = 0, total = total)
+        var progress = ImportProgress(coastId, themes.first().category, done = 0, total = total, topicCount = themes.size)
         _progress.value = progress
 
         val engine = when (val choice = settings.currentEngine()) {

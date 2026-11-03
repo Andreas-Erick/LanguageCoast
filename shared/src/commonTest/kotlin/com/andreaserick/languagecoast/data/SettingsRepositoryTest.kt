@@ -25,6 +25,18 @@ class SettingsRepositoryTest {
         return DataStoreSettingsRepository(createSettingsDataStore(path.toString()), clock, TimeZone.UTC)
     }
 
+    // Keystrokes are saved one field at a time in a single edit each (see setProfileField), which DataStore
+    // serializes, so later keystrokes can't be overwritten by earlier ones. One write here, as the note below says.
+    @Test
+    fun aProfileFieldIsStoredOnItsOwn() = runTest {
+        val settings = repository()
+
+        settings.setProfileField("city", "Oslo")
+
+        assertEquals(Profile(city = "Oslo"), settings.profile.first())
+        assertEquals(mapOf("city" to "Oslo"), settings.backupSettings().profile)
+    }
+
     @Test
     fun recordedSessionsAppearInStudyDays() = runTest {
         val settings = repository()

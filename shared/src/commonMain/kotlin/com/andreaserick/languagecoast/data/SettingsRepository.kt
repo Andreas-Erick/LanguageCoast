@@ -153,6 +153,12 @@ interface SettingsRepository {
     /** Stores the user's [profile]. */
     suspend fun setProfile(profile: Profile) = Unit
 
+    /**
+     * Stores one blank of the profile ([placeholder], see [Profile.PLACEHOLDERS]) as [value], in one atomic edit.
+     * Fields are saved as they are typed, so a read-modify-write of the whole profile would let two keystrokes race.
+     */
+    suspend fun setProfileField(placeholder: String, value: String) = Unit
+
     /** Records a completed study session for today and updates the streak. */
     suspend fun recordStudySession()
 
@@ -256,6 +262,11 @@ class DataStoreSettingsRepository(
                 if (value == null) preferences.remove(key) else preferences[key] = value
             }
         }
+    }
+
+    override suspend fun setProfileField(placeholder: String, value: String) {
+        val key = PROFILE_KEYS[placeholder] ?: return
+        dataStore.edit { preferences -> if (value.isBlank()) preferences.remove(key) else preferences[key] = value }
     }
 
     override suspend fun markStarterTopicAdded(coastId: Int, topic: String) {
