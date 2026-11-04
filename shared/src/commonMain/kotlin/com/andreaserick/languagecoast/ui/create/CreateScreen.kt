@@ -619,24 +619,24 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
 /** The fold of the new card form: a title that opens and closes it. */
 @Composable
 private fun ComposerHeader(open: Boolean, onToggle: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onToggle)
             .padding(top = 4.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text("Add your own", style = MaterialTheme.typography.titleLarge)
-            if (!open) {
-                Text("Something you wanted to say today", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-            }
+        // The chevron sits on the title's line, not centred on title and subtitle together, so it reads with the title.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Add your own", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Icon(
+                imageVector = if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (open) "Hide the form" else "Show the form",
+                tint = TextSecondary
+            )
         }
-        Icon(
-            imageVector = if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-            contentDescription = if (open) "Hide the form" else "Show the form",
-            tint = TextSecondary
-        )
+        if (!open) {
+            Text("Something you wanted to say today", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        }
     }
 }
 
