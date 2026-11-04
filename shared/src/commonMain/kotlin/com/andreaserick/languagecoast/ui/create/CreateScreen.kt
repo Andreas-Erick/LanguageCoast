@@ -65,7 +65,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -439,19 +444,7 @@ private fun DailyCard(
                 CoastButton(onClick = onStart, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
                     Text(if (plan.isWelcomeBack) "Ease back in" else "Start · about ${plural(plan.minutes, "minute")}")
                 }
-                if (plan.leftOver > 0) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                        Text(
-                            text = "${plural(plan.leftOver, "more card")} can wait for another day.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = onReviewCoast, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                            Text("Review all ${plan.dueOnCoast}", style = MaterialTheme.typography.labelMedium, color = Sunlit)
-                        }
-                    }
-                }
+                if (plan.leftOver > 0) LeftOverLine(leftOver = plan.leftOver, dueOnCoast = plan.dueOnCoast, onReviewAll = onReviewCoast)
             }
             isPreparing -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -499,6 +492,32 @@ private fun DailyCard(
             }
         }
     }
+}
+
+/**
+ * What the capped session leaves behind, as one quiet sentence under the Start button: "56 more cards can
+ * wait for another day, or review all 68." The whole pile is a tap away inside the sentence instead of a
+ * button fighting it for the row, so the line reads as one thought and wraps like prose on narrow screens.
+ */
+@Composable
+private fun LeftOverLine(leftOver: Int, dueOnCoast: Int, onReviewAll: () -> Unit) {
+    val text = buildAnnotatedString {
+        append("${plural(leftOver, "more card")} can wait for another day, or ")
+        withLink(
+            LinkAnnotation.Clickable(
+                tag = "review-all",
+                styles = TextLinkStyles(style = SpanStyle(color = Sunlit, fontWeight = FontWeight.SemiBold)),
+                linkInteractionListener = { onReviewAll() }
+            )
+        ) { append("review all $dueOnCoast") }
+        append(".")
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = TextSecondary,
+        modifier = Modifier.padding(top = 12.dp)
+    )
 }
 
 /** "8 cards to review · 3 new sentences", leaving out whichever is zero. */
