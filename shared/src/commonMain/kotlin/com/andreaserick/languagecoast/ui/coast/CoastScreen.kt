@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.BeachAccess
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -51,13 +52,14 @@ import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
  * A single coast: a button to review its busiest island, and a grid of its "Language Islands"
- * (categories) that contain flashcards.
+ * (categories) that contain flashcards. The PDF icon in the header makes a practice sheet from its cards.
  *
  * @param onIslandClick Called with the island ID and name when an island is tapped.
  * @param onReviewCoast Called with the coast ID and name to study every due card on the coast.
@@ -75,6 +77,24 @@ fun CoastScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current
     var topicSheet by remember { mutableStateOf<List<StarterTopicOption>?>(null) }
+    var showWorksheet by remember { mutableStateOf(false) }
+    val worksheetFiles = rememberWorksheetFiles()
+
+    if (showWorksheet) {
+        WorksheetSheet(
+            state = uiState.worksheet,
+            coastLanguage = uiState.coastLanguage,
+            nativeLanguage = uiState.nativeLanguage,
+            cardCount = uiState.cardCount,
+            provider = uiState.translationProvider,
+            files = worksheetFiles,
+            onOptionsChange = viewModel::setWorksheetOptions,
+            onCreate = viewModel::createWorksheet,
+            onCancel = viewModel::cancelWorksheet,
+            onStartNew = viewModel::startNewWorksheet,
+            onDismiss = { showWorksheet = false }
+        )
+    }
 
     topicSheet?.let { options ->
         StarterTopicSheet(
@@ -91,7 +111,19 @@ fun CoastScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        ScreenHeader(title = uiState.coastName, subtitle = uiState.nativeName, onBack = onNavigateBack)
+        ScreenHeader(
+            title = uiState.coastName,
+            subtitle = uiState.nativeName,
+            onBack = onNavigateBack,
+            actions = {
+                // A sheet is made from the coast's cards, so a coast without islands has nothing to offer yet.
+                if (uiState.canPrintWorksheets && uiState.islands.isNotEmpty()) {
+                    IconButton(onClick = { showWorksheet = true }) {
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = "Practice sheet", tint = TextPrimary)
+                    }
+                }
+            }
+        )
 
         // Above the grid: a lazy grid keeps its first visible item in place, so a card inserted at its top would land out of view.
         uiState.import?.let { progress ->

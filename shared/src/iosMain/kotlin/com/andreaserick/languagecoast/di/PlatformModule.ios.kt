@@ -5,6 +5,8 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.andreaserick.languagecoast.data.AppDatabase
 import com.andreaserick.languagecoast.data.LocalModelController
 import com.andreaserick.languagecoast.data.NoOpLocalModelController
+import com.andreaserick.languagecoast.data.NoWorksheetPrinter
+import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.buildAppDatabase
 import com.andreaserick.languagecoast.data.createSettingsDataStore
 import com.andreaserick.languagecoast.notifications.IosReminderScheduler
@@ -41,6 +43,9 @@ actual val platformModule = module {
 
     /** Local AI model controller stub for iOS. */
     singleOf(::NoOpLocalModelController) { bind<LocalModelController>() }
+
+    /** Practice sheets (PDFs) aren't built for iPhone yet; the coast screen leaves them out. */
+    singleOf(::NoWorksheetPrinter) { bind<WorksheetPrinter>() }
 }
 
 /** The app's Documents folder, which iOS keeps across updates and includes in backups. */

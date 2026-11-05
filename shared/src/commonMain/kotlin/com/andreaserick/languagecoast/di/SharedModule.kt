@@ -17,6 +17,7 @@ import com.andreaserick.languagecoast.data.StarterTranslator
 import com.andreaserick.languagecoast.data.SuggestionPool
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.Translator
+import com.andreaserick.languagecoast.data.WorksheetGenerator
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import kotlinx.datetime.TimeZone
@@ -47,6 +48,9 @@ val sharedModule = module {
     single { SuggestionPool(get(), get(), get(), get()) }
     single { StarterImporter(get(), get(), get()) }
 
+    /** Writes a coast's practice sheet with the AI provider; each platform draws the PDF (see [platformModule]). */
+    factory { WorksheetGenerator(get(), get(), get(), get(), get()) }
+
     /** The clock used for due dates, streaks and reminders, and the time zone days are counted in; tests fix both. */
     single<Clock> { Clock.System }
     factory { TimeZone.currentSystemDefault() }
@@ -70,5 +74,5 @@ val sharedModule = module {
     }
 }
 
-/** What each platform does its own way: where the [AppDatabase] and settings are stored, and reading aloud. */
+/** What each platform does its own way: where the [AppDatabase] and settings are stored, reading aloud, and drawing PDFs. */
 expect val platformModule: Module
