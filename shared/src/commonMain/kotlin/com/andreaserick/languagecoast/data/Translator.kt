@@ -19,12 +19,21 @@ interface Translator {
     suspend fun prepare(engine: TranslationEngine) = Unit
 }
 
-/** A model's free-form answer to a prompt, or why there is none. */
-data class Completion(val text: String?, val errorMessage: String? = null) {
+/**
+ * A model's free-form answer to a prompt, or why there is none.
+ *
+ * @property retryAfterSeconds Set when the provider turned the request away only for now (a rate limit, or
+ *     it is overloaded): how long to wait before asking again. Work that sends many requests in a row, like
+ *     a long practice sheet, waits that long instead of giving up.
+ */
+data class Completion(val text: String?, val errorMessage: String? = null, val retryAfterSeconds: Int? = null) {
     val isSuccess: Boolean get() = text != null
 
     companion object {
         fun failure(message: String) = Completion(null, message)
+
+        /** The provider is rate-limiting or overloaded; the same request can succeed after [retryAfterSeconds]. */
+        fun busy(message: String, retryAfterSeconds: Int) = Completion(null, message, retryAfterSeconds)
     }
 }
 

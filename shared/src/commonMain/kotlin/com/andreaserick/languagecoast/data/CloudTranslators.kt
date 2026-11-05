@@ -92,7 +92,7 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
                 contentType(ContentType.Application.Json)
                 setBody(claudeRequestBody(model, prompt))
             }
-            claudeAnswer(response.status.value, response.bodyAsText())
+            claudeAnswer(response.status.value, response.bodyAsText(), retryAfter = response.headers["retry-after"])
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -200,8 +200,15 @@ internal fun claudeRequestBody(model: String, prompt: String): String =
         ClaudeRequest(model = model, max_tokens = CLAUDE_MAX_TOKENS, messages = listOf(ClaudeMessage("user", prompt)))
     )
 
-/** [parseClaudeResponse] without reading the answer as a translation. */
-internal fun claudeAnswer(status: Int, body: String): Completion {
+/** How long to wait after a 429 or 529 that doesn't say: Claude's per-minute limits refill within seconds. */
+internal const val CLAUDE_RETRY_SECONDS = 10
+
+/**
+ * [parseClaudeResponse] without reading the answer as a translation.
+ *
+ * @param retryAfter The response's `retry-after` header (seconds), which a rate-limited answer carries.
+ */
+internal fun claudeAnswer(status: Int, body: String, retryAfter: String? = null): Completion {
     val parsed = try {
         cloudJson.decodeFromString(ClaudeResponse.serializer(), body)
     } catch (e: SerializationException) {
@@ -211,10 +218,14 @@ internal fun claudeAnswer(status: Int, body: String): Completion {
     }
     if (status >= 400 || parsed?.error != null) {
         val errMsg = parsed?.error?.message
+        // 429: the key's requests or tokens per minute are used up. 529: Anthropic is overloaded. Both pass.
+        if (status == 429 || status == 529) {
+            val seconds = retryAfter?.trim()?.toDoubleOrNull()?.takeIf { it >= 0 }?.let { (it + 0.999).toInt() } ?: CLAUDE_RETRY_SECONDS
+            return Completion.busy("Claude is busy or rate-limited. Wait a moment and try again.", seconds.coerceAtLeast(1))
+        }
         val message = when (status) {
             401, 403 -> "Claude didn't accept the API key. Check your Anthropic key in Settings."
             404 -> "The selected Claude model wasn't found. Pick another model in Settings."
-            429, 529 -> "Claude is busy or rate-limited. Wait a moment and try again."
             else -> "Claude: ${errMsg ?: "request failed (HTTP $status)"}"
         }
         return Completion.failure(message)

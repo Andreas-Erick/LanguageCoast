@@ -44,7 +44,7 @@ private val GUIDE = listOf(
             "Each language you learn gets its own coast. Start one from My Coasts with \"New Coast\".",
             "On a coast, \"Starter topics\" adds a whole topic (Greetings, Numbers, Phone Settings, ...) as an island in one tap, translated for you in the background. With an AI provider, a native-speaker check then rewrites anything people wouldn't really say; the first version stays as an alternative and the note says why. Blanks like your name, city or job are filled in from Settings › About you (or asked for if you left them empty); sentences with other blanks stay in the Starter sentences list on Today. \"Add all\" adds every remaining topic, but a few topics at a time is the better pace.",
             "On a coast, your cards are grouped into islands by topic, like Travel or Restaurant.",
-            ("The PDF icon at the top of a coast makes a practice sheet: your AI provider writes new sentences to translate, using only the words on that coast's cards. " +
+            ("The PDF icon at the top of a coast makes a practice sheet: your AI provider writes new sentences to translate from the words on that coast's cards, each about one island's topic and with at most one new word where it needs it. " +
                 "Pick the direction, the difficulty and how many sentences; the answers come on a page of their own. Download the PDF to print it or fill it in.")
                 .takeIf { fileTransferAvailable },
             "Set your native language here in Settings, so translations go the right way."

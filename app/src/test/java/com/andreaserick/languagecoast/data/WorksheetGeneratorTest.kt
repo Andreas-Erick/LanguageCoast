@@ -5,6 +5,7 @@ import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.FakeTranslator
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import org.junit.Assert.assertEquals
@@ -14,6 +15,7 @@ import org.junit.Before
 import org.junit.Test
 import kotlin.random.Random
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class WorksheetGeneratorTest {
 
     private val flashcards = FakeFlashcardRepository()
@@ -135,7 +137,7 @@ class WorksheetGeneratorTest {
         assertEquals(listOf(25, 50, 75), progress.take(3))
         assertEquals(500, progress.last())
         // A request names the latest sentences on the sheet, not all of them.
-        val avoided = translator.prompts.last().lines().single { it.startsWith("6. ") }
+        val avoided = translator.prompts.last().lines().single { it.startsWith("8. ") }
         assertEquals(60, avoided.split(" | ").size)
         assertTrue(avoided.endsWith("Kind Satz 20 25"))
     }
@@ -225,5 +227,134 @@ class WorksheetGeneratorTest {
         assertTrue(shown[0] != shown[1])
         // The sample keeps the coast's order.
         assertEquals(shown[0].sortedBy { it.substringAfter("native ").toInt() }, shown[0])
+    }
+
+    @Test
+    fun aLargeCoastIsShownAFewWholeIslandsAtATime() = runTest {
+        // 50 islands of 10 cards: 500 cards, of which a prompt shows 400.
+        flashcards.islands.value = (1..50).map { LanguageIsland(islandId = it, coastId = 1, name = "Insel $it") }
+        flashcards.cards.value = (1..500).map { Flashcard(cardId = it, islandId = (it - 1) / 10 + 1, nativeText = "native $it", targetText = "ziel$it") }
+        val answers = ArrayDeque(listOf(lines("ziel1 ziel2" to "one two"), lines("ziel3 ziel4" to "three four")))
+        translator.completionFor = { answers.removeFirstOrNull() ?: Completion("") }
+
+        generator.generate(1, WorksheetOptions(count = 3))
+
+        fun islands(prompt: String) = prompt.lines().filter { it.startsWith("[Insel ") }
+        val first = translator.prompts[0]
+        // Forty islands with all ten of their cards each, not eight cards of every island.
+        assertEquals(40, islands(first).size)
+        assertEquals(400, first.lines().count { it.startsWith("ziel") && " = native " in it })
+        // The islands take turns: the ten that were left out come first in the next prompt.
+        assertEquals(50, (islands(first) + islands(translator.prompts[1])).distinct().size)
+    }
+
+    /** The lines of [prompt] that are cards of the island called [island]. */
+    private fun cardsOf(prompt: String, island: String): List<String> =
+        prompt.substringAfter("[$island]\n").substringBefore("\n\n").lines().filter { " = native " in it }
+
+    @Test
+    fun aHugeIslandLeavesRoomForTheOthers() = runTest {
+        // An imported deck of 3000 cards next to two islands of 100.
+        flashcards.islands.value = listOf("Deck", "Reisen", "Essen").mapIndexed { index, name -> LanguageIsland(islandId = index + 1, coastId = 1, name = name) }
+        flashcards.cards.value = (1..3200).map {
+            Flashcard(cardId = it, islandId = when { it <= 3000 -> 1; it <= 3100 -> 2; else -> 3 }, nativeText = "native $it", targetText = "ziel$it")
+        }
+        translator.completionFor = { Completion("") }
+
+        generator.generate(1, WorksheetOptions(count = 3))
+
+        assertEquals(2, translator.prompts.size)
+        translator.prompts.forEach { prompt ->
+            assertEquals(400, prompt.lines().count { it.startsWith("ziel") && " = native " in it })
+            // Every island has enough cards in the prompt to build sentences from, whichever came first.
+            assertTrue(cardsOf(prompt, "Deck").size >= 40)
+            assertTrue(cardsOf(prompt, "Reisen").size >= 40)
+            assertTrue(cardsOf(prompt, "Essen").size >= 40)
+        }
+    }
+
+    @Test
+    fun aCoastOfThousandsOfCardsGivesALongSheetThatGetsAroundAllItsIslands() = runTest {
+        // 6000 cards on 120 islands, and the longest sheet there is.
+        flashcards.islands.value = (1..120).map { LanguageIsland(islandId = it, coastId = 1, name = "Insel $it") }
+        flashcards.cards.value = (1..6000).map {
+            Flashcard(cardId = it, islandId = (it - 1) / 50 + 1, nativeText = "native sentence number $it", targetText = "ziel$it satz", alternatives = listOf("anders$it"))
+        }
+        var asked = 0
+        translator.completionFor = { prompt ->
+            asked++
+            val batch = Regex("Write (\\d+) new").find(prompt)!!.groupValues[1].toInt()
+            Completion((1..batch).joinToString("\n") { "ziel$it satz $asked || Sentence $asked $it" })
+        }
+
+        val sheet = (generator.generate(1, WorksheetOptions(count = 500)) as WorksheetResult.Ready).worksheet
+
+        assertEquals(500, sheet.sentences.size)
+        assertEquals(6000 to 120, sheet.cardCount to sheet.islandCount)
+        assertEquals(21, translator.prompts.size)
+        // No prompt grows with the coast: 400 cards of ten islands, whatever the coast holds.
+        translator.prompts.forEach { prompt ->
+            assertEquals(400, prompt.lines().count { it.startsWith("ziel") && " = native " in it })
+            assertEquals(10, prompt.lines().count { it.startsWith("[Insel ") })
+            assertTrue(prompt.length < 30_000)
+        }
+        val shown = translator.prompts.flatMap { prompt -> prompt.lines().filter { it.startsWith("[Insel ") } }.distinct()
+        assertEquals(120, shown.size)
+    }
+
+    @Test
+    fun cardsWithLongTextsDontMakeAHugePrompt() = runTest {
+        // An imported deck whose cards are paragraphs: 200 cards of about 1000 characters.
+        val paragraph = "wort ".repeat(200).trim()
+        flashcards.cards.value = (1..200).map { Flashcard(cardId = it, islandId = 1, nativeText = "native $it", targetText = "$paragraph ziel$it") }
+        translator.completion = lines("wort ziel1" to "word one")
+
+        generator.generate(1, WorksheetOptions(count = 3))
+
+        val prompt = translator.prompts.first()
+        val shown = prompt.lines().count { " = native " in it }
+        // About 40 000 characters of cards, not all 200 000.
+        assertTrue(shown in 30..40)
+        assertTrue(prompt.length < 45_000)
+    }
+
+    @Test
+    fun aRateLimitedProviderIsWaitedForInsteadOfCuttingTheSheetShort() = runTest {
+        val answers = ArrayDeque(
+            listOf(
+                lines("Wo ist das Kind?" to "Where is the child?", "Der Kaffee ist gut." to "The coffee is good."),
+                Completion.busy("Claude is busy or rate-limited. Wait a moment and try again.", retryAfterSeconds = 20),
+                Completion.busy("Claude is busy or rate-limited. Wait a moment and try again.", retryAfterSeconds = 300),
+                lines("Das Brot ist spät." to "The bread is late.", "Ich gehe zum Bahnhof." to "I am going to the station.")
+            )
+        )
+        translator.completionFor = { answers.removeFirst() }
+
+        val sheet = (generator.generate(1, WorksheetOptions(count = 4)) as WorksheetResult.Ready).worksheet
+
+        assertEquals(4, sheet.sentences.size)
+        // The request that was turned away was sent again as it was, after the wait the provider named (a minute at most).
+        assertEquals(4, translator.prompts.size)
+        assertEquals(translator.prompts[1], translator.prompts[2])
+        assertEquals(translator.prompts[1], translator.prompts[3])
+        assertEquals(80_000L, testScheduler.currentTime)
+    }
+
+    @Test
+    fun aProviderThatStaysBusyEndsTheSheetWithWhatThereIs() = runTest {
+        val busy = Completion.busy("Claude is busy or rate-limited. Wait a moment and try again.", retryAfterSeconds = 10)
+
+        // Busy from the start: no sheet, and the reason, after four waits.
+        translator.completion = busy
+        assertEquals(WorksheetResult.Failed("Claude is busy or rate-limited. Wait a moment and try again."), generator.generate(1, WorksheetOptions()))
+        assertEquals(5, translator.prompts.size)
+        assertEquals(40_000L, testScheduler.currentTime)
+
+        // Busy after the first answer: a shorter sheet.
+        translator.prompts.clear()
+        var asked = 0
+        translator.completionFor = { if (asked++ == 0) lines("Wo ist das Kind?" to "Where is the child?") else busy }
+        val sheet = (generator.generate(1, WorksheetOptions(count = 10)) as WorksheetResult.Ready).worksheet
+        assertEquals(1, sheet.sentences.size)
     }
 }
