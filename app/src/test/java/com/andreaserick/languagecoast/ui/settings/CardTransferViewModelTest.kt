@@ -1,10 +1,12 @@
 package com.andreaserick.languagecoast.ui.settings
 
 import com.andreaserick.languagecoast.data.ExportFormat
+import com.andreaserick.languagecoast.data.ankiNote
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -57,7 +59,37 @@ class CardTransferViewModelTest {
         val viewModel = createViewModel()
 
         assertEquals("language-coast-haitian-creole.txt", viewModel.exportFileName(1, ExportFormat.Anki))
+        assertEquals("language-coast-haitian-creole.csv", viewModel.exportFileName(1, ExportFormat.Csv))
         assertEquals("language-coast.md", viewModel.exportFileName(null, ExportFormat.Markdown))
+    }
+
+    @Test
+    fun aCoastExportedAsCsvImportsBackWithItsHeaderRowLeftOut() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        flashcards.seed(islandId = 1, cardCount = 2, coastId = 1)
+        flashcards.cards.update { all -> all.map { if (it.cardId == 1) it.copy(alternatives = listOf("a1", "a2"), note = "a2 is formal.") else it } }
+        flashcards.seedCoast(coastId = 2, language = "Icelandic")
+        flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
+        val viewModel = createViewModel()
+
+        val export = viewModel.buildExport(coastId = 1, format = ExportFormat.Csv)
+
+        assertEquals(2, export.cardCount)
+        assertEquals(
+            listOf("English,German,Island,Alternatives,Note", "n1,t1,Island 1,a1 / a2,a2 is formal.", "n2,t2,Island 1,,", ""),
+            export.text.removePrefix("\uFEFF").split("\r\n")
+        )
+
+        // Into the other coast, which has "n1 / t1" already.
+        settings.activeCoastId.value = 2
+        viewModel.onImportFileRead(export.text)
+        assertEquals(true, viewModel.preview?.skipFirstRow)
+        var result: ImportResult? = null
+        viewModel.confirmImport { result = it }
+
+        assertEquals(1, result?.duplicates)
+        assertEquals(listOf("n2"), result?.added?.map { it.card.nativeText })
+        assertEquals(4, viewModel.buildExport(coastId = null, format = ExportFormat.Csv).cardCount)
     }
 
     @Test
@@ -98,6 +130,7 @@ class CardTransferViewModelTest {
 
         // A first row naming the coast's language and the native language is taken as a header.
         assertTrue(viewModel.preview!!.skipFirstRow)
+        assertTrue(viewModel.preview!!.mayHaveHeader)
         viewModel.setSwapColumns(true)
         viewModel.confirmImport {}
 
@@ -119,6 +152,72 @@ class CardTransferViewModelTest {
 
         assertEquals(listOf("Hello"), flashcards.cards.value.map { it.nativeText })
         assertEquals(listOf("Greetings"), flashcards.islands.value.map { it.name })
+    }
+
+    @Test
+    fun theNotesOfAnAnkiPackageAreImportedOntoIslandsNamedAfterTheirDecks() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        flashcards.addFlashcard(1, "Good morning", "Guten Morgen", "Greetings")
+        val viewModel = createViewModel()
+
+        viewModel.onAnkiPackageRead(
+            listOf(
+                // A first note that reads like a header row is still a card: a package has no header.
+                ankiNote("English\u001FGerman", "Languages"),
+                ankiNote("Good morning\u001FGuten Morgen", "German::Greetings"),
+                ankiNote("<b>bread</b>\u001F[sound:brot.mp3]\u001Fdas Brot", "German\u001FFood"),
+                ankiNote("water\u001Fdas Wasser<br><br>Also: Wasser", "Default"),
+                ankiNote("only one side\u001F", "German::Food")
+            )
+        )
+
+        val preview = viewModel.preview!!
+        assertFalse(preview.skipFirstRow)
+        assertFalse(preview.mayHaveHeader)
+        assertEquals(4, preview.cardsToImport.size)
+        var result: ImportResult? = null
+        viewModel.confirmImport { result = it }
+
+        assertEquals(1, result?.duplicates)
+        assertEquals(listOf("English", "bread", "water"), result?.added?.map { it.card.nativeText })
+        assertEquals(listOf("Greetings", "Languages", "Food", DEFAULT_IMPORT_ISLAND), flashcards.islands.value.map { it.name })
+        val water = flashcards.cards.value.single { it.nativeText == "water" }
+        assertEquals("das Wasser" to listOf("Wasser"), water.targetText to water.alternatives)
+    }
+
+    @Test
+    fun aPackageWithoutUsableNotesOrOneThatCannotBeReadSaysSo() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = createViewModel()
+
+        viewModel.onAnkiPackageRead(listOf(ankiNote("Please update to the latest Anki version.\u001F", "Default")))
+        assertNull(viewModel.preview)
+        assertTrue("No cards found in that package" in viewModel.uiState.value.message.orEmpty())
+
+        viewModel.messageShown()
+        viewModel.onImportFileUnreadable("That Anki package couldn't be read.")
+        assertEquals("That Anki package couldn't be read.", viewModel.uiState.value.message)
+
+        viewModel.messageShown()
+        viewModel.onImportFileUnreadable()
+        assertEquals("That file couldn't be read.", viewModel.uiState.value.message)
+    }
+
+    @Test
+    fun aPackedOrBinaryFileIsNotReadAsText() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = createViewModel()
+
+        // What a zip looks like read as text: enough commas and line breaks for rows of garbage.
+        viewModel.onImportFileRead("PK\u0003\u0004\u0014\u0000collection.anki2,x\ny,z\n")
+
+        assertNull(viewModel.preview)
+        assertTrue("packed, not text" in viewModel.uiState.value.message.orEmpty())
+
+        viewModel.messageShown()
+        viewModel.onImportFileRead("SQLite format 3\u0000,a\nb,c\n")
+        assertNull(viewModel.preview)
+        assertTrue("isn't plain text" in viewModel.uiState.value.message.orEmpty())
     }
 
     @Test
