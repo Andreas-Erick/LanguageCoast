@@ -1,6 +1,10 @@
 package com.andreaserick.languagecoast.data
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
@@ -9,16 +13,18 @@ import kotlin.time.Clock
 
 /*
  * The practice sheet: new sentences to translate, written by the AI provider from the cards of one coast
- * and laid out as a PDF (see [WorksheetPrinter]). The sentences may only use what the coast's islands
- * teach: the prompt carries the cards and says so, and of the sentences that come back the ones that stay
- * closest to the cards' words are kept (see [CoastVocabulary]).
+ * and laid out as a PDF (see [WorksheetPrinter]). A sentence is to make sense first: something a person
+ * would say in the situation of one island, built from that island's cards, with at most
+ * [WORKSHEET_NEW_WORDS] word the coast doesn't have where it needs one. The prompt carries the cards and
+ * says so, and of the sentences that come back the ones that stray further from the cards' words are the
+ * first to be left out (see [CoastVocabulary]).
  */
 
 /** How hard a practice sheet's sentences are. */
 enum class WorksheetDifficulty(val label: String, val hint: String) {
     Easy("Easy", "Short sentences that stay close to your cards."),
-    Medium("Medium", "Your words put together into new everyday sentences."),
-    Hard("Hard", "Longer sentences that mix words from several islands.")
+    Medium("Medium", "An island's words put together into new everyday sentences."),
+    Hard("Hard", "Longer sentences that say two things about one situation.")
 }
 
 /** Which way a practice sheet is translated. */
@@ -64,6 +70,13 @@ fun worksheetRequests(count: Int, isLocal: Boolean): Int {
 
 /** A coast needs this many cards before a sheet can be made from it: fewer leave nothing to recombine. */
 const val WORKSHEET_MIN_CARDS = 5
+
+/**
+ * Words a sheet's sentence may use that are on none of the coast's cards. Without any, a small coast only
+ * has odd sentences in it; with one, a sentence can be made to mean something. [buildWorksheetPrompt] says
+ * the number in words.
+ */
+const val WORKSHEET_NEW_WORDS = 1
 
 /** One sentence of a practice sheet, in the coast's language and in the user's. */
 data class WorksheetSentence(val targetText: String, val nativeText: String)
@@ -127,19 +140,21 @@ data class WorksheetCard(val island: String, val targetText: String, val nativeT
 
 private fun levelRule(difficulty: WorksheetDifficulty): String = when (difficulty) {
     WorksheetDifficulty.Easy ->
-        "Level: easy. Short sentences of 3 to 6 words with one simple clause. Stay close to the flashcards: take one and change a word or two for other flashcard words."
+        "Level: easy. Short sentences of 3 to 6 words with one simple clause. Stay close to the flashcards: take one and change a word or two for other words of its topic."
     WorksheetDifficulty.Medium ->
-        "Level: medium. Sentences of 5 to 10 words that put words from different flashcards together. Mix statements, questions and negations."
+        "Level: medium. Sentences of 5 to 10 words that put words from several flashcards of one topic together. Mix statements, questions and negations."
     WorksheetDifficulty.Hard ->
-        "Level: hard. Longer sentences of 9 to 16 words that bring together words from several topics, with two clauses where the flashcards have a word to join them. " +
+        "Level: hard. Longer sentences of 9 to 16 words that say two things about one situation, in two clauses where the flashcards have a word to join them. " +
             "Mix statements, questions and negations."
 }
 
 /**
- * The prompt that asks a model for [count] new sentences in [targetLanguage] built only from [cards], each
- * with its translation into [nativeLanguage].
+ * The prompt that asks a model for [count] new sentences in [targetLanguage] built from [cards], each with
+ * its translation into [nativeLanguage]. Its rules come in the order they matter: a sentence must make
+ * sense, keep to one island's topic and use the cards' words, with [WORKSHEET_NEW_WORDS] new word allowed
+ * so that the first rule never loses to the third.
  *
- * @param cards The coast's cards (or a sample of them, for a small model), island by island.
+ * @param cards The coast's cards (or some of its islands, when there are too many), island by island.
  * @param region Where the language will be used, so the sentences use that place's words; null for no preference.
  * @param avoid Sentences in [targetLanguage] already written for this sheet, when asking for more.
  */
@@ -157,23 +172,25 @@ fun buildWorksheetPrompt(
     }
     val where = region?.trim()?.takeIf { it.isNotEmpty() }?.let { " from $it" } ?: ""
     // Raw strings don't process escapes, so the rule's line break (with the raw string's indent) is built outside it.
-    val avoidRule = if (avoid.isEmpty()) "" else "\n        6. Do not repeat any of these, which are already on the sheet: " + avoid.joinToString(" | ")
+    val avoidRule = if (avoid.isEmpty()) "" else "\n        8. Do not repeat any of these, which are already on the sheet: " + avoid.joinToString(" | ")
     val sentences = if (count == 1) "1 new $targetLanguage sentence" else "$count new $targetLanguage sentences"
     // The flashcards are joined on afterwards: trimIndent would trip over their unindented lines.
     val intro = """
         You are a $targetLanguage teacher writing a translation exercise for one learner, whose native language is $nativeLanguage.
 
-        The flashcards below are everything the learner knows of $targetLanguage so far. They are grouped by topic, one per line, as "$targetLanguage = $nativeLanguage":
+        The flashcards below are what the learner knows of $targetLanguage so far. They are grouped by topic, one per line, as "$targetLanguage = $nativeLanguage":
     """.trimIndent()
     val task = """
         Write $sentences for the learner to translate, each with its $nativeLanguage translation.
 
         Rules:
-        1. Use ONLY $targetLanguage words that are on the flashcards. A word may take another form of itself (a verb for another person, a noun in the plural or in another case, an adjective that agrees), and names and numbers are allowed. No other words: if a sentence needs a word that is not on the flashcards, write a different sentence.
-        2. Use only grammar the flashcards show: their tenses and their constructions.
-        3. Every sentence must be new. Put the flashcards' words together in a way no flashcard does, and make every sentence different from the others. Never copy a flashcard.
-        4. ${levelRule(difficulty)}
-        5. Every sentence must be correct, natural $targetLanguage that a native speaker$where would say, and its $nativeLanguage translation must be exact and natural.$avoidRule
+        1. Every sentence must make sense: something a real person would say or hear in an everyday situation. If you can't picture who would say it and when, write a different sentence.
+        2. Every sentence belongs to one topic and fits that topic's situation. Build it from that topic's flashcards; small everyday words (pronouns, articles, "and", "not", "very") may come from any flashcard. Never put words from unrelated topics together just to make a sentence new. Spread the sentences over the topics.
+        3. Build the sentences from the $targetLanguage words on the flashcards. A word may take another form of itself (a verb for another person, a noun in the plural or in another case, an adjective that agrees), and names and numbers are allowed. Where a sentence needs it to make sense or to sound natural, it may also use one common, simple word that is not on the flashcards; never more than one, and never a rare word.
+        4. Use only grammar the flashcards show: their tenses and their constructions.
+        5. Every sentence must be new: different from every flashcard and from the other sentences. Never copy a flashcard.
+        6. ${levelRule(difficulty)}
+        7. Every sentence must be correct, natural $targetLanguage that a native speaker$where would say, and its $nativeLanguage translation must be exact and natural.$avoidRule
 
         Write EXACTLY one line per sentence and nothing else, in this format:
         [sentence in $targetLanguage] || [translation in $nativeLanguage]
@@ -246,6 +263,16 @@ class CoastVocabulary(texts: List<String>) {
         return if (all == 0) 1.0 else unknownWords(sentence).size.toDouble() / all
     }
 
+    /**
+     * Whether [sentence] keeps to the coast's words, the [WORKSHEET_NEW_WORDS] new word a sheet's sentence may
+     * bring aside. In a script without spaces a new word shows as its characters, mostly two of them.
+     */
+    fun keepsToCoast(sentence: String): Boolean {
+        val unknown = unknownWords(sentence)
+        val perWord = if (unknown.all { it.length == 1 && writtenWithoutSpaces(it[0]) }) CHARACTERS_PER_NEW_WORD else 1
+        return unknown.size <= WORKSHEET_NEW_WORDS * perWord
+    }
+
     private fun isKnown(word: String): Boolean {
         if (word in words || word.all { it.isDigit() }) return true
         if (word.length < MIN_STEM) return false
@@ -262,6 +289,9 @@ class CoastVocabulary(texts: List<String>) {
         /** How much of a sentence's word must be such a stem: half lets an ending as long as the stem pass ("búð", "búðina"). */
         const val FORM_SHARE = 0.5
 
+        /** How many unknown characters a new word may be in a script without spaces. */
+        const val CHARACTERS_PER_NEW_WORD = 2
+
         fun stemLength(length: Int, share: Double): Int = maxOf(MIN_STEM, (length * share + 0.999).toInt()).coerceAtMost(length)
 
         /** Chinese, Japanese, Thai, Lao, Khmer and Burmese write sentences without spaces between words. */
@@ -274,7 +304,9 @@ class CoastVocabulary(texts: List<String>) {
 /**
  * The [count] sentences of [candidates] that keep closest to the coast's cards, in the order the model
  * wrote them. Copies of a card ([known], the cards' translations) are the last resort, then come the
- * sentences with the largest share of words the coast doesn't have.
+ * sentences with the largest share of words the coast doesn't have. The one new word a sentence may bring
+ * ([CoastVocabulary.keepsToCoast]) doesn't count against it: a sentence that needed one to make sense is
+ * as good as one that needed none.
  */
 fun pickWorksheetSentences(
     candidates: List<WorksheetSentence>,
@@ -284,10 +316,80 @@ fun pickWorksheetSentences(
 ): List<WorksheetSentence> {
     if (candidates.size <= count) return candidates
     val knownWords = known.mapTo(HashSet(), ::normalizedWords)
-    val best = candidates.withIndex()
-        .sortedWith(compareBy({ normalizedWords(it.value.targetText) in knownWords }, { vocabulary.unknownShare(it.value.targetText) }, { it.index }))
+    // Worked out once per sentence, not once per comparison: a long sheet from a large coast has hundreds.
+    class Ranked(val index: Int, val isCopy: Boolean, val strays: Double)
+    val best = candidates
+        .mapIndexed { index, sentence ->
+            val text = sentence.targetText
+            Ranked(index, normalizedWords(text) in knownWords, if (vocabulary.keepsToCoast(text)) 0.0 else vocabulary.unknownShare(text))
+        }
+        .sortedWith(compareBy({ it.isCopy }, { it.strays }, { it.index }))
         .take(count)
-    return best.sortedBy { it.index }.map { it.value }
+    return best.map { it.index }.sorted().map { candidates[it] }
+}
+
+/**
+ * Deals out a coast's cards to the prompts of one sheet, [limit] cards and [characters] of card text per
+ * prompt at most, in the coast's order.
+ *
+ * A coast that fits is shown whole every time. A larger one, be it thousands of cards, is shown island by
+ * island: a sentence is built from one island's cards, so a prompt gets up to [perIsland] cards of an island
+ * (enough to build from) rather than a few of each. The islands take turns from one prompt to the next, so
+ * a long sheet gets around the whole coast, and a huge island can't crowd the others out. Room that is left
+ * once every island had its turn goes to more of their cards.
+ */
+internal class WorksheetCardDealer(
+    cards: List<PlacedCard>,
+    private val limit: Int,
+    private val perIsland: Int,
+    private val characters: Int,
+    private val random: Random
+) {
+    private val lines = cards.map { WorksheetCard(it.islandName, oneLine(it.card.targetText), oneLine(it.card.nativeText)) }
+    private val sizes = lines.map { it.targetText.length + it.nativeText.length + SEPARATOR_LENGTH }
+    private val shortest = sizes.minOrNull() ?: 0
+    private val fitsWhole = lines.size <= limit && sizes.sum() <= characters
+
+    /** The islands' cards (as indices), in the order the islands take their turns. */
+    private val islands = cards.indices.groupBy { cards[it].card.islandId }.values.shuffled(random)
+    private var turn = 0
+
+    /** The cards for the next prompt. */
+    fun next(): List<WorksheetCard> {
+        if (fitsWhole) return lines
+        val picked = ArrayList<Int>(limit)
+        val passedOver = ArrayList<Int>()
+        var room = characters
+        fun full() = picked.size >= limit || room < shortest
+        fun take(index: Int): Boolean {
+            if (picked.size >= limit || sizes[index] > room) return false
+            picked += index
+            room -= sizes[index]
+            return true
+        }
+
+        var visited = 0
+        while (!full() && visited < islands.size) {
+            var taken = 0
+            for (index in islands[(turn + visited) % islands.size].shuffled(random)) {
+                if (taken < perIsland && take(index)) taken++ else passedOver += index
+            }
+            visited++
+        }
+        turn = (turn + visited) % islands.size
+        if (!full()) for (index in passedOver.shuffled(random)) if (full()) break else take(index)
+        // Cards too long for any prompt: the shortest ones are still better than a prompt without cards.
+        if (picked.isEmpty()) picked += sizes.indices.sortedBy { sizes[it] }.take(WORKSHEET_MIN_CARDS)
+        return picked.sorted().map { lines[it] }
+    }
+
+    private companion object {
+        /** " = " and the line break around a card's two sides. */
+        const val SEPARATOR_LENGTH = 4
+
+        /** A card's text on one line, as the prompt lists one card per line. */
+        fun oneLine(text: String): String = text.lines().joinToString(" ") { it.trim() }.trim()
+    }
 }
 
 /** A practice sheet, or why there is none. */
@@ -301,8 +403,13 @@ sealed interface WorksheetResult {
  * ([worksheetRequests]), each request being told what is on the sheet already. It asks for a few sentences
  * more than the sheet needs and keeps the ones closest to the coast's words ([pickWorksheetSentences]). A
  * model that sends too few is asked again, but not forever: a small coast only has so many sentences in it,
- * so a long sheet can come out shorter than asked for. A local model reads a short prompt, so it gets a
- * sample of the cards.
+ * so a long sheet can come out shorter than asked for.
+ *
+ * A coast of any size works: a prompt never carries more than a fixed number of cards and characters, a
+ * large coast's islands take turns in the prompts ([WorksheetCardDealer]), and a local model, which reads a
+ * short prompt, gets a few islands at a time. A long sheet from a large coast is many large requests in a
+ * row, which a provider's per-minute limit can turn away; the sheet then waits as long as the provider says
+ * ([Completion.retryAfterSeconds]) and carries on, instead of coming out short.
  */
 class WorksheetGenerator(
     private val translator: Translator,
@@ -311,7 +418,9 @@ class WorksheetGenerator(
     private val clock: Clock,
     private val timeZone: TimeZone,
     /** Picks the cards a prompt shows when the coast has more than fit; tests fix it. */
-    private val random: Random = Random.Default
+    private val random: Random = Random.Default,
+    /** Where the cards are sorted through: off the screen's thread, which thousands of cards would hold up. */
+    private val background: CoroutineDispatcher = Dispatchers.Default
 ) {
     /**
      * A sheet for coast [coastId] as [options] ask.
@@ -337,7 +446,15 @@ class WorksheetGenerator(
         val count = options.count.coerceIn(WORKSHEET_COUNT_RANGE)
         val isLocal = engine is TranslationEngine.LocalAi
         val known = placed.flatMap { listOf(it.card.targetText) + it.card.alternatives }
-        val vocabulary = CoastVocabulary(known)
+        val (vocabulary, dealer) = withContext(background) {
+            CoastVocabulary(known) to WorksheetCardDealer(
+                cards = placed,
+                limit = if (isLocal) LOCAL_CARD_LIMIT else CARD_LIMIT,
+                perIsland = if (isLocal) LOCAL_ISLAND_CARDS else ISLAND_CARDS,
+                characters = if (isLocal) LOCAL_CHARACTER_LIMIT else CHARACTER_LIMIT,
+                random = random
+            )
+        }
         val wanted = worksheetSentencesWanted(count, isLocal)
         val perRequest = if (isLocal) LOCAL_BATCH else CLOUD_BATCH
 
@@ -346,22 +463,34 @@ class WorksheetGenerator(
         var requests = 0
         // Requests in a row that added nothing: the provider is down, or has run out of new sentences.
         var barren = 0
+        // Times in a row the provider said "not now": see MAX_WAITS.
+        var waits = 0
         val planned = worksheetRequests(count, isLocal)
         // Until the sheet is full, and through the planned requests for the sentences to spare.
         fun moreNeeded() = written.size < count || (requests < planned && written.size < wanted)
         while (moreNeeded() && requests < planned + EXTRA_REQUESTS && barren < MAX_BARREN_REQUESTS) {
             requests++
-            val prompt = buildWorksheetPrompt(
-                cards = sample(placed, if (isLocal) LOCAL_CARD_LIMIT else CARD_LIMIT),
-                targetLanguage = coast.language,
-                nativeLanguage = nativeLanguage,
-                count = minOf(perRequest, wanted - written.size),
-                difficulty = options.difficulty,
-                region = coast.region,
-                // Every repeat is dropped below anyway; the prompt names the latest ones, which a model repeats most readily.
-                avoid = written.takeLast(AVOID_LIMIT).map { it.targetText }
-            )
-            val completion = translator.complete(engine, prompt)
+            val prompt = withContext(background) {
+                buildWorksheetPrompt(
+                    cards = dealer.next(),
+                    targetLanguage = coast.language,
+                    nativeLanguage = nativeLanguage,
+                    count = minOf(perRequest, wanted - written.size),
+                    difficulty = options.difficulty,
+                    region = coast.region,
+                    // Every repeat is dropped below anyway; the prompt names the latest ones, which a model repeats most readily.
+                    avoid = written.takeLast(AVOID_LIMIT).map { it.targetText }
+                )
+            }
+            var completion = translator.complete(engine, prompt)
+            // Turned away for now (the per-minute limit is used up, or the provider is overloaded): the same
+            // request goes through after the wait it names.
+            while (completion.text == null && waits < MAX_WAITS) {
+                val seconds = completion.retryAfterSeconds ?: break
+                waits++
+                delay(seconds.coerceIn(1, MAX_WAIT_SECONDS) * 1_000L)
+                completion = translator.complete(engine, prompt)
+            }
             val text = completion.text
             if (text == null) {
                 lastError = completion.errorMessage
@@ -369,15 +498,18 @@ class WorksheetGenerator(
                 // A provider that can't be reached for the first request won't answer the next one either.
                 if (written.isEmpty()) break else continue
             }
-            val seen = written.mapTo(HashSet()) { normalizedWords(it.targetText) }
-            val fresh = parseWorksheetResponse(text).filter { seen.add(normalizedWords(it.targetText)) }
+            waits = 0
+            val fresh = withContext(background) {
+                val seen = written.mapTo(HashSet()) { normalizedWords(it.targetText) }
+                parseWorksheetResponse(text).filter { seen.add(normalizedWords(it.targetText)) }
+            }
             if (fresh.isEmpty() && written.isEmpty()) lastError = "${provider.label}'s answer couldn't be read. Try again."
             barren = if (fresh.isEmpty()) barren + 1 else 0
             written += fresh
             onProgress(minOf(written.size, count))
         }
 
-        val sentences = pickWorksheetSentences(written, vocabulary, known, count)
+        val sentences = withContext(background) { pickWorksheetSentences(written, vocabulary, known, count) }
         if (sentences.isEmpty()) return WorksheetResult.Failed(lastError ?: "${provider.label} sent no sentences. Try again.")
         return WorksheetResult.Ready(
             Worksheet(
@@ -394,21 +526,23 @@ class WorksheetGenerator(
         )
     }
 
-    /** At most [limit] of [cards] for a prompt, picked at random when there are more, in the coast's order. */
-    private fun sample(cards: List<PlacedCard>, limit: Int): List<WorksheetCard> {
-        val shown = if (cards.size <= limit) cards else cards.indices.shuffled(random).take(limit).sorted().map { cards[it] }
-        return shown.map { WorksheetCard(it.islandName, oneLine(it.card.targetText), oneLine(it.card.nativeText)) }
-    }
-
-    /** A card's text on one line, as the prompt lists one card per line. */
-    private fun oneLine(text: String): String = text.lines().joinToString(" ") { it.trim() }.trim()
-
     private companion object {
-        /** Cards a prompt shows at most; beyond that it mostly costs tokens. Each request draws its own sample. */
+        /** Cards a prompt shows at most; beyond that it mostly costs tokens. A larger coast is dealt out over the prompts. */
         const val CARD_LIMIT = 400
 
-        /** A local model's prompt must stay short. */
+        /** Cards of one island in a prompt, while other islands wait for room: plenty to build sentences from. */
+        const val ISLAND_CARDS = 40
+
+        /**
+         * Characters of card text a prompt carries at most (about 100 a card): cards with long texts, as an
+         * imported deck can have, must not make a prompt many times the size of an ordinary one.
+         */
+        const val CHARACTER_LIMIT = 40_000
+
+        /** A local model's prompt must stay short: fewer cards, of fewer islands, and less text. */
         const val LOCAL_CARD_LIMIT = 60
+        const val LOCAL_ISLAND_CARDS = 20
+        const val LOCAL_CHARACTER_LIMIT = 4_000
 
         /** A request lists this many of the sentences already written; beyond that it mostly costs tokens. */
         const val AVOID_LIMIT = 60
@@ -418,5 +552,13 @@ class WorksheetGenerator(
 
         /** After this many requests in a row that added nothing, the sheet is made from what there is. */
         const val MAX_BARREN_REQUESTS = 2
+
+        /**
+         * How often in a row a sheet waits for a provider that turns it away for now, and how long at most each
+         * time. A per-minute limit is over within the minute; a limit that isn't (a day's quota) ends the sheet
+         * with what it has.
+         */
+        const val MAX_WAITS = 4
+        const val MAX_WAIT_SECONDS = 60
     }
 }

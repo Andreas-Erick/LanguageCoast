@@ -168,8 +168,8 @@ private fun ColumnScope.WorksheetOptionsForm(
 
     Text("Practice sheet", style = MaterialTheme.typography.titleLarge)
     Text(
-        text = "New sentences to translate, built only from the words on this coast's ${plural(cardCount, "card")}, " +
-            "as a PDF to print or fill in. The answers come on a page of their own.",
+        text = "New sentences to translate, built from the words on this coast's ${plural(cardCount, "card")}, one island's topic at a time, " +
+            "as a PDF to print or fill in. A sentence may bring one new word where it needs it. The answers come on a page of their own.",
         style = MaterialTheme.typography.bodyMedium,
         color = TextSecondary,
         modifier = Modifier.padding(top = 4.dp)

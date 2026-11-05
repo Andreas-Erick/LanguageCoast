@@ -26,14 +26,19 @@ class WorksheetTest {
     )
 
     @Test
-    fun promptShowsTheCardsByIslandAndAllowsNoOtherWords() {
+    fun promptShowsTheCardsByIslandAndAsksForSentencesThatMakeSenseOnOneTopic() {
         val prompt = buildWorksheetPrompt(cards, "German", "English", count = 10, difficulty = WorksheetDifficulty.Medium)
 
         assertTrue("[Travel]\nWo ist der Bahnhof? = Where is the station?\nIch gehe zum Strand. = I am going to the beach." in prompt)
         assertTrue("[Food]\nDas Kind isst einen Apfel. = The child is eating an apple." in prompt)
         assertTrue("Write 10 new German sentences" in prompt)
-        assertTrue("Use ONLY German words that are on the flashcards" in prompt)
-        assertTrue("Level: medium" in prompt)
+        // Sense comes first, then one topic per sentence, then the cards' words with one new word to spare.
+        assertTrue("1. Every sentence must make sense" in prompt)
+        assertTrue("2. Every sentence belongs to one topic" in prompt)
+        assertTrue("Never put words from unrelated topics together" in prompt)
+        assertTrue("3. Build the sentences from the German words on the flashcards" in prompt)
+        assertTrue("it may also use one common, simple word that is not on the flashcards; never more than one" in prompt)
+        assertTrue("Level: medium" in prompt && "several flashcards of one topic" in prompt)
         assertTrue(prompt.endsWith("[sentence in German] || [translation in English]"))
         // The raw strings' indentation must not reach the model.
         assertTrue(prompt.lines().none { it.startsWith(" ") })
@@ -46,9 +51,9 @@ class WorksheetTest {
         )
 
         assertTrue("Write 1 new German sentence for" in prompt)
-        assertTrue("Level: hard" in prompt)
+        assertTrue("Level: hard" in prompt && "two things about one situation" in prompt)
         assertTrue("a native speaker from Austria would say" in prompt)
-        assertTrue("6. Do not repeat any of these, which are already on the sheet: Wo ist das Kind? | Ich esse." in prompt)
+        assertTrue("8. Do not repeat any of these, which are already on the sheet: Wo ist das Kind? | Ich esse." in prompt)
         assertTrue(prompt.lines().none { it.startsWith(" ") })
         assertTrue("Level: easy" in buildWorksheetPrompt(cards, "German", "English", 3, WorksheetDifficulty.Easy))
     }
@@ -117,6 +122,28 @@ class WorksheetTest {
         // A copy of a card is the last resort, after a sentence with words the coast doesn't have.
         assertEquals(listOf(stray, close, closer), pickWorksheetSentences(candidates, vocabulary, known, count = 3))
         assertEquals(candidates, pickWorksheetSentences(candidates, vocabulary, known, count = 10))
+    }
+
+    @Test
+    fun oneNewWordDoesNotCountAgainstASentence() {
+        val known = cards.map { it.targetText }
+        val vocabulary = CoastVocabulary(known)
+        val twoNew = WorksheetSentence("Das Kind isst heute keinen Apfel.", "The child isn't eating an apple today.")
+        val oneNew = WorksheetSentence("Das Kind isst heute einen Apfel.", "The child is eating an apple today.")
+        val none = WorksheetSentence("Wo ist das Kind?", "Where is the child?")
+        val alsoNone = WorksheetSentence("Das Kind geht zum Bahnhof.", "The child is going to the station.")
+
+        assertTrue(vocabulary.keepsToCoast(none.targetText))
+        assertTrue(vocabulary.keepsToCoast(oneNew.targetText))
+        assertTrue(!vocabulary.keepsToCoast(twoNew.targetText))
+        // The sentence that needed a new word is kept ahead of a later one that needed none.
+        assertEquals(listOf(oneNew, none), pickWorksheetSentences(listOf(twoNew, oneNew, none, alsoNone), vocabulary, known, count = 2))
+        assertEquals(listOf(oneNew, none, alsoNone), pickWorksheetSentences(listOf(twoNew, oneNew, none, alsoNone), vocabulary, known, count = 3))
+
+        // Without spaces a new word is a character or two.
+        val chinese = CoastVocabulary(listOf("我喜欢茶", "你好"))
+        assertTrue(chinese.keepsToCoast("我喜欢咖啡"))
+        assertTrue(!chinese.keepsToCoast("我喜欢咖啡和牛奶"))
     }
 
     @Test

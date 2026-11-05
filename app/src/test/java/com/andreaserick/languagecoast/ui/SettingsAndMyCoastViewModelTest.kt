@@ -58,7 +58,8 @@ class SettingsAndMyCoastViewModelTest {
     private fun coastViewModel(coastId: Int) =
         CoastViewModel(
             SavedStateHandle(mapOf("coastId" to coastId, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE, importer,
-            WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE), printer
+            // The generator sorts through the cards on a background thread; here it stays on the test's.
+            WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE, background = UnconfinedTestDispatcher()), printer
         )
 
     @Test
