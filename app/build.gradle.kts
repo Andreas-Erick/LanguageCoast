@@ -56,6 +56,10 @@ android {
                     abiFilters += listOf("arm64-v8a", "armeabi-v7a")
                 }
             }
+            // `-PidSuffix=.r8` gives the release build an application ID of its own, so it installs next to a
+            // debug build (their signatures differ, so one can't replace the other) to try the minified code
+            // on a device or emulator without wiping the installed app's data.
+            (project.findProperty("idSuffix") as String?)?.let { applicationIdSuffix = it }
             isShrinkResources = true
             optimization {
                 enable = true
