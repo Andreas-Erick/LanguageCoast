@@ -415,7 +415,8 @@ actual class LocalAiTranslator actual constructor() : Translator {
         // Qwen 3 also honours this soft switch in the message itself, in case the template ignores ThinkingConfig.
         val fullPrompt = if (LocalAiCatalog.byId(modelId)?.family == "Qwen 3") "$prompt /no_think" else prompt
         return try {
-            Completion(sendLocked(activeEngine, fullPrompt))
+            // A small model sometimes copies the switch into its answer.
+            Completion(sendLocked(activeEngine, fullPrompt).replace("/no_think", "").trim())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
