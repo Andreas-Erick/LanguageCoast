@@ -152,7 +152,13 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
     }
 
     uiState.cardCheck?.let { check ->
-        CardCheckSheet(check = check, onApply = viewModel::applyCardCheck, onDismiss = viewModel::dismissCardCheck)
+        CardCheckSheet(
+            check = check,
+            onApply = viewModel::applyCardCheck,
+            onAskAlternative = viewModel::askAlternative,
+            onSaveAlternative = viewModel::saveAlternative,
+            onDismiss = viewModel::dismissCardCheck
+        )
     }
 
     editingCard?.let { card ->

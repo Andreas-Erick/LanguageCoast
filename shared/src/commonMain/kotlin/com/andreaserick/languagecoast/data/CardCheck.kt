@@ -98,6 +98,74 @@ fun parseCardCheck(text: String, current: String): CardVerdict? {
     }
 }
 
+/**
+ * What a language model said about another translation the learner proposed for a card ("is this correct
+ * as well?", see [buildAlternativeCheckPrompt]).
+ */
+sealed interface AlternativeVerdict {
+    /** It is correct as well. [note] says how it differs from the card's translation, if in a way worth knowing. */
+    data class Correct(val note: String?) : AlternativeVerdict
+
+    /** It isn't. [reason] says why, in the learner's language; [corrected] is their sentence put right, if a small fix does it. */
+    data class Incorrect(val reason: String, val corrected: String?) : AlternativeVerdict
+
+    /** The card has it already, as its translation or as an alternative, so there was nothing to ask. */
+    data object OnTheCard : AlternativeVerdict
+}
+
+/**
+ * The prompt that has a native speaker of [targetLanguage] (from [region], if given) judge [proposed], the
+ * learner's own way of saying what [nativeText] says, next to the card's [targetText]. It is judged on its
+ * own merits: it need not resemble the card, but it must mean the same and be something people say.
+ */
+fun buildAlternativeCheckPrompt(
+    nativeText: String,
+    targetText: String,
+    proposed: String,
+    nativeLanguage: String,
+    targetLanguage: String,
+    region: String?
+): String {
+    val where = region?.trim()?.takeIf { it.isNotEmpty() } ?: "the places where it is spoken"
+    return """
+        You are a native speaker of $targetLanguage from $where, helping a learner whose native language is $nativeLanguage. Their flashcard says:
+
+        $nativeLanguage: $nativeText
+        $targetLanguage: $targetText
+
+        The learner asks whether this is correct as well: $proposed
+
+        Judge the learner's $targetLanguage on its own. It does not have to resemble the flashcard: other words, another word order or another register are fine. It is correct as well when it means what the $nativeLanguage says, with nothing lost, added or changed, has no grammar or spelling mistake, and is something people in $where say. Do not mind capital letters or punctuation at the end. If it means something else, has a mistake or is wording nobody would use, it is not.
+
+        Reply in exactly this format and nothing else:
+        VERDICT: [YES if it is correct as well, NO if it is not]
+        WHY: [in $nativeLanguage, one short sentence. For YES: how it differs from the flashcard's $targetLanguage in register, emphasis or region, quoting the wording it is about, or NONE if they are interchangeable. For NO: what is wrong]
+        FIXED: [only for NO, and only if a small correction makes it right: the learner's $targetLanguage corrected. Otherwise NONE]
+    """.trimIndent()
+}
+
+/**
+ * Parses a reply to [buildAlternativeCheckPrompt] about [proposed]. A YES that comes with a different
+ * sentence under FIXED counts as a no, since the model changed something after all; a reply without a
+ * verdict gives null.
+ */
+fun parseAlternativeCheck(text: String, proposed: String): AlternativeVerdict? {
+    val lines = checkLines(text)
+    fun value(label: String) = field(lines, label)?.takeUnless { it.equals("NONE", ignoreCase = true) }
+    val verdict = field(lines, "VERDICT") ?: lines.firstOrNull { YES.containsMatchIn(it) || NO.containsMatchIn(it) } ?: return null
+    val why = value("WHY")
+    val fixed = value("FIXED")?.let(::unquoted)?.takeUnless { isSameSentence(it, proposed) }
+    return when {
+        YES.containsMatchIn(verdict) && fixed == null -> AlternativeVerdict.Correct(why)
+        YES.containsMatchIn(verdict) || NO.containsMatchIn(verdict) -> AlternativeVerdict.Incorrect(why.orEmpty(), fixed)
+        else -> null
+    }
+}
+
+/** A verdict that says yes ("YES", "Yes, it is") or no ("NO", "No."). */
+private val YES = Regex("^YES\\b", RegexOption.IGNORE_CASE)
+private val NO = Regex("^NO\\b", RegexOption.IGNORE_CASE)
+
 private fun checkLines(text: String): List<String> =
     text.replace("```", "").replace("**", "").lines().map { it.trim() }.filter { it.isNotEmpty() }
 

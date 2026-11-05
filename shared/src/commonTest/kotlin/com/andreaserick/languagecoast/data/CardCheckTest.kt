@@ -100,4 +100,55 @@ class CardCheckTest {
         assertNull(parseCardCheck("I think this card could be improved in several ways.", "Hallo"))
         assertNull(parseCardCheck("", "Hallo"))
     }
+
+    @Test
+    fun theAlternativePromptShowsTheCardAndWhatTheLearnerProposes() {
+        val prompt = buildAlternativeCheckPrompt("Where is the station?", "Wo ist der Bahnhof?", "Wo befindet sich der Bahnhof?", "English", "German", "Austria")
+
+        assertTrue("native speaker of German from Austria" in prompt)
+        assertTrue("English: Where is the station?" in prompt)
+        assertTrue("German: Wo ist der Bahnhof?" in prompt)
+        assertTrue("correct as well: Wo befindet sich der Bahnhof?" in prompt)
+        assertTrue("VERDICT:" in prompt && "FIXED:" in prompt)
+        assertTrue("the places where it is spoken" in buildAlternativeCheckPrompt("Hi", "Hallo", "Servus", "English", "German", region = " "))
+    }
+
+    @Test
+    fun anAlternativeThatIsCorrectComesWithHowItDiffers() {
+        val formal = parseAlternativeCheck("VERDICT: YES\nWHY: \"befindet sich\" is more formal than \"ist\".\nFIXED: NONE", "Wo befindet sich der Bahnhof?")
+        assertEquals(AlternativeVerdict.Correct("\"befindet sich\" is more formal than \"ist\"."), formal)
+
+        // Interchangeable wordings have nothing worth a note.
+        assertEquals(AlternativeVerdict.Correct(null), parseAlternativeCheck("**Verdict:** [Yes]\nWhy: NONE", "Servus"))
+        assertEquals(AlternativeVerdict.Correct(null), parseAlternativeCheck("Yes, that works too.", "Servus"))
+    }
+
+    @Test
+    fun anAlternativeThatIsWrongComesWithTheReasonAndAFixIfThereIsOne() {
+        val slip = parseAlternativeCheck("VERDICT: NO\nWHY: \"Bahnhof\" is masculine.\nFIXED: \"Wo ist der Bahnhof bitte?\"", "Wo ist die Bahnhof bitte?")
+        assertEquals(AlternativeVerdict.Incorrect("\"Bahnhof\" is masculine.", "Wo ist der Bahnhof bitte?"), slip)
+
+        val other = parseAlternativeCheck("VERDICT: NO\nWHY: That asks for the airport.\nFIXED: NONE", "Wo ist der Flughafen?")
+        assertEquals(AlternativeVerdict.Incorrect("That asks for the airport.", null), other)
+
+        // A fix that only repeats the sentence is no fix.
+        val same = parseAlternativeCheck("VERDICT: NO\nWHY: Nobody says that.\nFIXED: wo ist der flughafen", "Wo ist der Flughafen?")
+        assertEquals(AlternativeVerdict.Incorrect("Nobody says that.", null), same)
+    }
+
+    @Test
+    fun aYesThatChangesTheSentenceCountsAsANo() {
+        val verdict = parseAlternativeCheck("VERDICT: YES\nWHY: Only the article was off.\nFIXED: Wo ist der Bahnhof bitte?", "Wo ist die Bahnhof bitte?")
+
+        assertEquals(AlternativeVerdict.Incorrect("Only the article was off.", "Wo ist der Bahnhof bitte?"), verdict)
+    }
+
+    @Test
+    fun anAlternativeAnswerWithoutAVerdictGivesNone() {
+        assertNull(parseAlternativeCheck("Let me think about that sentence.", "Servus"))
+        assertNull(parseAlternativeCheck("VERDICT: MAYBE\nWHY: Hard to say.", "Servus"))
+        // "NONE" starts like "NO" but isn't one.
+        assertNull(parseAlternativeCheck("NONE", "Servus"))
+        assertNull(parseAlternativeCheck("", "Servus"))
+    }
 }

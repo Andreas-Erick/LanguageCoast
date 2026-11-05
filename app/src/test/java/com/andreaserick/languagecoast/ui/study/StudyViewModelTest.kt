@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.ui.study
 
 import androidx.lifecycle.SavedStateHandle
+import com.andreaserick.languagecoast.data.AlternativeVerdict
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.DeletedContent
@@ -636,6 +637,134 @@ class StudyViewModelTest {
         viewModel.checkCard()
         assertTrue(viewModel.state.cardCheck?.error.orEmpty().contains("couldn't be read"))
         assertEquals(null, viewModel.state.cardCheck?.verdict)
+    }
+
+    /** Answers the card check with FINE and a question about another translation with [alternativeReply]. */
+    private fun answerAlternativeWith(alternativeReply: String) {
+        settings.apiKey.value = "key"
+        translator.completionFor = { prompt -> Completion(if ("correct as well" in prompt) alternativeReply else "VERDICT: FINE") }
+    }
+
+    @Test
+    fun anotherTranslationTheProviderFindsCorrectCanBeSavedAsAnAlternative() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        flashcards.coasts.update { all -> all.map { it.copy(region = "Mexico") } }
+        flashcards.cards.update { all -> all.map { it.copy(alternatives = listOf("a1"), note = "a1 is informal.") } }
+        answerAlternativeWith("VERDICT: YES\nWHY: \"mine\" is what you say to friends.\nFIXED: NONE")
+        val viewModel = createViewModel()
+        viewModel.checkCard()
+        assertTrue(viewModel.state.cardCheck!!.canAskAlternative)
+        assertEquals("Spanish", viewModel.state.cardCheck?.targetLanguage)
+
+        viewModel.askAlternative("  mine  ")
+
+        val asked = viewModel.state.cardCheck?.alternative!!
+        assertEquals("mine", asked.text)
+        assertEquals(AlternativeVerdict.Correct("\"mine\" is what you say to friends."), asked.verdict)
+        assertEquals("mine", asked.savable)
+        val prompt = translator.prompts.last()
+        assertTrue("native speaker of Spanish from Mexico" in prompt)
+        assertTrue("English: n1" in prompt && "Spanish: t1" in prompt && "correct as well: mine" in prompt)
+        // Asking changes nothing on the card.
+        assertEquals(listOf("a1"), viewModel.state.currentCard?.alternatives)
+
+        viewModel.saveAlternative()
+        viewModel.saveAlternative() // A second tap adds nothing.
+
+        val card = viewModel.state.currentCard!!
+        assertEquals("t1", card.targetText)
+        assertEquals(listOf("a1", "mine"), card.alternatives)
+        assertEquals("a1 is informal. \"mine\" is what you say to friends.", card.note)
+        assertEquals("mine", viewModel.state.cardCheck?.alternative?.saved)
+        // The check itself is still what it was.
+        assertEquals(CardVerdict.Fine, viewModel.state.cardCheck?.verdict)
+    }
+
+    @Test
+    fun aRamblingRemarkOnAnAlternativeIsNotKeptAsTheCardsNote() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        answerAlternativeWith("VERDICT: YES\nWHY: " + "The learner's sentence is correct and matches the intended meaning. ".repeat(4))
+        val viewModel = createViewModel()
+        viewModel.checkCard()
+
+        viewModel.askAlternative("mine")
+        viewModel.saveAlternative()
+
+        val card = viewModel.state.currentCard!!
+        assertEquals(listOf("mine"), card.alternatives)
+        assertEquals(null, card.note)
+    }
+
+    @Test
+    fun anotherTranslationThatIsWrongCanOnlyBeSavedInItsCorrectedForm() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        answerAlternativeWith("VERDICT: NO\nWHY: The verb is missing.\nFIXED: mine bien")
+        val viewModel = createViewModel()
+        viewModel.checkCard()
+
+        viewModel.askAlternative("mine")
+
+        val asked = viewModel.state.cardCheck?.alternative!!
+        assertEquals(AlternativeVerdict.Incorrect("The verb is missing.", "mine bien"), asked.verdict)
+        assertEquals("mine bien", asked.savable)
+
+        viewModel.saveAlternative()
+
+        val card = viewModel.state.currentCard!!
+        assertEquals(listOf("mine bien"), card.alternatives)
+        // What was wrong with the user's sentence says nothing about the alternative, so it isn't the card's note.
+        assertEquals(null, card.note)
+
+        // Without a correction there is nothing to save.
+        answerAlternativeWith("VERDICT: NO\nWHY: It means something else.\nFIXED: NONE")
+        viewModel.askAlternative("other")
+        assertEquals(null, viewModel.state.cardCheck?.alternative?.savable)
+        viewModel.saveAlternative()
+        assertEquals(listOf("mine bien"), viewModel.state.currentCard?.alternatives)
+    }
+
+    @Test
+    fun aTranslationTheCardAlreadyHasIsAnsweredWithoutAsking() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        flashcards.cards.update { all -> all.map { it.copy(alternatives = listOf("Otra forma")) } }
+        answerAlternativeWith("VERDICT: YES")
+        val viewModel = createViewModel()
+        viewModel.checkCard()
+        val requests = translator.prompts.size
+
+        viewModel.askAlternative("T1!")
+        assertEquals(AlternativeVerdict.OnTheCard, viewModel.state.cardCheck?.alternative?.verdict)
+        viewModel.askAlternative("otra forma")
+        assertEquals(AlternativeVerdict.OnTheCard, viewModel.state.cardCheck?.alternative?.verdict)
+        viewModel.askAlternative("   ")
+
+        assertEquals(requests, translator.prompts.size)
+        assertEquals(null, viewModel.state.cardCheck?.alternative?.savable)
+    }
+
+    @Test
+    fun aQuestionAboutAnotherTranslationThatCannotBeAnsweredSaysWhy() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        val viewModel = createViewModel()
+
+        // Without a provider that can answer, there is nobody to ask.
+        viewModel.checkCard()
+        assertFalse(viewModel.state.cardCheck!!.canAskAlternative)
+        viewModel.askAlternative("mine")
+        assertEquals(null, viewModel.state.cardCheck?.alternative)
+
+        answerAlternativeWith("Let me think about it.")
+        viewModel.checkCard()
+        viewModel.askAlternative("mine")
+        assertTrue(viewModel.state.cardCheck?.alternative?.error.orEmpty().contains("couldn't be read"))
+
+        translator.completionFor = { Completion.failure("No internet connection.") }
+        viewModel.askAlternative("mine")
+        assertEquals("No internet connection.", viewModel.state.cardCheck?.alternative?.error)
+
+        // Checking again starts over.
+        viewModel.checkCard()
+        assertEquals(null, viewModel.state.cardCheck?.alternative)
     }
 
     @Test

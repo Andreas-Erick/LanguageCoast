@@ -3,6 +3,7 @@ package com.andreaserick.languagecoast.ui.study
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andreaserick.languagecoast.data.AlternativeVerdict
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.Cloze
@@ -20,6 +21,7 @@ import com.andreaserick.languagecoast.data.SuggestedSentence
 import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Translator
+import com.andreaserick.languagecoast.data.buildAlternativeCheckPrompt
 import com.andreaserick.languagecoast.data.buildCardCheckPrompt
 import com.andreaserick.languagecoast.data.buildCardReadingPrompt
 import com.andreaserick.languagecoast.data.buildExplainPrompt
@@ -30,6 +32,7 @@ import com.andreaserick.languagecoast.data.interleaveByCoast
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.data.isLeaky
 import com.andreaserick.languagecoast.data.isSameSentence
+import com.andreaserick.languagecoast.data.parseAlternativeCheck
 import com.andreaserick.languagecoast.data.parseCardCheck
 import com.andreaserick.languagecoast.data.parseCardReading
 import com.andreaserick.languagecoast.data.reviewOutcomes
@@ -48,6 +51,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.LocalDate
@@ -96,9 +100,39 @@ data class CardCheck(
     val verdict: CardVerdict? = null,
     /** The translation read back word for word into the user's language, for them to compare; null until (or unless) the provider gives one. */
     val readsAs: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    /** The language the card's translation is in, which another translation is asked for in. */
+    val targetLanguage: String = "",
+    /** Whether the provider can be asked about another translation: it is set up and is a language model. */
+    val canAskAlternative: Boolean = false,
+    /** The user's own translation they asked about ("is this correct as well?"), if they did. */
+    val alternative: AlternativeCheck? = null
 ) {
     val isLoading: Boolean get() = verdict == null && error == null
+}
+
+/**
+ * Another translation of a card that the user asked the AI provider about; see [AlternativeVerdict].
+ *
+ * @property text What the user typed.
+ * @property saved The sentence that was added to the card's alternatives, once one was: [text], or the
+ *     provider's correction of it.
+ */
+data class AlternativeCheck(
+    val text: String,
+    val verdict: AlternativeVerdict? = null,
+    val error: String? = null,
+    val saved: String? = null
+) {
+    val isLoading: Boolean get() = verdict == null && error == null
+
+    /** The sentence [StudyViewModel.saveAlternative] would add to the card: the user's if it is right, else its correction. */
+    val savable: String?
+        get() = when (verdict) {
+            is AlternativeVerdict.Correct -> text
+            is AlternativeVerdict.Incorrect -> verdict.corrected
+            else -> null
+        }
 }
 
 data class StudyUiState(
@@ -238,6 +272,7 @@ class StudyViewModel(
     private var explainJob: Job? = null
     private val cardCheck = MutableStateFlow<CardCheck?>(null)
     private var checkJob: Job? = null
+    private var alternativeJob: Job? = null
 
     /** The languages of the session's coasts that have a voice. */
     private val spokenLanguages: Flow<Set<String>> = session
@@ -496,10 +531,15 @@ class StudyViewModel(
         val placed = state.currentPlaced ?: return
         val card = placed.card
         checkJob?.cancel()
+        alternativeJob?.cancel()
         checkJob = viewModelScope.launch {
             val provider = settings.translationProvider.first()
-            cardCheck.value = CardCheck(card.cardId, card.nativeText, card.targetText, provider.label)
             val choice = settings.currentEngine(provider)
+            cardCheck.value = CardCheck(
+                card.cardId, card.nativeText, card.targetText, provider.label,
+                targetLanguage = placed.language,
+                canAskAlternative = choice is EngineChoice.Ready && choice.engine != TranslationEngine.OnDevice
+            )
             val answer: Pair<CardVerdict?, String?> = when {
                 choice is EngineChoice.Missing -> null to choice.message
                 choice is EngineChoice.Ready && choice.engine != TranslationEngine.OnDevice -> {
@@ -545,9 +585,77 @@ class StudyViewModel(
         }
     }
 
+    /**
+     * Asks the AI provider whether [text], the user's own way of saying it, is a correct translation of the
+     * checked card as well. The answer arrives in [CardCheck.alternative]; nothing changes on the card until
+     * [saveAlternative]. A sentence the card already has is answered without asking.
+     */
+    fun askAlternative(text: String) {
+        val check = cardCheck.value ?: return
+        val proposed = text.trim()
+        if (proposed.isEmpty() || !check.canAskAlternative) return
+        val placed = session.value.allCards.firstOrNull { it.card.cardId == check.cardId } ?: return
+        val card = placed.card
+        alternativeJob?.cancel()
+        if ((listOf(card.targetText) + card.alternatives).any { isSameSentence(it, proposed) }) {
+            updateAlternative(check.cardId) { AlternativeCheck(proposed, verdict = AlternativeVerdict.OnTheCard) }
+            return
+        }
+        updateAlternative(check.cardId) { AlternativeCheck(proposed) }
+        val nativeLanguage = uiState.value.nativeLanguage
+        alternativeJob = viewModelScope.launch {
+            val provider = settings.translationProvider.first()
+            val answer: Pair<AlternativeVerdict?, String?> = when (val choice = settings.currentEngine(provider)) {
+                is EngineChoice.Missing -> null to choice.message
+                is EngineChoice.Ready -> {
+                    val region = flashcards.observeCoast(placed.coastId).first()?.region
+                    val completion = translator.complete(
+                        choice.engine,
+                        buildAlternativeCheckPrompt(card.nativeText, card.targetText, proposed, nativeLanguage, placed.language, region)
+                    )
+                    val verdict = completion.text?.let { parseAlternativeCheck(it, proposed) }
+                    when {
+                        verdict != null -> verdict to null
+                        completion.text != null -> null to "${provider.label}'s answer couldn't be read. Try again."
+                        else -> null to (completion.errorMessage ?: "No answer.")
+                    }
+                }
+            }
+            updateAlternative(check.cardId) { asked -> if (asked?.text == proposed) asked.copy(verdict = answer.first, error = answer.second) else asked }
+        }
+    }
+
+    /**
+     * Adds the sentence the user asked about to the checked card's alternatives, so it is shown on the back
+     * and counts as correct when typed: their own if the provider found it right, else the provider's
+     * correction of it. What the provider said about how it differs joins the card's note, if it kept it
+     * short: a small model's paragraph on the matter isn't a note.
+     */
+    fun saveAlternative() {
+        val check = cardCheck.value ?: return
+        val asked = check.alternative ?: return
+        val sentence = asked.savable ?: return
+        if (asked.saved != null) return
+        val card = session.value.allCards.firstOrNull { it.card.cardId == check.cardId }?.card ?: return
+        updateAlternative(check.cardId) { it?.copy(saved = sentence) }
+        if ((listOf(card.targetText) + card.alternatives).any { isSameSentence(it, sentence) }) return
+        val difference = (asked.verdict as? AlternativeVerdict.Correct)?.note?.takeIf { it.isNotBlank() && it.length <= MAX_SAVED_NOTE }
+        val note = listOfNotNull(card.note, difference).joinToString(" ").ifBlank { null }
+        // observeAllCards re-emits the updated card, which replaces it in the session.
+        viewModelScope.launch {
+            flashcards.editCard(card.cardId, CardEdit(card.nativeText, card.targetText, card.alternatives + sentence, note, card.islandId))
+        }
+    }
+
+    /** Changes what was asked about another translation, if the check of card [cardId] is still open. */
+    private fun updateAlternative(cardId: Int, transform: (AlternativeCheck?) -> AlternativeCheck?) {
+        cardCheck.update { check -> if (check?.cardId == cardId) check.copy(alternative = transform(check.alternative)) else check }
+    }
+
     /** Closes the card check, leaving the card as it is. */
     fun dismissCardCheck() {
         checkJob?.cancel()
+        alternativeJob?.cancel()
         cardCheck.value = null
     }
 
@@ -591,6 +699,11 @@ class StudyViewModel(
     /** Stops reading aloud when the screen is left. */
     override fun onCleared() {
         speaker.stop()
+    }
+
+    private companion object {
+        /** A provider's remark on an alternative becomes part of the card's note only up to this length. */
+        const val MAX_SAVED_NOTE = 160
     }
 
     /** Days from [now] until the earliest card that isn't due yet becomes due, or null if there is none. */
