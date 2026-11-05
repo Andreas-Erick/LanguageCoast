@@ -10,10 +10,15 @@ import com.andreaserick.languagecoast.data.StarterImporter
 import com.andreaserick.languagecoast.data.StarterTranslator
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.WorksheetDifficulty
+import com.andreaserick.languagecoast.data.WorksheetDirection
+import com.andreaserick.languagecoast.data.WorksheetGenerator
+import com.andreaserick.languagecoast.data.WorksheetOptions
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeReminderScheduler
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.FakeTranslator
+import com.andreaserick.languagecoast.testing.FakeWorksheetPrinter
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
@@ -47,10 +52,14 @@ class SettingsAndMyCoastViewModelTest {
     private val settings = FakeSettingsRepository()
     private val scheduler = FakeReminderScheduler()
     private val translator = FakeTranslator()
+    private val printer = FakeWorksheetPrinter()
     private val importer by lazy { StarterImporter(flashcards, settings, StarterTranslator(translator), CoroutineScope(Job())) }
 
     private fun coastViewModel(coastId: Int) =
-        CoastViewModel(SavedStateHandle(mapOf("coastId" to coastId, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE, importer)
+        CoastViewModel(
+            SavedStateHandle(mapOf("coastId" to coastId, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE, importer,
+            WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE), printer
+        )
 
     @Test
     fun savingApiKeyTrimsItAndShowsConfirmationUntilEdited() = runTest {
@@ -352,6 +361,79 @@ class SettingsAndMyCoastViewModelTest {
         assertTrue(progress.error!!.contains("Gemini"))
         assertTrue(flashcards.cards.value.isEmpty())
         assertTrue(settings.starterTopicsAdded.value.isEmpty())
+    }
+
+    /** A German coast with [cardCount] cards, a Gemini key, and a model that answers with three sentences. */
+    private fun coastForWorksheets(cardCount: Int = 6) {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        flashcards.seed(islandId = 1, cardCount = cardCount, coastId = 1)
+        settings.apiKey.value = "key"
+        translator.completion = Completion("t1 t2 || n1 n2\nt3 t4 || n3 n4\nt5 t6 || n5 n6")
+    }
+
+    @Test
+    fun coastMakesAPracticeSheetFromItsCardsAsThePickedOptionsAsk() = runTest {
+        coastForWorksheets()
+        val viewModel = coastViewModel(coastId = 1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        assertTrue(viewModel.uiState.value.canPrintWorksheets)
+        assertEquals(6, viewModel.uiState.value.cardCount)
+        assertEquals(WorksheetOptions(count = 10, difficulty = WorksheetDifficulty.Medium), viewModel.uiState.value.worksheet.options)
+
+        viewModel.setWorksheetOptions(WorksheetOptions(count = 3, difficulty = WorksheetDifficulty.Hard, direction = WorksheetDirection.ToNative))
+        viewModel.createWorksheet()
+
+        val worksheet = viewModel.uiState.value.worksheet
+        assertFalse(worksheet.isCreating)
+        assertEquals("german-coast-practice-2026-10-09.pdf", worksheet.pdf?.fileName)
+        assertEquals(3, worksheet.sentenceCount)
+        val sheet = printer.printed.single()
+        assertEquals("German Coast", sheet.coastName)
+        assertEquals("German" to "English", sheet.fromLanguage to sheet.toLanguage)
+        assertEquals(listOf("t1 t2", "t3 t4", "t5 t6"), sheet.sentences.map { it.targetText })
+        assertEquals(6 to 1, sheet.cardCount to sheet.islandCount)
+        assertTrue("Level: hard" in translator.prompts.first())
+
+        viewModel.startNewWorksheet()
+        assertEquals(null, viewModel.uiState.value.worksheet.pdf)
+        // What was picked stays for the next sheet.
+        assertEquals(WorksheetDifficulty.Hard, viewModel.uiState.value.worksheet.options.difficulty)
+    }
+
+    @Test
+    fun aPracticeSheetThatCannotBeMadeSaysWhy() = runTest {
+        coastForWorksheets()
+        settings.apiKey.value = ""
+        val viewModel = coastViewModel(coastId = 1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.createWorksheet()
+        assertTrue(viewModel.uiState.value.worksheet.error.orEmpty().contains("API key"))
+        assertEquals(null, viewModel.uiState.value.worksheet.pdf)
+        assertTrue(printer.printed.isEmpty())
+
+        // Changing an option clears the message; a PDF that can't be written is reported too.
+        settings.apiKey.value = "key"
+        printer.fails = true
+        viewModel.setWorksheetOptions(WorksheetOptions(count = 3))
+        assertEquals(null, viewModel.uiState.value.worksheet.error)
+        viewModel.createWorksheet()
+        assertTrue(viewModel.uiState.value.worksheet.error.orEmpty().contains("PDF couldn't be made"))
+        assertFalse(viewModel.uiState.value.worksheet.isCreating)
+    }
+
+    @Test
+    fun theNumberOfSentencesStaysWithinItsLimits() = runTest {
+        coastForWorksheets()
+        val viewModel = coastViewModel(coastId = 1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.setWorksheetOptions(WorksheetOptions(count = 0))
+        assertEquals(3, viewModel.uiState.value.worksheet.options.count)
+        viewModel.setWorksheetOptions(WorksheetOptions(count = 500))
+        assertEquals(500, viewModel.uiState.value.worksheet.options.count)
+        viewModel.setWorksheetOptions(WorksheetOptions(count = 501))
+        assertEquals(500, viewModel.uiState.value.worksheet.options.count)
     }
 
     @Test

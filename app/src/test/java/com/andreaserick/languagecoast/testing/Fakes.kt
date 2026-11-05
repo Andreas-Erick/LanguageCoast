@@ -24,6 +24,9 @@ import com.andreaserick.languagecoast.data.TranslationResult
 import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.Translator
+import com.andreaserick.languagecoast.data.Worksheet
+import com.andreaserick.languagecoast.data.WorksheetPdf
+import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.emojiForCategory
 import com.andreaserick.languagecoast.data.starterTopicKey
 import com.andreaserick.languagecoast.data.isDue
@@ -435,6 +438,16 @@ class FakeTranslator(
     }
 
     override suspend fun prepare(engine: TranslationEngine) { prepared += engine }
+}
+
+/** [WorksheetPrinter] that keeps the sheets it was given instead of drawing them; with [fails] it makes no file. */
+class FakeWorksheetPrinter(override var isAvailable: Boolean = true, var fails: Boolean = false) : WorksheetPrinter {
+    val printed = mutableListOf<Worksheet>()
+
+    override suspend fun print(worksheet: Worksheet): WorksheetPdf? {
+        printed += worksheet
+        return if (fails) null else WorksheetPdf("/cache/shared/${worksheet.fileName}", worksheet.fileName, pageCount = 2)
+    }
 }
 
 /** [Speaker] that records what it was asked to read; [available] says which languages have a voice. */
