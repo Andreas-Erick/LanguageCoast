@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.CardEdit
+import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.Cloze
 import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.DeletedContent
@@ -16,8 +17,11 @@ import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.SuggestedSentence
+import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Translator
+import com.andreaserick.languagecoast.data.buildCardCheckPrompt
+import com.andreaserick.languagecoast.data.buildCardReadingPrompt
 import com.andreaserick.languagecoast.data.buildExplainPrompt
 import com.andreaserick.languagecoast.data.clozeOf
 import com.andreaserick.languagecoast.data.currentEngine
@@ -25,6 +29,9 @@ import com.andreaserick.languagecoast.data.dailyPlan
 import com.andreaserick.languagecoast.data.interleaveByCoast
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.data.isLeaky
+import com.andreaserick.languagecoast.data.isSameSentence
+import com.andreaserick.languagecoast.data.parseCardCheck
+import com.andreaserick.languagecoast.data.parseCardReading
 import com.andreaserick.languagecoast.data.reviewOutcomes
 import com.andreaserick.languagecoast.navigation.StudyScreenRoute
 import com.andreaserick.languagecoast.speech.Speaker
@@ -80,6 +87,20 @@ data class WordExplanation(
     val isLoading: Boolean get() = text == null && error == null
 }
 
+/** A check of a card's translation, asked from the AI provider; see [CardVerdict]. */
+data class CardCheck(
+    val cardId: Int,
+    val nativeText: String,
+    val targetText: String,
+    val providerLabel: String,
+    val verdict: CardVerdict? = null,
+    /** The translation read back word for word into the user's language, for them to compare; null until (or unless) the provider gives one. */
+    val readsAs: String? = null,
+    val error: String? = null
+) {
+    val isLoading: Boolean get() = verdict == null && error == null
+}
+
 data class StudyUiState(
     /** The island's name, or the session's title for the other scopes ("Today's review"). */
     val islandName: String = "",
@@ -114,6 +135,8 @@ data class StudyUiState(
     val isReversed: Boolean = false,
     /** An explanation being shown (or fetched) for a word on the current card. */
     val explanation: WordExplanation? = null,
+    /** A check of a card's translation being shown (or fetched). */
+    val cardCheck: CardCheck? = null,
     /** In a daily session: the new sentence being offered, once the due cards are done; null while reviewing. */
     val learning: SuggestedSentence? = null,
     /** New sentences the daily session started with, and how many are still to be offered. */
@@ -213,6 +236,8 @@ class StudyViewModel(
     private val session = MutableStateFlow(Session())
     private val explanation = MutableStateFlow<WordExplanation?>(null)
     private var explainJob: Job? = null
+    private val cardCheck = MutableStateFlow<CardCheck?>(null)
+    private var checkJob: Job? = null
 
     /** The languages of the session's coasts that have a voice. */
     private val spokenLanguages: Flow<Set<String>> = session
@@ -226,12 +251,12 @@ class StudyViewModel(
         }
 
     val uiState: StateFlow<StudyUiState> = combine(
-        combine(session, explanation) { s, e -> s to e },
+        combine(session, explanation, cardCheck) { s, e, c -> Triple(s, e, c) },
         settings.nativeLanguage,
         combine(spokenLanguages, flashcards.observeAllIslands()) { spoken, islands -> spoken to islands },
         settings.streakCount,
         settings.studyReversed
-    ) { (s, explanation), nativeLanguage, (spoken, islands), streak, reversed ->
+    ) { (s, explanation, cardCheck), nativeLanguage, (spoken, islands), streak, reversed ->
         val now = clock.now()
         StudyUiState(
             islandName = title,
@@ -260,6 +285,7 @@ class StudyViewModel(
             allIslands = islands,
             isReversed = reversed,
             explanation = explanation,
+            cardCheck = cardCheck,
             learning = s.learning,
             learnTotal = s.learnTotal,
             learnLeft = s.learnQueue.size,
@@ -457,6 +483,72 @@ class StudyViewModel(
     fun dismissExplanation() {
         explainJob?.cancel()
         explanation.value = null
+    }
+
+    /**
+     * Asks the AI provider picked in Settings to check the current card: first to read the translation back
+     * word for word, then, as a native speaker would, whether it means what the card says and is what people
+     * say. The reading and the verdict (or why there is none) arrive in [StudyUiState.cardCheck]; nothing
+     * changes on the card until [applyCardCheck].
+     */
+    fun checkCard() {
+        val state = uiState.value
+        val placed = state.currentPlaced ?: return
+        val card = placed.card
+        checkJob?.cancel()
+        checkJob = viewModelScope.launch {
+            val provider = settings.translationProvider.first()
+            cardCheck.value = CardCheck(card.cardId, card.nativeText, card.targetText, provider.label)
+            val choice = settings.currentEngine(provider)
+            val answer: Pair<CardVerdict?, String?> = when {
+                choice is EngineChoice.Missing -> null to choice.message
+                choice is EngineChoice.Ready && choice.engine != TranslationEngine.OnDevice -> {
+                    // Read back before the model is told what the card should say; shown as soon as it is there.
+                    val reading = translator.complete(choice.engine, buildCardReadingPrompt(card.targetText, placed.language, state.nativeLanguage))
+                        .text?.let { parseCardReading(it, card.targetText) }
+                    cardCheck.value = cardCheck.value?.takeIf { it.cardId == card.cardId }?.copy(readsAs = reading)
+                    val region = flashcards.observeCoast(placed.coastId).first()?.region
+                    val completion = translator.complete(
+                        choice.engine,
+                        buildCardCheckPrompt(card.nativeText, card.targetText, state.nativeLanguage, placed.language, region, reading)
+                    )
+                    val verdict = completion.text?.let { parseCardCheck(it, card.targetText) }
+                    when {
+                        verdict != null -> verdict to null
+                        completion.text != null -> null to "${provider.label}'s answer couldn't be read. Try again."
+                        else -> null to completion.errorMessage
+                    }
+                }
+                else -> null to "On-device translation can't check a card. Pick an AI provider in Settings."
+            }
+            cardCheck.value = cardCheck.value?.takeIf { it.cardId == card.cardId }
+                ?.copy(verdict = answer.first, error = answer.second ?: "No answer.".takeIf { answer.first == null })
+        }
+    }
+
+    /**
+     * Makes the checked card's translation what the check suggested. A translation that was correct but not
+     * what people say stays as an alternative, with the reason as the card's note; a wrong one is dropped,
+     * so it is no longer accepted as an answer.
+     */
+    fun applyCardCheck() {
+        val check = cardCheck.value ?: return
+        val verdict = check.verdict as? CardVerdict.Better ?: return
+        val card = session.value.allCards.firstOrNull { it.card.cardId == check.cardId }?.card ?: return
+        dismissCardCheck()
+        val previous = if (verdict.currentIsWrong) emptyList() else listOf(card.targetText)
+        val alternatives = (previous + card.alternatives).filterNot { isSameSentence(it, verdict.better) }
+        val note = listOfNotNull(verdict.reason.takeIf { it.isNotBlank() }, card.note).joinToString(" ").ifBlank { null }
+        // observeAllCards re-emits the updated card, which replaces it in the session.
+        viewModelScope.launch {
+            flashcards.editCard(card.cardId, CardEdit(card.nativeText, verdict.better, alternatives, note, card.islandId))
+        }
+    }
+
+    /** Closes the card check, leaving the card as it is. */
+    fun dismissCardCheck() {
+        checkJob?.cancel()
+        cardCheck.value = null
     }
 
     /** Deletes the current card; [onDeleted] receives it so the delete can be undone. */

@@ -109,6 +109,7 @@ private val GUIDE = listOf(
             "Tap the search icon on My Coasts to find a card on any coast by its native text, translation or alternatives.",
             "Tap ⋮ on an island and \"See cards\" to list its cards with when each is due next.",
             "Tap a card there, or \"Edit card\" in the ⋮ menu while studying, to fix its translation and alternatives or move it to another island.",
+            "Not sure a card is right? \"Check translation\" in the ⋮ menu while studying has your AI provider read it as a native speaker would. Nothing changes unless you tap \"Use this\".",
             "Export a coast to Anki or Markdown, or import cards from a CSV file, under \"Your cards\" in Settings."
                 .takeIf { fileTransferAvailable },
             "Changing phones? \"Back up\" under Backup in Settings saves everything, including your progress and streak. \"Restore\" it on the new phone."

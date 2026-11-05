@@ -2,6 +2,7 @@ package com.andreaserick.languagecoast.ui.study
 
 import androidx.lifecycle.SavedStateHandle
 import com.andreaserick.languagecoast.data.CardEdit
+import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.DAILY_REVIEW_CAP
@@ -553,6 +554,88 @@ class StudyViewModelTest {
 
         viewModel.dismissExplanation()
         assertEquals(null, viewModel.state.explanation)
+    }
+
+    @Test
+    fun checkingACardSuggestsWhatPeopleSayAndKeepsTheOldTranslationAsAnAlternative() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        flashcards.coasts.update { all -> all.map { it.copy(region = "Mexico") } }
+        settings.apiKey.value = "key"
+        translator.completionFor = { prompt ->
+            if (prompt.startsWith("Spanish text: t1")) Completion("How are you?")
+            else Completion("VERDICT: CHANGE\nBETTER: ¿Qué onda?\nWHY: In Mexico this is the casual greeting.\nCURRENT: OK")
+        }
+        val viewModel = createViewModel()
+
+        viewModel.checkCard()
+
+        val check = viewModel.state.cardCheck!!
+        assertEquals(CardVerdict.Better("¿Qué onda?", "In Mexico this is the casual greeting.", currentIsWrong = false), check.verdict)
+        assertEquals("How are you?", check.readsAs)
+        // The card is read back first, without what it should mean; the verdict then has that reading in view.
+        val (readingPrompt, checkPrompt) = translator.prompts
+        assertFalse("n1" in readingPrompt)
+        assertTrue("native speaker of Spanish from Mexico" in checkPrompt)
+        assertTrue("the Spanish says: How are you?" in checkPrompt)
+        assertEquals("t1", viewModel.state.currentCard?.targetText)
+
+        viewModel.applyCardCheck()
+
+        val card = viewModel.state.currentCard!!
+        assertEquals("¿Qué onda?", card.targetText)
+        assertEquals(listOf("t1"), card.alternatives)
+        assertEquals("In Mexico this is the casual greeting.", card.note)
+        assertEquals(null, viewModel.state.cardCheck)
+    }
+
+    @Test
+    fun aTranslationTheCheckCallsWrongIsReplacedNotKept() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        flashcards.cards.update { all -> all.map { it.copy(alternatives = listOf("a1"), note = "a1 is informal.") } }
+        settings.apiKey.value = "key"
+        translator.completion = Completion("BETTER: t1 bien\nWHY: The verb was missing.\nCURRENT: WRONG")
+        val viewModel = createViewModel()
+
+        viewModel.checkCard()
+        viewModel.applyCardCheck()
+
+        val card = viewModel.state.currentCard!!
+        assertEquals("t1 bien", card.targetText)
+        assertEquals(listOf("a1"), card.alternatives)
+        assertEquals("The verb was missing. a1 is informal.", card.note)
+    }
+
+    @Test
+    fun aCardTheCheckFindsFineIsLeftAlone() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        translator.completion = Completion("FINE")
+        val viewModel = createViewModel()
+
+        viewModel.checkCard()
+        assertEquals(CardVerdict.Fine, viewModel.state.cardCheck?.verdict)
+
+        viewModel.applyCardCheck()
+        assertEquals("t1", viewModel.state.currentCard?.targetText)
+
+        viewModel.dismissCardCheck()
+        assertEquals(null, viewModel.state.cardCheck)
+    }
+
+    @Test
+    fun aCheckThatCannotBeAnsweredSaysWhy() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        val viewModel = createViewModel()
+
+        // No API key yet.
+        viewModel.checkCard()
+        assertTrue(viewModel.state.cardCheck?.error.orEmpty().contains("API key"))
+
+        settings.apiKey.value = "key"
+        translator.completion = Completion("Let me think about this card.")
+        viewModel.checkCard()
+        assertTrue(viewModel.state.cardCheck?.error.orEmpty().contains("couldn't be read"))
+        assertEquals(null, viewModel.state.cardCheck?.verdict)
     }
 
     @Test

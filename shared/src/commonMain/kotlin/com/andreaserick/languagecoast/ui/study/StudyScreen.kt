@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.BeachAccess
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.Spellcheck
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -150,6 +151,10 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
         )
     }
 
+    uiState.cardCheck?.let { check ->
+        CardCheckSheet(check = check, onApply = viewModel::applyCardCheck, onDismiss = viewModel::dismissCardCheck)
+    }
+
     editingCard?.let { card ->
         EditCardSheet(
             card = card,
@@ -176,6 +181,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                 showCardOptions = currentCard != null,
                 onPrevious = viewModel::previous,
                 onSkip = viewModel::next,
+                onCheck = viewModel::checkCard,
                 onEdit = { editingCard = currentCard },
                 onDelete = {
                     viewModel.deleteCurrentCard { deleted ->
@@ -306,6 +312,7 @@ private fun SessionTopBar(
     showCardOptions: Boolean,
     onPrevious: () -> Unit,
     onSkip: () -> Unit,
+    onCheck: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -373,6 +380,14 @@ private fun SessionTopBar(
                         }
                     )
                 }
+                DropdownMenuItem(
+                    text = { Text("Check translation") },
+                    leadingIcon = { Icon(Icons.Default.Spellcheck, contentDescription = null) },
+                    onClick = {
+                        dismiss()
+                        onCheck()
+                    }
+                )
             }
         )
     }

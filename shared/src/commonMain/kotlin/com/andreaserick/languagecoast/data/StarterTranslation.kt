@@ -228,5 +228,6 @@ fun parseStarterTranslations(text: String, count: Int, bothSides: Boolean): Map<
     return result
 }
 
-private fun unbracketed(value: String): String =
+/** [value] without the square brackets a model copied from the prompt's format. */
+internal fun unbracketed(value: String): String =
     if (value.length >= 2 && value.startsWith("[") && value.endsWith("]")) value.substring(1, value.length - 1).trim() else value
