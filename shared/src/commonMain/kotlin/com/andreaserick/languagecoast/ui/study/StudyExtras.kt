@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,32 +22,39 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.andreaserick.languagecoast.data.AlternativeVerdict
 import com.andreaserick.languagecoast.data.AnswerMatch
 import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.Cloze
@@ -55,6 +63,7 @@ import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.data.checkAnswer
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
+import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.FeedbackKind
@@ -65,6 +74,7 @@ import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
@@ -340,16 +350,25 @@ internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onD
 
 /**
  * A bottom sheet with the AI provider's check of a card: what the translation says word for word, and that
- * it is fine, or what it should say and why, with a button to make that the card's translation. Nothing
- * changes unless the button is tapped, as the provider can be wrong too.
+ * it is fine, or what it should say and why, with a button to make that the card's translation. Under it
+ * the user can ask about a translation of their own ("is this correct as well?") and keep it as an
+ * alternative. Nothing changes unless a button is tapped, as the provider can be wrong too.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CardCheckSheet(check: CardCheck, onApply: () -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+internal fun CardCheckSheet(
+    check: CardCheck,
+    onApply: () -> Unit,
+    onAskAlternative: (String) -> Unit,
+    onSaveAlternative: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    // Opens in full: it ends in a text field, which a half-open sheet would hide behind the keyboard.
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
@@ -416,7 +435,155 @@ internal fun CardCheckSheet(check: CardCheck, onApply: () -> Unit, onDismiss: ()
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
+            // Once the check is through, so the two answers don't arrive on top of each other.
+            if (check.canAskAlternative && !check.isLoading) {
+                AlternativeQuestion(
+                    check = check,
+                    // One accent per sheet: "Use this" has it when the check suggests a change.
+                    accentSave = check.verdict !is CardVerdict.Better,
+                    onAsk = onAskAlternative,
+                    onSave = onSaveAlternative
+                )
+            }
         }
+    }
+}
+
+/**
+ * The end of [CardCheckSheet]: a field for the user's own way of saying what the card says, a button that
+ * asks the AI provider whether it is correct as well, and the answer with a button to keep the sentence as
+ * an alternative on the card.
+ */
+@Composable
+private fun AlternativeQuestion(check: CardCheck, accentSave: Boolean, onAsk: (String) -> Unit, onSave: () -> Unit) {
+    var text by rememberSaveable(check.cardId) { mutableStateOf("") }
+    val asked = check.alternative
+    val focusManager = LocalFocusManager.current
+    val answer = remember { BringIntoViewRequester() }
+    // The answer appears under the field, which the keyboard may be covering.
+    LaunchedEffect(asked?.isLoading, asked?.saved) {
+        if (asked != null) answer.bringIntoView()
+    }
+
+    fun ask() {
+        if (text.isBlank() || asked?.isLoading == true) return
+        // The keyboard has done its part; the answer needs the room.
+        focusManager.clearFocus()
+        onAsk(text)
+    }
+
+    HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(top = 20.dp, bottom = 16.dp))
+    Text("Correct as well?", style = MaterialTheme.typography.titleMedium)
+    Text(
+        text = "Type another way to say it in ${check.targetLanguage}, and ${check.providerLabel} says whether it works too.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = TextSecondary,
+        modifier = Modifier.padding(top = 2.dp)
+    )
+    CoastTextField(
+        value = text,
+        // A sentence, not a paragraph: Enter asks.
+        onValueChange = { text = it.replace("\n", " ") },
+        label = { Text("Your ${check.targetLanguage}") },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { ask() }),
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+    )
+    CoastSecondaryButton(
+        onClick = ::ask,
+        enabled = text.isNotBlank() && asked?.isLoading != true,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = ButtonHeight)
+    ) {
+        Text("Ask ${check.providerLabel}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+
+    if (asked == null) return
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp).bringIntoViewRequester(answer)) {
+        val verdict = asked.verdict
+        when {
+            asked.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Text("Asking ${check.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            }
+            verdict == null -> Text(asked.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+            verdict == AlternativeVerdict.OnTheCard -> Text("The card has that one already.", style = MaterialTheme.typography.bodyLarge)
+            verdict is AlternativeVerdict.Correct -> {
+                AlternativeHeadline(correct = true, providerLabel = check.providerLabel, asked = asked.text)
+                verdict.note?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
+                }
+                SaveAlternative(label = "Save as an alternative", saved = asked.saved != null, accent = accentSave, onSave = onSave)
+            }
+            verdict is AlternativeVerdict.Incorrect -> {
+                AlternativeHeadline(correct = false, providerLabel = check.providerLabel, asked = asked.text)
+                if (verdict.reason.isNotBlank()) {
+                    Text(verdict.reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
+                }
+                verdict.corrected?.let { corrected ->
+                    Text("It would be right as", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 14.dp))
+                    Text(corrected, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 2.dp))
+                    SaveAlternative(label = "Save the corrected one", saved = asked.saved != null, accent = accentSave, onSave = onSave)
+                }
+            }
+        }
+        if (verdict is AlternativeVerdict.Correct || verdict is AlternativeVerdict.Incorrect) {
+            Text(
+                text = "From ${check.providerLabel} · can make mistakes",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+        }
+    }
+}
+
+/**
+ * What the provider made of the sentence, over the sentence that was asked about (the field may say something
+ * else by now). Worded as the provider's finding, not as a fact: a small model agrees with almost anything.
+ */
+@Composable
+private fun AlternativeHeadline(correct: Boolean, providerLabel: String, asked: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            if (correct) Icons.Default.CheckCircle else Icons.Default.Cancel,
+            contentDescription = null,
+            tint = if (correct) Seafoam else CoralText
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = if (correct) "$providerLabel finds it correct" else "$providerLabel finds it wrong",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.weight(1f)
+        )
+    }
+    Text(asked, style = MaterialTheme.typography.titleMedium, color = TextSecondary, modifier = Modifier.padding(top = 6.dp))
+}
+
+/**
+ * The button that keeps a sentence as an alternative on the card, and in its place, once tapped, the line
+ * that says it was kept. Both are as high as a button, so the sheet doesn't jump.
+ */
+@Composable
+private fun SaveAlternative(label: String, saved: Boolean, accent: Boolean, onSave: () -> Unit) {
+    val modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = ButtonHeight)
+    when {
+        saved -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = modifier) {
+            Icon(Icons.Default.Check, contentDescription = null, tint = Seafoam, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Saved as an alternative on this card", style = MaterialTheme.typography.labelMedium)
+        }
+        accent -> CoastButton(onClick = onSave, modifier = modifier) { Text(label) }
+        else -> CoastSecondaryButton(onClick = onSave, modifier = modifier) { Text(label) }
+    }
+    if (!saved) {
+        Text(
+            text = "It then counts as correct when you type it, and shows on the back of the card.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        )
     }
 }
 
