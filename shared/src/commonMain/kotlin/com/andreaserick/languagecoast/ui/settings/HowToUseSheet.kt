@@ -40,10 +40,13 @@ private val GUIDE = listOf(
     ),
     GuideSection(
         "Coasts and islands",
-        listOf(
+        listOfNotNull(
             "Each language you learn gets its own coast. Start one from My Coasts with \"New Coast\".",
             "On a coast, \"Starter topics\" adds a whole topic (Greetings, Numbers, Phone Settings, ...) as an island in one tap, translated for you in the background. With an AI provider, a native-speaker check then rewrites anything people wouldn't really say; the first version stays as an alternative and the note says why. Blanks like your name, city or job are filled in from Settings › About you (or asked for if you left them empty); sentences with other blanks stay in the Starter sentences list on Today. \"Add all\" adds every remaining topic, but a few topics at a time is the better pace.",
             "On a coast, your cards are grouped into islands by topic, like Travel or Restaurant.",
+            ("The PDF icon at the top of a coast makes a practice sheet: your AI provider writes new sentences to translate, using only the words on that coast's cards. " +
+                "Pick the direction, the difficulty and how many sentences; the answers come on a page of their own. Download the PDF to print it or fill it in.")
+                .takeIf { fileTransferAvailable },
             "Set your native language here in Settings, so translations go the right way."
         )
     ),
@@ -110,7 +113,9 @@ private val GUIDE = listOf(
             "Tap ⋮ on an island and \"See cards\" to list its cards with when each is due next.",
             "Tap a card there, or \"Edit card\" in the ⋮ menu while studying, to fix its translation and alternatives or move it to another island.",
             "Not sure a card is right? \"Check translation\" in the ⋮ menu while studying has your AI provider read it as a native speaker would. Nothing changes unless you tap \"Use this\".",
-            "Export a coast to Anki or Markdown, or import cards from a CSV file, under \"Your cards\" in Settings."
+            "Would you say it differently? In the same sheet, type your own translation under \"Correct as well?\". If your AI provider agrees, save it as an alternative: it then counts as correct when you type it.",
+            "Export a coast to Anki, to a CSV file for a spreadsheet or to Markdown, or import cards from an Anki deck (.apkg) or a CSV file, under \"Your cards\" in Settings. " +
+                "An Anki deck's notes become cards on islands named after its decks; if it has the foreign language on the front, turn on \"Swap sides\" in the preview."
                 .takeIf { fileTransferAvailable },
             "Changing phones? \"Back up\" under Backup in Settings saves everything, including your progress and streak. \"Restore\" it on the new phone."
                 .takeIf { fileTransferAvailable },

@@ -49,7 +49,7 @@ Texts, images and form answers for Google Play and the App Store, ready to paste
 On Android, add these lines under STAY ON TRACK:
 
 > • Home-screen widget with your streak and the cards due today.
-> • Back up everything to a file, export to Anki or Markdown, import from CSV.
+> • Back up everything to a file, export to Anki, CSV or Markdown, import Anki decks (.apkg) and CSV files.
 
 And this line under PRIVATE BY DESIGN:
 
