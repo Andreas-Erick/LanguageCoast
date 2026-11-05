@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SwapVert
@@ -508,12 +509,7 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
         }
         TranslationProvider.Gemini -> {
             Spacer(modifier = Modifier.height(8.dp))
-            FieldLabel("Gemini model")
-            SelectionDropdown(
-                options = SettingsDefaults.GEMINI_MODELS,
-                selected = uiState.geminiModel,
-                onSelected = viewModel::setGeminiModel
-            )
+            ModelPicker("Gemini model", TranslationProvider.Gemini, uiState.geminiModel, viewModel::setGeminiModel, uiState, viewModel::checkForNewModels)
             Hint(
                 "gemini-3.5-flash-lite answers in under a second and is plenty for translations, island sorting and alternatives. " +
                     "The other models think before they answer, so they take a few seconds longer."
@@ -531,12 +527,7 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
         }
         TranslationProvider.OpenAI -> {
             Spacer(modifier = Modifier.height(8.dp))
-            FieldLabel("OpenAI model")
-            SelectionDropdown(
-                options = SettingsDefaults.OPENAI_MODELS,
-                selected = uiState.openAiModel,
-                onSelected = viewModel::setOpenAiModel
-            )
+            ModelPicker("OpenAI model", TranslationProvider.OpenAI, uiState.openAiModel, viewModel::setOpenAiModel, uiState, viewModel::checkForNewModels)
             Spacer(modifier = Modifier.height(16.dp))
             ApiKeySection(
                 title = "OpenAI API key",
@@ -550,12 +541,7 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
         }
         TranslationProvider.Claude -> {
             Spacer(modifier = Modifier.height(8.dp))
-            FieldLabel("Claude model")
-            SelectionDropdown(
-                options = SettingsDefaults.CLAUDE_MODELS,
-                selected = uiState.claudeModel,
-                onSelected = viewModel::setClaudeModel
-            )
+            ModelPicker("Claude model", TranslationProvider.Claude, uiState.claudeModel, viewModel::setClaudeModel, uiState, viewModel::checkForNewModels)
             Spacer(modifier = Modifier.height(16.dp))
             ApiKeySection(
                 title = "Anthropic Claude API key",
@@ -569,12 +555,7 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
         }
         TranslationProvider.Groq -> {
             Spacer(modifier = Modifier.height(8.dp))
-            FieldLabel("Groq model")
-            SelectionDropdown(
-                options = SettingsDefaults.GROQ_MODELS,
-                selected = uiState.groqModel,
-                onSelected = viewModel::setGroqModel
-            )
+            ModelPicker("Groq model", TranslationProvider.Groq, uiState.groqModel, viewModel::setGroqModel, uiState, viewModel::checkForNewModels)
             Hint("Ultra-fast LPU inference with Llama 3.3 and Qwen.")
             Spacer(modifier = Modifier.height(16.dp))
             ApiKeySection(
@@ -589,12 +570,7 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
         }
         TranslationProvider.DeepSeek -> {
             Spacer(modifier = Modifier.height(8.dp))
-            FieldLabel("DeepSeek model")
-            SelectionDropdown(
-                options = SettingsDefaults.DEEPSEEK_MODELS,
-                selected = uiState.deepSeekModel,
-                onSelected = viewModel::setDeepSeekModel
-            )
+            ModelPicker("DeepSeek model", TranslationProvider.DeepSeek, uiState.deepSeekModel, viewModel::setDeepSeekModel, uiState, viewModel::checkForNewModels)
             Spacer(modifier = Modifier.height(16.dp))
             ApiKeySection(
                 title = "DeepSeek API key",
@@ -632,6 +608,55 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
                 onEdited = viewModel::onOpenRouterKeyEdited
             )
         }
+    }
+}
+
+/**
+ * The model of a cloud provider: the list to pick from, and "Check for new models", which asks the provider
+ * what it offers now, adds the new models to the list and removes the ones that are gone.
+ *
+ * @param selected The model in use; shown even if a list from an earlier version doesn't have it.
+ */
+@Composable
+private fun ModelPicker(
+    label: String,
+    provider: TranslationProvider,
+    selected: String,
+    onSelected: (String) -> Unit,
+    uiState: SettingsUiState,
+    onCheck: () -> Unit
+) {
+    val options = uiState.modelOptions[provider] ?: SettingsDefaults.models(provider)
+    FieldLabel(label)
+    SelectionDropdown(
+        options = if (selected in options) options else listOf(selected) + options,
+        selected = selected,
+        onSelected = onSelected
+    )
+    val check = uiState.modelCheck
+    val checking = check.checking == provider
+    // Less padding at the start than a text button has, so the icon lines up with the field above it.
+    TextButton(
+        onClick = onCheck,
+        enabled = check.checking == null,
+        contentPadding = PaddingValues(start = 4.dp, end = 12.dp),
+        modifier = Modifier.padding(top = 2.dp)
+    ) {
+        if (checking) {
+            CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+        } else {
+            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(if (checking) "Asking ${provider.label}…" else "Check for new models")
+    }
+    val message = check.message?.takeIf { check.provider == provider && !checking }
+    if (message != null) {
+        Text(
+            message,
+            color = if (check.failed) MaterialTheme.colorScheme.error else TextSecondary,
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }
 

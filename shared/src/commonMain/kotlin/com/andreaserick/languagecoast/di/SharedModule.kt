@@ -6,7 +6,9 @@ import com.andreaserick.languagecoast.data.DataStoreSettingsRepository
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.GeminiTranslator
 import com.andreaserick.languagecoast.data.LocalAiTranslator
+import com.andreaserick.languagecoast.data.ModelLister
 import com.andreaserick.languagecoast.data.MultiCloudTranslator
+import com.andreaserick.languagecoast.data.ProviderModelLister
 import com.andreaserick.languagecoast.data.OfflineFlashcardRepository
 import com.andreaserick.languagecoast.data.OnDeviceTranslator
 import com.andreaserick.languagecoast.data.OpenRouterTranslator
@@ -62,6 +64,9 @@ val sharedModule = module {
     singleOf(::GeminiTranslator)
     singleOf(::OpenRouterTranslator)
     singleOf(::MultiCloudTranslator)
+
+    /** Asks a cloud provider which models it offers, for "Check for new models" in Settings. */
+    single<ModelLister> { ProviderModelLister(get()) }
 
     /** For the cloud AI APIs and local model downloads; Ktor picks each platform's own networking. */
     single {

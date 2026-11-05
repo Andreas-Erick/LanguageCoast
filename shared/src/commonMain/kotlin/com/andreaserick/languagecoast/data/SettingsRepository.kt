@@ -81,6 +81,11 @@ interface SettingsRepository {
     val deepSeekKey: Flow<String> get() = flowOf("")
     /** The DeepSeek model used for translations. */
     val deepSeekModel: Flow<String> get() = flowOf(SettingsDefaults.DEEPSEEK_MODEL)
+    /**
+     * The models offered for [provider] in Settings: what the last "Check for new models" found the provider
+     * to offer, or the app's own list ([SettingsDefaults.models]) if it was never checked.
+     */
+    fun modelOptions(provider: TranslationProvider): Flow<List<String>> = flowOf(SettingsDefaults.models(provider))
     /** Consecutive days with a completed study session; [refreshStreak] resets it once a day is missed. */
     val streakCount: Flow<Int>
     /** Days with a completed study session; at least the current streak's days, plus recent days recorded since. */
@@ -138,6 +143,8 @@ interface SettingsRepository {
     suspend fun setDeepSeekKey(key: String) = Unit
     /** Stores the DeepSeek model used for translations. */
     suspend fun setDeepSeekModel(model: String) = Unit
+    /** Stores the models offered for [provider], as a check for new models found them. */
+    suspend fun setModelOptions(provider: TranslationProvider, models: List<String>) = Unit
     /** Stores whether and when the daily study reminder is shown. */
     suspend fun setReminderSettings(reminder: ReminderSettings)
     /** Stores whether cards are studied the other way round. */
@@ -314,6 +321,18 @@ class DataStoreSettingsRepository(
     override suspend fun setGroqModel(model: String) = set(GROQ_MODEL, model)
     override suspend fun setDeepSeekKey(key: String) = set(DEEPSEEK_KEY, key)
     override suspend fun setDeepSeekModel(model: String) = set(DEEPSEEK_MODEL, model)
+
+    override fun modelOptions(provider: TranslationProvider): Flow<List<String>> =
+        dataStore.data.map { preferences ->
+            preferences[modelOptionsKey(provider)]?.lines()?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
+                ?: SettingsDefaults.models(provider)
+        }
+
+    override suspend fun setModelOptions(provider: TranslationProvider, models: List<String>) =
+        set(modelOptionsKey(provider), models.joinToString("\n"))
+
+    /** One model id per line. Not part of a backup: a check for new models brings the list back. */
+    private fun modelOptionsKey(provider: TranslationProvider) = stringPreferencesKey("model_options_${provider.name.lowercase()}")
 
     override suspend fun setReminderSettings(reminder: ReminderSettings) {
         dataStore.edit { preferences ->

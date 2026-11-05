@@ -71,6 +71,7 @@ private val GUIDE = listOf(
             "Local AI scans your phone's RAM, storage, CPU and GPU, recommends models that fit (such as Qwen 3, LFM2.5 and Gemma 4), and downloads the one you pick to run 100% offline with automatic island categorization. Gemma 3 is gated on Hugging Face and needs a token from there."
                 .takeIf { localAiAvailable },
             "Cloud AI providers (Google Gemini, OpenAI, Anthropic Claude, Groq, DeepSeek and OpenRouter) give rich translations, sort cards into islands and suggest natural alternatives.",
+            "Providers bring out new models and retire old ones. \"Check for new models\" under a provider's model list in Settings asks the provider what it offers now, adds the new models and removes the ones that are gone.",
             "For longer sentences, AI models also suggest other ways to say it and explain nuances."
         )
     ),

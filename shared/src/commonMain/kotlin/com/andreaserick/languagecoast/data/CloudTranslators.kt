@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.data
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -89,6 +90,7 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
             val response = client.post(CLAUDE_ENDPOINT) {
                 header("x-api-key", apiKey)
                 header("anthropic-version", "2023-06-01")
+                timeout { requestTimeoutMillis = CLAUDE_TIMEOUT_MILLIS }
                 contentType(ContentType.Application.Json)
                 setBody(claudeRequestBody(model, prompt))
             }
@@ -179,8 +181,16 @@ private data class ClaudeRequest(
     val messages: List<ClaudeMessage>
 )
 
-/** A ceiling, not a cost: a batch of fifteen translations or a native-speaker check in a language that tokenizes badly (Japanese, Russian) needs up to about 1500; 4096 leaves room for a chatty model. */
-internal const val CLAUDE_MAX_TOKENS = 4096
+/**
+ * A ceiling, not a cost: a batch of fifteen translations or a native-speaker check in a language that
+ * tokenizes badly (Japanese, Russian) needs up to about 1500. The Claude 5 models think before they answer
+ * unless told otherwise, and their thinking counts against this ceiling too, so it must leave
+ * room for both: at 4096 a practice sheet's batch could come back cut off or empty.
+ */
+internal const val CLAUDE_MAX_TOKENS = 16_000
+
+/** A model that thinks first can take longer over a batch of sentences than the client's usual minute. */
+internal const val CLAUDE_TIMEOUT_MILLIS = 120_000L
 
 @Serializable
 private data class ClaudeMessage(val role: String, val content: String)
