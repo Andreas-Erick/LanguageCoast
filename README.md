@@ -91,6 +91,7 @@ Language Coast is a flashcard app that changes how you build vocabulary. It comb
 - **Read aloud**: a speaker button reads the translation in the coast's language, using the voices installed on your phone (free and offline). It only appears when the phone has a voice for that language.
 - **Study the other way round**: swap the direction under the mode switch to see the translation first and answer in your native language, training recognition instead of recall. Works with Flip Cards and Active Type, and is remembered for later sessions.
 - **Session summary**: finishing an island shows a short celebration with your stats and streak.
+- **Check translation**: not sure a card is right? *Check translation* in the ⋮ menu while studying has your AI provider read the translation back word for word, without being told what the card should say, so you can compare it yourself. It then says whether a native speaker would put it that way. A suggestion is only applied when you tap *Use this*: a translation that was correct but stiff stays as an alternative, a wrong one is replaced.
 - **Explain this word**: tap any word on the back of a card and your AI provider explains it as used in that sentence (meaning, form, one more example), with a **dict.cc** link alongside. dict.cc uses your language pair when it has it (it pairs every language with English or German) and falls back to the English dictionary otherwise.
 - **Feedback you can switch off**: a short buzz and a soft tone for flips and grades, each with its own switch in Settings.
 

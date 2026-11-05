@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.AnswerMatch
+import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.Cloze
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Grade
@@ -332,6 +333,88 @@ internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onD
                     Text("Look up on dict.cc", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
                     Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(16.dp))
                 }
+            }
+        }
+    }
+}
+
+/**
+ * A bottom sheet with the AI provider's check of a card: what the translation says word for word, and that
+ * it is fine, or what it should say and why, with a button to make that the card's translation. Nothing
+ * changes unless the button is tapped, as the provider can be wrong too.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CardCheckSheet(check: CardCheck, onApply: () -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
+        ) {
+            Text(check.targetText, style = MaterialTheme.typography.headlineMedium)
+            Text(check.nativeText, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            // What the translation says, for the user to hold against what the card is meant to say.
+            check.readsAs?.let { reading ->
+                Text("Word for word, it says", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                Text(reading, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 2.dp, bottom = 16.dp))
+            }
+            when (val verdict = check.verdict) {
+                null -> if (check.isLoading) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Asking ${check.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    }
+                } else {
+                    Text(check.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                }
+                CardVerdict.Fine -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Seafoam)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Nothing found", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Text(
+                        // The reading is the user's own check on the verdict, which a small model gets wrong.
+                        text = if (check.readsAs == null) "${check.providerLabel} found nothing wrong with it."
+                        else "${check.providerLabel} found nothing wrong with it. If the reading above isn't what you meant, edit the card.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                is CardVerdict.Better -> {
+                    Text(
+                        text = if (verdict.currentIsWrong) "It should be" else "People would rather say",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary
+                    )
+                    Text(verdict.better, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 2.dp))
+                    if (verdict.reason.isNotBlank()) {
+                        Text(verdict.reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 10.dp))
+                    }
+                    Spacer(modifier = Modifier.height(18.dp))
+                    CoastButton(onClick = onApply, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                        Text("Use this")
+                    }
+                    Text(
+                        text = if (verdict.currentIsWrong) "It replaces the card's translation." else "The card's translation stays as an alternative.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    )
+                }
+            }
+            if (check.verdict != null) {
+                Text(
+                    text = "From ${check.providerLabel} · can make mistakes",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
             }
         }
     }
