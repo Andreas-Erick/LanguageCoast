@@ -18,9 +18,11 @@ class ClaudeRequestTest {
     }
 
     @Test
-    fun maxTokensHasRoomForABatchOfTranslations() {
-        assertTrue(CLAUDE_MAX_TOKENS >= 1500)
-        assertEquals(4096, CLAUDE_MAX_TOKENS)
+    fun maxTokensHasRoomForABatchOfTranslationsAndForThinkingFirst() {
+        // Newer Claude models think before they answer, and that counts against max_tokens.
+        assertEquals(16_000, CLAUDE_MAX_TOKENS)
+        // Every Claude model on offer can write at least this much; a larger number would be refused.
+        assertTrue(CLAUDE_MAX_TOKENS <= 32_000)
     }
 
     @Test

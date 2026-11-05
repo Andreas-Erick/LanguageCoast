@@ -337,6 +337,14 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setGroqModel(model: String) { groqModel.value = model }
     override suspend fun setDeepSeekKey(key: String) { deepSeekKey.value = key }
     override suspend fun setDeepSeekModel(model: String) { deepSeekModel.value = model }
+
+    /** The model lists a check for new models stored; a provider without one has the app's own list. */
+    val storedModelOptions = MutableStateFlow<Map<TranslationProvider, List<String>>>(emptyMap())
+    override fun modelOptions(provider: TranslationProvider): Flow<List<String>> =
+        storedModelOptions.map { it[provider] ?: SettingsDefaults.models(provider) }
+    override suspend fun setModelOptions(provider: TranslationProvider, models: List<String>) {
+        storedModelOptions.update { it + (provider to models) }
+    }
     override suspend fun setReminderSettings(reminder: ReminderSettings) { reminderSettings.value = reminder }
     override suspend fun setStudyReversed(reversed: Boolean) { studyReversed.value = reversed }
     override suspend fun setWeeklyGoal(islands: Int) { weeklyGoal.value = islands }

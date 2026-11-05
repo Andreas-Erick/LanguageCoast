@@ -8,8 +8,11 @@ import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.LocalAiCatalog
 import com.andreaserick.languagecoast.data.LocalModelController
+import com.andreaserick.languagecoast.data.MODEL_LIST_PROVIDERS
 import com.andreaserick.languagecoast.data.ModelFitLevel
 import com.andreaserick.languagecoast.data.ModelInstallStatus
+import com.andreaserick.languagecoast.data.ModelLister
+import com.andreaserick.languagecoast.data.ModelListing
 import com.andreaserick.languagecoast.data.ModelRecommendation
 import com.andreaserick.languagecoast.data.NoOpLocalModelController
 import com.andreaserick.languagecoast.data.ReminderSettings
@@ -17,6 +20,7 @@ import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Profile
+import com.andreaserick.languagecoast.data.checkForNewModels
 import com.andreaserick.languagecoast.data.nativeLanguageOptions
 import com.andreaserick.languagecoast.data.recommendModelsForHardware
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
@@ -28,6 +32,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
@@ -75,7 +80,24 @@ data class SettingsUiState(
     /** The user's name, city and so on, for the blanks in starter sentences. */
     val profile: Profile = Profile(),
     /** A model whose download is waiting for the user to accept that it goes over mobile data. */
-    val meteredWarningModelId: String? = null
+    val meteredWarningModelId: String? = null,
+    /** The models offered for each cloud provider that has a list of them. */
+    val modelOptions: Map<TranslationProvider, List<String>> = MODEL_LIST_PROVIDERS.associateWith(SettingsDefaults::models),
+    val modelCheck: ModelCheckState = ModelCheckState()
+)
+
+/**
+ * "Check for new models" in Settings.
+ *
+ * @property checking The provider being asked for its models right now, or null.
+ * @property provider The provider the last check was for, whose model picker shows [message].
+ * @property message What the last check found, or why it couldn't.
+ */
+data class ModelCheckState(
+    val checking: TranslationProvider? = null,
+    val provider: TranslationProvider? = null,
+    val message: String? = null,
+    val failed: Boolean = false
 )
 
 private fun defaultRecommendations(): List<ModelRecommendation> =
@@ -103,7 +125,8 @@ class SettingsViewModel(
     private val settings: SettingsRepository,
     private val flashcards: FlashcardRepository,
     private val reminderScheduler: ReminderScheduler,
-    private val localModels: LocalModelController = NoOpLocalModelController()
+    private val localModels: LocalModelController = NoOpLocalModelController(),
+    private val modelLister: ModelLister = ModelLister { _, _ -> ModelListing.Failed("Checking for new models isn't available here.") }
 ) : ViewModel() {
 
     private val apiKeySaved = MutableStateFlow(false)
@@ -114,6 +137,19 @@ class SettingsViewModel(
     private val deepSeekSaved = MutableStateFlow(false)
     private val huggingFaceTokenSaved = MutableStateFlow(false)
     private val meteredWarning = MutableStateFlow<String?>(null)
+    private val modelCheck = MutableStateFlow(ModelCheckState())
+
+    /** The model lists of the cloud providers, and how checking them for new models is going. */
+    private data class ModelLists(val options: Map<TranslationProvider, List<String>>, val check: ModelCheckState)
+
+    private val modelLists = combine(
+        combine(MODEL_LIST_PROVIDERS.map { provider -> settings.modelOptions(provider).map { provider to it } }) { it.toMap() },
+        modelCheck,
+        ::ModelLists
+    )
+
+    /** The provider, the reminder, the profile and the model lists: what doesn't belong to one provider. */
+    private data class General(val provider: TranslationProvider, val reminder: ReminderSettings, val profile: Profile, val models: ModelLists)
 
     /** The look-and-feel and goal preferences. */
     private data class Preferences(
@@ -210,9 +246,9 @@ class SettingsViewModel(
         combine(settings.nativeLanguage, flashcards.observeCoasts(), ::Pair),
         cloudState,
         localAiState,
-        combine(settings.translationProvider, settings.reminderSettings, settings.profile, ::Triple),
+        combine(settings.translationProvider, settings.reminderSettings, settings.profile, modelLists, ::General),
         preferences
-    ) { (native, coasts), cloud, local, (provider, reminder, profile), prefs ->
+    ) { (native, coasts), cloud, local, (provider, reminder, profile, models), prefs ->
         val recommendations = local.hardwareProfile?.let(::recommendModelsForHardware) ?: defaultRecommendations()
         SettingsUiState(
             nativeLanguage = native,
@@ -249,7 +285,9 @@ class SettingsViewModel(
             soundsEnabled = prefs.soundsEnabled,
             weeklyGoal = prefs.weeklyGoal,
             meteredWarningModelId = prefs.meteredWarningModelId,
-            profile = profile
+            profile = profile,
+            modelOptions = models.options,
+            modelCheck = models.check
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -258,6 +296,21 @@ class SettingsViewModel(
         viewModelScope.launch {
             if (nativeLanguageOptions(flashcards.observeCoasts().first()).none { it.name == language }) return@launch
             settings.setNativeLanguage(language)
+        }
+    }
+
+    /**
+     * Asks the provider picked for translations which models it offers now, adds the new ones to its list and
+     * removes the ones it no longer has. Does nothing while a check is running. What came of it arrives in
+     * [SettingsUiState.modelCheck].
+     */
+    fun checkForNewModels() {
+        if (modelCheck.value.checking != null) return
+        viewModelScope.launch {
+            val provider = settings.translationProvider.first()
+            modelCheck.value = ModelCheckState(checking = provider)
+            val outcome = checkForNewModels(provider, settings, modelLister)
+            modelCheck.value = ModelCheckState(provider = provider, message = outcome.message, failed = outcome.failed)
         }
     }
 
