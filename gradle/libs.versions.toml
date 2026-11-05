@@ -31,10 +31,12 @@ splashscreen = "1.0.1"
 mlkitTranslate = "17.0.3"
 mlkitTextRecognition = "16.0.1"
 litertlm = "0.18.0"
+zstdJni = "1.5.7-25"
 kotlinxDatetime = "0.7.1"
 
 [libraries]
 litertlm-android = { group = "com.google.ai.edge.litertlm", name = "litertlm-android", version.ref = "litertlm" }
+zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJni" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

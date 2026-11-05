@@ -3,12 +3,16 @@ package com.andreaserick.languagecoast.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.AddedCard
+import com.andreaserick.languagecoast.data.AnkiNote
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.ExportFormat
 import com.andreaserick.languagecoast.data.FlashcardRepository
+import com.andreaserick.languagecoast.data.ImportFileKind
 import com.andreaserick.languagecoast.data.ImportedCard
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.ankiNoteCards
 import com.andreaserick.languagecoast.data.exportCards
+import com.andreaserick.languagecoast.data.importFileKind
 import com.andreaserick.languagecoast.data.parseCardFile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,12 +30,15 @@ import kotlinx.coroutines.launch
  * @property coastId The coast the cards will be added to.
  * @property swapColumns Whether the file has the translation first, so the columns must be swapped.
  * @property skipFirstRow Whether the first row is a header rather than a card.
+ * @property mayHaveHeader Whether the file is one that can start with a header row: a table of text can, an
+ *     Anki package can't, so the option isn't offered for it.
  */
 data class ImportPreview(
     val cards: List<ImportedCard>,
     val coastId: Int,
     val swapColumns: Boolean = false,
-    val skipFirstRow: Boolean = false
+    val skipFirstRow: Boolean = false,
+    val mayHaveHeader: Boolean = true
 ) {
     /** The cards that will be imported, with the options applied. */
     val cardsToImport: List<ImportedCard>
@@ -58,7 +65,7 @@ data class ImportResult(val added: List<AddedCard>, val duplicates: Int)
 /** Island for imported cards whose file doesn't name one. */
 const val DEFAULT_IMPORT_ISLAND = "Imported"
 
-/** Exports cards to Anki or Markdown files, and imports cards from CSV / tab-separated files. */
+/** Exports cards to Anki, CSV or Markdown files, and imports cards from Anki packages and CSV / tab-separated files. */
 class CardTransferViewModel(
     private val flashcards: FlashcardRepository,
     private val settings: SettingsRepository
@@ -76,33 +83,54 @@ class CardTransferViewModel(
         return ExportFile(exportCards(contents, format, settings.nativeLanguage.first()), contents.sumOf { it.cards.size })
     }
 
-    /** A file name like "language-coast-german.txt", or "language-coast.md" for all coasts. */
+    /** A file name like "language-coast-german.csv", or "language-coast.md" for all coasts. */
     fun exportFileName(coastId: Int?, format: ExportFormat): String {
         val language = uiState.value.coasts.firstOrNull { it.coastId == coastId }?.language
         val suffix = language?.let { "-" + it.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') }.orEmpty()
         return "language-coast$suffix.${format.extension}"
     }
 
-    /** Reads the cards in [text] and opens the import preview, or explains why there is nothing to import. */
+    /**
+     * Reads the cards in [text], a CSV or tab-separated file, and opens the import preview, or explains why
+     * there is nothing to import. A file that isn't text is turned away: an Anki package has to come through
+     * [onAnkiPackageRead], and a spreadsheet's own format can't be read at all.
+     */
     fun onImportFileRead(text: String) {
+        when (importFileKind(text)) {
+            ImportFileKind.Archive -> return showMessage("That file is packed, not text. Pick a CSV or tab-separated file, or an Anki package (.apkg).")
+            ImportFileKind.Binary -> return showMessage("That file isn't plain text. Pick a CSV or tab-separated file saved as UTF-8.")
+            ImportFileKind.Text -> Unit
+        }
+        preview(parseCardFile(text), mayHaveHeader = true, noCards = "No cards found. The file needs a column for each side of the card.")
+    }
+
+    /**
+     * Opens the import preview for [notes], read from an Anki package (.apkg): each note's first two fields
+     * with text become a card, and its deck names the island.
+     */
+    fun onAnkiPackageRead(notes: List<AnkiNote>) {
+        preview(ankiNoteCards(notes), mayHaveHeader = false, noCards = "No cards found in that package. Its notes need two fields with text.")
+    }
+
+    /** Opens the import preview for [cards] into the active coast, or says why not: [noCards] when there are none. */
+    private fun preview(cards: List<ImportedCard>, mayHaveHeader: Boolean, noCards: String) {
         viewModelScope.launch {
             val coasts = flashcards.observeCoasts().first()
-            val cards = parseCardFile(text)
             when {
                 coasts.isEmpty() -> showMessage("Start a coast first, then import cards into it.")
-                cards.isEmpty() -> showMessage("No cards found. The file needs a column for each side of the card.")
+                cards.isEmpty() -> showMessage(noCards)
                 else -> {
                     val coastId = settings.activeCoastId.first()?.takeIf { id -> coasts.any { it.coastId == id } }
                         ?: coasts.first().coastId
-                    val header = looksLikeHeader(cards.first(), settings.nativeLanguage.first(), coasts)
-                    state.update { it.copy(importPreview = ImportPreview(cards, coastId, skipFirstRow = header)) }
+                    val header = mayHaveHeader && looksLikeHeader(cards.first(), settings.nativeLanguage.first(), coasts)
+                    state.update { it.copy(importPreview = ImportPreview(cards, coastId, skipFirstRow = header, mayHaveHeader = mayHaveHeader)) }
                 }
             }
         }
     }
 
-    /** Tells the user the picked file couldn't be read. */
-    fun onImportFileUnreadable() = showMessage("That file couldn't be read.")
+    /** Tells the user the picked file couldn't be read: with [reason] if there is more to say than that. */
+    fun onImportFileUnreadable(reason: String? = null) = showMessage(reason ?: "That file couldn't be read.")
 
     /** Imports the previewed cards into coast [coastId]. */
     fun setImportCoast(coastId: Int) = updatePreview { it.copy(coastId = coastId) }

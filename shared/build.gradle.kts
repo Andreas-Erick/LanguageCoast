@@ -72,6 +72,9 @@ kotlin {
             implementation(libs.mlkit.text.recognition)
             implementation(libs.androidx.activity.compose)
             implementation(libs.litertlm.android)
+            // Unpacks the collection of an Anki package (.apkg), which Anki compresses with zstd. The plain
+            // artifact is for desktop Java; Android's native libraries are in the one published as an AAR.
+            implementation("${libs.zstd.jni.get()}@aar")
         }
         iosMain.dependencies {
             implementation(libs.androidx.sqlite.bundled)

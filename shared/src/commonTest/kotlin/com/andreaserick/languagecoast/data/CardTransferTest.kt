@@ -131,6 +131,118 @@ class CardTransferTest {
     }
 
     @Test
+    fun csvExportHasAHeaderRowAndAColumnForEverythingOnACard() {
+        val csv = exportCards(listOf(withAlternatives), ExportFormat.Csv, "English")
+
+        // The byte order mark tells Excel the file is UTF-8; rows end as RFC 4180 asks.
+        assertTrue(csv.startsWith("\uFEFFEnglish,German,Island,Alternatives,Note\r\n"))
+        assertEquals(
+            "Do you want to come?,Möchtest du kommen?,Greetings,Willst du kommen? / Möchten Sie kommen?,Sie is formal.",
+            csv.removePrefix("\uFEFF").split("\r\n")[1]
+        )
+        assertTrue(csv.endsWith("\r\n"))
+    }
+
+    @Test
+    fun csvExportQuotesWhatWouldBreakARowAndSkipsEmptyIslands() {
+        val tricky = german.copy(
+            cards = german.cards + Flashcard(cardId = 4, islandId = 2, nativeText = "Yes, please", targetText = "Ja,\nbitte ", note = "A note without alternatives")
+        )
+
+        val rows = exportCards(listOf(tricky), ExportFormat.Csv, "English").removePrefix("\uFEFF").split("\r\n")
+
+        assertEquals(
+            listOf(
+                "English,German,Island,Alternatives,Note",
+                "Good morning,Guten Morgen,Greetings,,",
+                "\"Say \"\"hi\"\"\tloudly\",\"Sag \"\"hallo\"\"\",Greetings,,",
+                "How are you?,Wie geht's?,Small Talk,,",
+                "\"Yes, please\",\"Ja,\nbitte \",Small Talk,,A note without alternatives",
+                ""
+            ),
+            rows
+        )
+    }
+
+    @Test
+    fun csvExportOfSeveralCoastsSaysWhichLanguageARowIsIn() {
+        val icelandic = CoastContent(
+            coast = Coast(coastId = 2, language = "Icelandic"),
+            islands = listOf(LanguageIsland(islandId = 9, coastId = 2, name = "Animals", creationDate = 1)),
+            cards = listOf(Flashcard(cardId = 9, islandId = 9, nativeText = "horse", targetText = "hestur, hesturinn, hestar"))
+        )
+
+        val rows = exportCards(listOf(withAlternatives, icelandic), ExportFormat.Csv, "English").removePrefix("\uFEFF").split("\r\n")
+
+        assertEquals("English,Translation,Island,Alternatives,Note,Language", rows[0])
+        assertTrue(rows[1].endsWith(",Sie is formal.,German"))
+        assertEquals("horse,\"hestur, hesturinn, hestar\",Animals,,,Icelandic", rows[2])
+    }
+
+    @Test
+    fun csvExportReadsBackIntoTheSameCards() {
+        val content = german.copy(cards = german.cards + withAlternatives.cards.single().copy(cardId = 4, islandId = 2))
+
+        val imported = parseCardFile(exportCards(listOf(content), ExportFormat.Csv, "English"))
+
+        assertEquals(
+            listOf(
+                // The header row comes back as a row; the import's "First row is a header" switch leaves it out.
+                ImportedCard("English", "German", "Island"),
+                ImportedCard("Good morning", "Guten Morgen", "Greetings"),
+                ImportedCard("Say \"hi\"\tloudly", "Sag \"hallo\"", "Greetings"),
+                ImportedCard("How are you?", "Wie geht's?", "Small Talk"),
+                ImportedCard(
+                    "Do you want to come?", "Möchtest du kommen?", "Small Talk",
+                    alternatives = listOf("Willst du kommen?", "Möchten Sie kommen?"), note = "Sie is formal."
+                )
+            ),
+            imported
+        )
+    }
+
+    @Test
+    fun aFourthColumnIsOnlyReadAsAlternativesWhenTheFileSaysSo() {
+        // Somebody else's spreadsheet: its fourth and fifth columns could hold anything.
+        assertEquals(
+            listOf(ImportedCard("Hello", "Hallo", "Greetings")),
+            parseCardFile("Hello,Hallo,Greetings,tag1 / tag2,seen in a film")
+        )
+        // Its columns titled as this app titles them, in any case and with a semicolon as the separator.
+        assertEquals(
+            listOf(
+                ImportedCard("Front", "Back", "Deck"),
+                ImportedCard("Hello", "Hallo", "Greetings", alternatives = listOf("Servus", "Grüß Gott"), note = "Both are southern.")
+            ),
+            parseCardFile("Front;Back;Deck;alternatives;NOTE\nHello;Hallo;Greetings;Servus / Grüß Gott;Both are southern.")
+        )
+    }
+
+    @Test
+    fun textInAnyScriptCountsAsTextWhateverItsLineEndings() {
+        assertEquals(ImportFileKind.Text, importFileKind("Hello,Hallo\r\nCheese;Käse\tFood\n"))
+        assertEquals(ImportFileKind.Text, importFileKind("\uFEFF#separator:tab\nGood morning\tおはよう\n"))
+        assertEquals(ImportFileKind.Text, importFileKind(exportCards(listOf(german), ExportFormat.Csv, "English")))
+        assertEquals(ImportFileKind.Text, importFileKind(""))
+        // A file saved in another 8-bit encoding has its umlauts replaced, but is still text.
+        assertEquals(ImportFileKind.Text, importFileKind("K\uFFFDse,cheese\nT\uFFFDr,door\n"))
+    }
+
+    @Test
+    fun anAnkiPackageOrAnotherBinaryFileIsNotTakenForText() {
+        // An .apkg is a zip: it starts with "PK", and what follows has commas and line breaks in it like a CSV.
+        val apkg = "PK\u0003\u0004\u0014\u0000\u0000\u0000\bcollection.anki2,x\uFFFD\ny,\u0001z\n"
+        assertEquals(ImportFileKind.Archive, importFileKind(apkg))
+        assertTrue(parseCardFile(apkg).isNotEmpty())
+
+        // An SQLite database, a picture: no zip, but full of control characters.
+        assertEquals(ImportFileKind.Binary, importFileKind("SQLite format 3\u0000\u0010\u0000\u0001\u0001,a\nb,c"))
+        assertEquals(ImportFileKind.Binary, importFileKind("\u0001\u0002,\u0003\n\u0004,\u0005 some text"))
+        // UTF-16, as Excel's "Unicode Text" writes it, reads as letters with NULs between them.
+        assertEquals(ImportFileKind.Binary, importFileKind("H\u0000e\u0000l\u0000l\u0000o\u0000,\u0000H\u0000a\u0000l\u0000l\u0000o\u0000"))
+    }
+
+    @Test
     fun alternativesSurviveAnAnkiExportWithHtmlLineBreaks() {
         val file = "#separator:tab\n#html:true\nDo you want to come?\tMöchtest du kommen?<br><br>Also: Willst du kommen?<br>Note: Casual.\n"
 

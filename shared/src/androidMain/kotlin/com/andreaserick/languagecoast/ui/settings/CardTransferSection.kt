@@ -1,12 +1,15 @@
 package com.andreaserick.languagecoast.ui.settings
 
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,8 +34,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andreaserick.languagecoast.data.AnkiNote
+import com.andreaserick.languagecoast.data.AnkiPackageContent
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.ExportFormat
+import com.andreaserick.languagecoast.data.readAnkiPackage
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
@@ -43,7 +49,9 @@ import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,11 +60,17 @@ import org.koin.compose.viewmodel.koinViewModel
 /** Import files larger than this are refused; a card file of this size would hold well over 50,000 cards. */
 private const val MAX_IMPORT_CHARS = 5_000_000
 
-/** MIME types offered when picking a file to import. Some file managers label CSV files as Excel or as plain bytes. */
-private val IMPORT_MIME_TYPES = arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream")
+/**
+ * MIME types offered when picking a file to import. Some file managers label CSV files as Excel or as plain
+ * bytes; an Anki package is a zip, and goes by that, by a name of its own or again by plain bytes.
+ */
+private val IMPORT_MIME_TYPES = arrayOf(
+    "text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream",
+    "application/zip", "application/apkg", "application/vnd.anki"
+)
 
 /**
- * Export cards to a file (Anki or Markdown) and import cards from a CSV / tab-separated file.
+ * Export cards to a file (Anki, CSV or Markdown) and import cards from an Anki package or a CSV / tab-separated file.
  * Files are saved and opened with the system file picker, so they can go to Downloads, Google Drive and so on.
  */
 @Composable
@@ -93,20 +107,24 @@ actual fun CardTransferSection() {
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val text = withContext(Dispatchers.IO) { readText(context.contentResolver, uri) }
-            if (text == null) viewModel.onImportFileUnreadable() else viewModel.onImportFileRead(text)
+            when (val file = withContext(Dispatchers.IO) { readImportFile(context, uri) }) {
+                is ImportFile.Text -> viewModel.onImportFileRead(file.text)
+                is ImportFile.AnkiPackage -> viewModel.onAnkiPackageRead(file.notes)
+                is ImportFile.Unreadable -> viewModel.onImportFileUnreadable(file.reason)
+            }
         }
     }
 
+    // Why a file couldn't be imported takes a sentence or two, which a toast cuts off after its second line.
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
-            toast(it)
+            undoMessenger.showMessage(it)
             viewModel.messageShown()
         }
     }
 
     Text("Export", style = MaterialTheme.typography.titleSmall)
-    Hint("Save your cards as a file to import into Anki, or as Markdown tables to read or print.")
+    Hint("Save your cards as a file to import into Anki, as a CSV file for a spreadsheet, or as Markdown tables to read or print.")
     Spacer(modifier = Modifier.height(12.dp))
     CoastSecondaryButton(
         onClick = { showExportDialog = true },
@@ -121,7 +139,7 @@ actual fun CardTransferSection() {
     Spacer(modifier = Modifier.height(20.dp))
 
     Text("Import", style = MaterialTheme.typography.titleSmall)
-    Hint("Add cards from a CSV or tab-separated file, e.g. one exported from Anki or a spreadsheet.")
+    Hint("Add cards from an Anki deck (.apkg), or from a CSV or tab-separated file, e.g. one saved from a spreadsheet.")
     Spacer(modifier = Modifier.height(12.dp))
     CoastSecondaryButton(
         onClick = { importLauncher.launch(IMPORT_MIME_TYPES) },
@@ -171,6 +189,7 @@ actual fun CardTransferSection() {
 }
 
 /** Asks which coast (or all of them) to export and in which format. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ExportDialog(
     coasts: List<Coast>,
@@ -197,7 +216,8 @@ private fun ExportDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 FieldLabel("Format")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // The three formats don't fit side by side in a dialog on a phone, so they wrap.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ExportFormat.entries.forEach { option ->
                         FilterChip(
                             selected = option == format,
@@ -212,6 +232,7 @@ private fun ExportDialog(
                 Hint(
                     when (format) {
                         ExportFormat.Anki -> "In Anki, use File › Import. Each island becomes a subdeck."
+                        ExportFormat.Csv -> "For Excel, Google Sheets or Numbers: one row per card, with its island, alternatives and note."
                         ExportFormat.Markdown -> "One table per island, readable in any notes app."
                     }
                 )
@@ -271,7 +292,7 @@ private fun ImportDialog(
                 Hint("The left side is shown first when you study; it should be in your native language.")
                 Spacer(modifier = Modifier.height(8.dp))
                 SwitchRow("Swap sides", preview.swapColumns, onSwapChange)
-                SwitchRow("First row is a header", preview.skipFirstRow, onSkipFirstRowChange)
+                if (preview.mayHaveHeader) SwitchRow("First row is a header", preview.skipFirstRow, onSkipFirstRowChange)
             }
         },
         confirmButton = {
@@ -294,22 +315,74 @@ private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     }
 }
 
+/** What a file picked for import holds. */
+private sealed interface ImportFile {
+    /** Text, to look for rows of cards in. */
+    data class Text(val text: String) : ImportFile
+
+    /** The notes of an Anki package. */
+    data class AnkiPackage(val notes: List<AnkiNote>) : ImportFile
+
+    /** Nothing that can be imported; [reason] says why when there is more to say than that. */
+    data class Unreadable(val reason: String? = null) : ImportFile
+}
+
+/** The first bytes of every zip file, which an Anki package is. */
+private val ZIP_SIGNATURE = byteArrayOf('P'.code.toByte(), 'K'.code.toByte(), 3, 4)
+
+/**
+ * Reads the file picked for import. What it is goes by its first bytes, not by its name, which a file
+ * manager may not pass on: a zip is unpacked as an Anki package, anything else is read as text.
+ */
+private fun readImportFile(context: Context, uri: Uri): ImportFile = try {
+    context.contentResolver.openInputStream(uri)?.buffered()?.use { input ->
+        input.mark(ZIP_SIGNATURE.size)
+        val start = ByteArray(ZIP_SIGNATURE.size)
+        var read = 0
+        while (read < start.size) {
+            val count = input.read(start, read, start.size - read)
+            if (count == -1) break
+            read += count
+        }
+        input.reset()
+        if (read == start.size && start.contentEquals(ZIP_SIGNATURE)) {
+            when (val content = readAnkiPackage(input, File(context.cacheDir, "anki-import"))) {
+                is AnkiPackageContent.Notes -> ImportFile.AnkiPackage(content.notes)
+                AnkiPackageContent.NotAPackage ->
+                    ImportFile.Unreadable("That zip file isn't an Anki package. From a spreadsheet, save the cards as CSV and import that.")
+                AnkiPackageContent.Unreadable ->
+                    ImportFile.Unreadable("That Anki package couldn't be read. Export it again; if that doesn't help, tick \"Support older Anki versions\" when exporting.")
+            }
+        } else {
+            readText(input, MAX_IMPORT_CHARS)?.let { ImportFile.Text(it) } ?: ImportFile.Unreadable()
+        }
+    } ?: ImportFile.Unreadable()
+} catch (e: IOException) {
+    ImportFile.Unreadable()
+} catch (e: SecurityException) {
+    ImportFile.Unreadable()
+}
+
 /** Reads a text file, or returns null if it can't be read or is longer than [maxChars]. */
 internal fun readText(resolver: ContentResolver, uri: Uri, maxChars: Int = MAX_IMPORT_CHARS): String? = try {
-    resolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
-        val text = StringBuilder()
-        val chunk = CharArray(8 * 1024)
-        while (text.length <= maxChars) {
-            val read = reader.read(chunk)
-            if (read == -1) break
-            text.appendRange(chunk, 0, read)
-        }
-        text.takeIf { it.length <= maxChars }?.toString()
-    }
+    resolver.openInputStream(uri)?.use { readText(it, maxChars) }
 } catch (e: IOException) {
     null
 } catch (e: SecurityException) {
     null
+}
+
+/** The text [input] holds, or null if it is longer than [maxChars]. */
+private fun readText(input: InputStream, maxChars: Int): String? {
+    val reader = input.bufferedReader()
+    val text = StringBuilder()
+    val chunk = CharArray(8 * 1024)
+    while (text.length <= maxChars) {
+        val read = reader.read(chunk)
+        if (read == -1) break
+        text.appendRange(chunk, 0, read)
+    }
+    return text.takeIf { it.length <= maxChars }?.toString()
 }
 
 /** Writes [text] to [uri], replacing what was there. Returns whether it worked. */

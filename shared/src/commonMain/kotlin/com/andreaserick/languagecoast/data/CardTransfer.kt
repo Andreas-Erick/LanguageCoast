@@ -20,14 +20,59 @@ data class ImportedCard(
 enum class ExportFormat(val label: String, val extension: String, val mimeType: String) {
     /** Tab-separated text with Anki's file headers: one note per card, one subdeck per island. */
     Anki("Anki (.txt)", "txt", "text/plain"),
+
+    /** Comma-separated values for a spreadsheet: one row per card, with a header row. */
+    Csv("CSV (.csv)", "csv", "text/csv"),
     Markdown("Markdown (.md)", "md", "text/markdown")
 }
 
 /** Writes [contents] in [format]; [nativeLanguage] names the native column where the format has headings. */
 fun exportCards(contents: List<CoastContent>, format: ExportFormat, nativeLanguage: String): String = when (format) {
     ExportFormat.Anki -> ankiExport(contents)
+    ExportFormat.Csv -> csvExport(contents, nativeLanguage)
     ExportFormat.Markdown -> markdownExport(contents, nativeLanguage)
 }
+
+/**
+ * A CSV file for spreadsheets: a header row, then one row per card with its island, alternatives and note
+ * in columns of their own, so they can be sorted and filtered. Several coasts in one file get a last
+ * column that says which language a row is in. Written as RFC 4180 asks (commas, quotes doubled, CRLF),
+ * with a byte order mark, without which Excel misreads accented letters. [parseCardFile] reads it back.
+ */
+private fun csvExport(contents: List<CoastContent>, nativeLanguage: String): String = buildString {
+    val oneCoast = contents.singleOrNull()
+    fun row(fields: List<String>) {
+        append(fields.joinToString(",") { csvField(it) })
+        append("\r\n")
+    }
+    append(BYTE_ORDER_MARK)
+    row(listOfNotNull(nativeLanguage, oneCoast?.coast?.language ?: CSV_TRANSLATION, CSV_ISLAND, CSV_ALTERNATIVES, CSV_NOTE, CSV_LANGUAGE.takeIf { oneCoast == null }))
+    contents.forEach { content ->
+        content.islandsWithCards().forEach { (island, cards) ->
+            cards.forEach { card ->
+                row(
+                    listOfNotNull(
+                        card.nativeText, card.targetText, island.name, card.alternatives.joinToString(ALTERNATIVES_SEPARATOR), card.note.orEmpty(),
+                        content.coast.language.takeIf { oneCoast == null }
+                    )
+                )
+            }
+        }
+    }
+}
+
+/** Quotes a field that contains a comma, quote or line break, or starts or ends with a space, doubling the quotes inside. */
+private fun csvField(text: String): String =
+    if (text.any { it == ',' || it == '"' || it == '\n' || it == '\r' } || text != text.trim()) "\"${text.replace("\"", "\"\"")}\"" else text
+
+private const val BYTE_ORDER_MARK = "\uFEFF"
+
+// The CSV export's column titles after the native language. The last two tell an import that the file is this app's.
+private const val CSV_TRANSLATION = "Translation"
+private const val CSV_ISLAND = "Island"
+private const val CSV_ALTERNATIVES = "Alternatives"
+private const val CSV_NOTE = "Note"
+private const val CSV_LANGUAGE = "Language"
 
 /**
  * Anki imports this with File > Import: the headers set the separator and put each card into the
@@ -108,14 +153,46 @@ private fun markdownCell(text: String): String =
 
 private const val DECK_SEPARATOR = "::"
 
+/** What a file picked for import is, going by its content once read as text. */
+enum class ImportFileKind {
+    /** Text, which [parseCardFile] can look for cards in. */
+    Text,
+
+    /** A zip archive: an Anki package (.apkg, .colpkg, read with [ankiNoteCards]) or a spreadsheet's own format (.xlsx, .ods). */
+    Archive,
+
+    /** Some other file that isn't text, or text in an encoding that isn't UTF-8 (such as UTF-16). */
+    Binary
+}
+
+/**
+ * Tells a text file from one that only looks like text to a parser. An Anki package is a zip holding a
+ * database; read as text, its bytes have enough commas, tabs and line breaks in them that [parseCardFile]
+ * would find dozens of "cards" of garbage. A zip starts with "PK"; other binary files give themselves away
+ * by NUL and other control characters, which text never has.
+ */
+fun importFileKind(text: String): ImportFileKind {
+    val start = text.removePrefix(BYTE_ORDER_MARK).take(FILE_KIND_SAMPLE)
+    if (start.startsWith(ZIP_SIGNATURE)) return ImportFileKind.Archive
+    val controls = start.count { it < ' ' && it != '\t' && it != '\n' && it != '\r' }
+    return if ('\u0000' in start || controls * 50 > start.length) ImportFileKind.Binary else ImportFileKind.Text
+}
+
+/** The first bytes of every zip file. */
+private const val ZIP_SIGNATURE = "PK\u0003\u0004"
+
+/** How much of a file [importFileKind] looks at. */
+private const val FILE_KIND_SAMPLE = 4_000
+
 /**
  * Reads cards from a CSV or tab-separated file: the first column is the native text, the second the
  * translation. Anki's file headers (e.g. `#separator:tab`, `#html:true`, `#deck column:3`) are honoured,
  * so files exported by [exportCards] or by Anki itself come back with their islands. Without headers,
- * a third column is read as the island. Rows missing either text are skipped.
+ * a third column is read as the island; columns titled "Alternatives" and "Note" in the first row, as in
+ * this app's CSV export, are read as those. Rows missing either text are skipped.
  */
 fun parseCardFile(text: String): List<ImportedCard> {
-    val lines = text.removePrefix("\uFEFF").lines()
+    val lines = text.removePrefix(BYTE_ORDER_MARK).lines()
     val headers = lines.takeWhile { it.startsWith("#") }
         .mapNotNull { line -> line.drop(1).split(":", limit = 2).takeIf { it.size == 2 } }
         .associate { (key, value) -> key.trim().lowercase() to value.trim() }
@@ -131,14 +208,25 @@ fun parseCardFile(text: String): List<ImportedCard> {
     // The plain text of a field, without HTML if the file says its fields hold HTML.
     fun clean(field: String) = if (isHtml) htmlToText(field) else field.trim()
 
-    return splitRecords(body, separator).mapNotNull { record ->
+    val records = splitRecords(body, separator)
+    // A fourth column could be anything in somebody else's file; this app's CSV export says in its first row what it holds.
+    val titles = if (headers.isEmpty()) records.firstOrNull().orEmpty().map { it.trim() } else emptyList()
+    fun titled(title: String) = titles.indexOfFirst { it.equals(title, ignoreCase = true) }.takeIf { it > 2 }
+    val alternativesColumn = titled(CSV_ALTERNATIVES)
+    val noteColumn = titled(CSV_NOTE)
+
+    return records.mapIndexedNotNull { row, record ->
         val fields = record.filterIndexed { index, _ -> index !in metadataColumns }
         val nativeText = clean(fields.getOrNull(0).orEmpty())
         // Anki keeps the back's line breaks as <br>; turn them back into lines to find the alternatives.
         val back = fields.getOrNull(1).orEmpty().let { if (isHtml) it.replace(HTML_BREAK, "\n") else it }
-        val (translation, alternatives, note) = splitCardBack(back)
+        val (translation, backAlternatives, backNote) = splitCardBack(back)
+        // The first row holds the columns' titles, not a card's alternatives and note.
+        fun cell(column: Int?) = if (row == 0) "" else column?.let(fields::getOrNull).orEmpty()
+        val alternatives = backAlternatives + cell(alternativesColumn).split(ALTERNATIVES_SEPARATOR)
+        val note = backNote ?: cell(noteColumn)
         val targetText = clean(translation)
-        if (nativeText.isEmpty() || targetText.isEmpty()) return@mapNotNull null
+        if (nativeText.isEmpty() || targetText.isEmpty()) return@mapIndexedNotNull null
         val island = when {
             deckColumn != null -> record.getOrNull(deckColumn)?.substringAfterLast(DECK_SEPARATOR)
             headers.isEmpty() -> fields.getOrNull(2)
@@ -149,7 +237,7 @@ fun parseCardFile(text: String): List<ImportedCard> {
             targetText = targetText,
             island = island?.trim()?.takeIf { it.isNotEmpty() },
             alternatives = alternatives.map(::clean).filter { it.isNotEmpty() },
-            note = note?.let(::clean)?.takeIf { it.isNotEmpty() }
+            note = clean(note).takeIf { it.isNotEmpty() }
         )
     }
 }
@@ -222,14 +310,14 @@ private val HTML_TAG = Regex("<[^>]+>")
 private val WHITESPACE = Regex("\\s+")
 
 /** Anki fields may hold HTML: drop the tags and decode the common entities. */
-private fun htmlToText(html: String): String = html
-    .replace(HTML_BREAK, " ")
-    .replace(HTML_TAG, "")
+private fun htmlToText(html: String): String =
+    decodeHtmlEntities(html.replace(HTML_BREAK, " ").replace(HTML_TAG, "")).replace(WHITESPACE, " ").trim()
+
+/** [text] with the HTML entities Anki writes turned back into their characters. */
+internal fun decodeHtmlEntities(text: String): String = text
     .replace("&nbsp;", " ")
     .replace("&lt;", "<")
     .replace("&gt;", ">")
     .replace("&quot;", "\"")
     .replace("&#39;", "'")
     .replace("&amp;", "&")
-    .replace(WHITESPACE, " ")
-    .trim()
