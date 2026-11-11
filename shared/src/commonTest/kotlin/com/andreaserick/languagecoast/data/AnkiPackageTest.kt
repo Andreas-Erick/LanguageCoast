@@ -66,7 +66,7 @@ class AnkiPackageTest {
             listOf(
                 ImportedCard("Good morning", "Guten Morgen", "Greetings"),
                 ImportedCard("bread", "das Brot", "Food & Drink"),
-                ImportedCard("two lines", "zwei Zeilen", null)
+                ImportedCard("two\nlines", "zwei\nZeilen", null)
             ),
             ankiNoteCards(notes)
         )
@@ -99,5 +99,52 @@ class AnkiPackageTest {
             ),
             ankiNoteCards(listOf(note))
         )
+    }
+
+    @Test
+    fun aBackWithAWordItsFormsAndAnExampleKeepsThemOnLinesOfTheirOwn() {
+        val note = AnkiNote(listOf("dog", "<div><b>der Hund</b></div><div>pl. die Hunde</div><hr><i>Der Hund bellt.</i>"), "German::Animals")
+
+        assertEquals(listOf(ImportedCard("dog", "der Hund\npl. die Hunde\nDer Hund bellt.", "Animals")), ankiNoteCards(listOf(note)))
+    }
+
+    @Test
+    fun listsAndTablesDoNotRunTogether() {
+        assertEquals("house\nhome", ankiFieldText("<ol><li>house</li><li>home</li></ol>"))
+        assertEquals("ich bin\ndu bist", ankiFieldText("<table><tr><td>ich</td><td>bin</td></tr><tr><td>du</td><td>bist</td></tr></table>"))
+        assertEquals("meaning\na quote", ankiFieldText("meaning<blockquote>a quote</blockquote>"))
+    }
+
+    @Test
+    fun definitionListsHeadingsAndTableHeadsAreLinesToo() {
+        assertEquals("Hund\ndog\nKatze\ncat", ankiFieldText("<dl><dt>Hund</dt><dd>dog</dd><dt>Katze</dt><dd>cat</dd></dl>"))
+        assertEquals("Verb\nlaufen", ankiFieldText("<h3>Verb</h3>laufen"))
+        assertEquals("Singular Plural\nHund Hunde", ankiFieldText("<table><tr><th>Singular</th><th>Plural</th></tr><tr><td>Hund</td><td>Hunde</td></tr></table>"))
+        // Formatting inside a line doesn't break it.
+        assertEquals("der Hund (m.)", ankiFieldText("<b>der</b> <i>Hund</i> <span class=\"g\">(m.)</span>"))
+    }
+
+    @Test
+    fun bothSidesOfANoteKeepTheirLinesAndANumberedListIsTakenApart() {
+        val note = AnkiNote(listOf("to run<br>(three meanings)", "1. laufen 2. rennen 3. leiten"), null)
+
+        assertEquals(listOf(ImportedCard("to run\n(three meanings)", "1. laufen\n2. rennen\n3. leiten", null)), ankiNoteCards(listOf(note)))
+    }
+
+    @Test
+    fun aBackWithLinesStillGivesItsAlternativesAndNoteBack() {
+        val note = AnkiNote(listOf("dog", "der Hund<br>pl. die Hunde<br><br>Also: der Köter<br>Note: Köter is rude."), "German::Animals")
+
+        assertEquals(
+            listOf(ImportedCard("dog", "der Hund\npl. die Hunde", "Animals", alternatives = listOf("der Köter"), note = "Köter is rude.")),
+            ankiNoteCards(listOf(note))
+        )
+    }
+
+    @Test
+    fun aSideWithOneLineIsLeftAsItIs() {
+        val note = AnkiNote(listOf("<div>Good morning</div>", "<div>Guten Morgen</div>"), null)
+
+        assertEquals(listOf(ImportedCard("Good morning", "Guten Morgen", null)), ankiNoteCards(listOf(note)))
     }
 }

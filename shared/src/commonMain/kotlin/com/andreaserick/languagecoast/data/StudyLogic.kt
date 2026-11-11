@@ -81,6 +81,20 @@ fun checkAnswer(typed: String, expected: List<String>): AnswerMatch {
     return if (nearest.second in 1..allowed) AnswerMatch.Almost(nearest.first, typed.trim()) else AnswerMatch.Wrong
 }
 
+/**
+ * What counts as typing [side] of a card: all of it, or, when it has several lines (an imported card with
+ * a word, its forms and an example, or a list of meanings), any one of them without its list number.
+ */
+fun acceptedAnswers(side: String): List<String> {
+    val lines = side.lines().map { it.replace(LIST_MARK, "").trim() }.filter { it.isNotEmpty() }
+    return if (lines.size < 2) listOf(side) else listOf(side) + lines
+}
+
+/** Whether [line] is an item of a list: it starts with "1.", "2)", a dash or a bullet. */
+fun isListItem(line: String): Boolean = LIST_MARK.containsMatchIn(line)
+
+private val LIST_MARK = Regex("^\\s*(?:\\d{1,2}[.)]|[-–•*])\\s+")
+
 /** Edit distance between [a] and [b]. */
 internal fun levenshtein(a: String, b: String): Int {
     if (a == b) return 0

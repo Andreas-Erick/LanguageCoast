@@ -175,7 +175,11 @@ actual fun CardTransferSection() {
             onSkipFirstRowChange = viewModel::setSkipFirstRow,
             onImport = {
                 viewModel.confirmImport { result ->
-                    val skipped = if (result.duplicates > 0) " (${result.duplicates} already there)" else ""
+                    val skipped = when {
+                        result.reformatted > 0 -> " (${result.duplicates} already there, ${result.reformatted} given their line breaks)"
+                        result.duplicates > 0 -> " (${result.duplicates} already there)"
+                        else -> ""
+                    }
                     if (result.added.isEmpty()) {
                         toast("Nothing new to import$skipped")
                     } else {
@@ -278,7 +282,8 @@ private fun ImportDialog(
                 FieldLabel("First cards")
                 cards.take(3).forEach { card ->
                     Text(
-                        text = "${card.nativeText} → ${card.targetText}",
+                        // One line per card here, however many its sides have.
+                        text = "${card.nativeText} → ${card.targetText}".replace("\n", " · "),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

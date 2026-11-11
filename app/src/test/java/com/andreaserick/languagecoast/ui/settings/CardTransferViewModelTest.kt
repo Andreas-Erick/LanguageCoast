@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.ui.settings
 
+import com.andreaserick.languagecoast.data.AnkiNote
 import com.andreaserick.languagecoast.data.ExportFormat
 import com.andreaserick.languagecoast.data.ankiNote
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
@@ -267,5 +268,136 @@ class CardTransferViewModelTest {
         viewModel.confirmImport {}
 
         assertTrue(flashcards.cards.value.single().alternatives.isEmpty())
+    }
+
+    @Test
+    fun importingADeckAgainGivesItsCrampedCardsTheirLineBreaks() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        // As imported before imports kept line breaks, and reviewed since.
+        val old = flashcards.addFlashcard(1, "dog", "der Hund pl. die Hunde", "Animals").card
+        flashcards.cards.update { cards -> cards.map { it.copy(lapses = 3) } }
+        flashcards.addFlashcard(1, "cat", "die Katze", "Animals")
+        val viewModel = createViewModel()
+
+        viewModel.onAnkiPackageRead(
+            listOf(
+                AnkiNote(listOf("dog", "der Hund<br>pl. die Hunde"), "German::Animals"),
+                AnkiNote(listOf("dog", "der Hund<br>pl. die Hunde"), "German::Animals"),
+                AnkiNote(listOf("cat", "die Katze"), "German::Animals"),
+                AnkiNote(listOf("bird", "der Vogel<br>pl. die Vögel"), "German::Animals")
+            )
+        )
+        var result: ImportResult? = null
+        viewModel.confirmImport { result = it }
+
+        assertEquals(3, result?.duplicates)
+        assertEquals(1, result?.reformatted)
+        assertEquals(listOf("bird"), result?.added?.map { it.card.nativeText })
+        val dog = flashcards.cards.value.single { it.nativeText == "dog" }
+        assertEquals("der Hund\npl. die Hunde", dog.targetText)
+        // The same card, with its reviews.
+        assertEquals(old.cardId to 3, dog.cardId to dog.lapses)
+        assertEquals("die Katze", flashcards.cards.value.single { it.nativeText == "cat" }.targetText)
+    }
+
+    @Test
+    fun aCardThatHasItsLinesAlreadyIsOnlySkipped() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = createViewModel()
+        val notes = listOf(AnkiNote(listOf("dog", "der Hund<br>pl. die Hunde"), "German::Animals"))
+
+        viewModel.onAnkiPackageRead(notes)
+        var first: ImportResult? = null
+        viewModel.confirmImport { first = it }
+        assertEquals(1 to 0, first?.added?.size to first?.reformatted)
+        val imported = flashcards.cards.value.single()
+        assertEquals("der Hund\npl. die Hunde", imported.targetText)
+
+        viewModel.onAnkiPackageRead(notes)
+        var second: ImportResult? = null
+        viewModel.confirmImport { second = it }
+
+        assertEquals(Triple(0, 1, 0), Triple(second?.added?.size, second?.duplicates, second?.reformatted))
+        assertEquals(listOf(imported), flashcards.cards.value)
+    }
+
+    @Test
+    fun aCardGivenItsLineBreaksKeepsItsAlternativesNoteAndIsland() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val old = flashcards.addFlashcard(1, "dog", "der Hund pl. die Hunde", "Pets", alternatives = listOf("der Köter"), note = "Köter is rude.").card
+        val viewModel = createViewModel()
+
+        // The deck files the card somewhere else by now; the card stays where the user has it.
+        viewModel.onAnkiPackageRead(listOf(AnkiNote(listOf("dog", "der Hund<br>pl. die Hunde"), "German::Animals")))
+        var result: ImportResult? = null
+        viewModel.confirmImport { result = it }
+
+        assertEquals(1, result?.reformatted)
+        val dog = flashcards.cards.value.single()
+        assertEquals("der Hund\npl. die Hunde", dog.targetText)
+        assertEquals(Triple(listOf("der Köter"), "Köter is rude.", old.islandId), Triple(dog.alternatives, dog.note, dog.islandId))
+        assertEquals(listOf("Pets"), flashcards.islands.value.map { it.name })
+    }
+
+    @Test
+    fun aDeckImportedWithItsSidesSwappedGetsItsLineBreaksTheSameWay() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        flashcards.addFlashcard(1, "dog (animal)", "der Hund", "Animals")
+        val viewModel = createViewModel()
+
+        // The deck has German on the front.
+        viewModel.onAnkiPackageRead(listOf(AnkiNote(listOf("der Hund", "dog<br>(animal)"), "German::Animals")))
+        viewModel.setSwapColumns(true)
+        var result: ImportResult? = null
+        viewModel.confirmImport { result = it }
+
+        assertEquals(1 to 1, result?.duplicates to result?.reformatted)
+        assertEquals("dog\n(animal)" to "der Hund", flashcards.cards.value.single().let { it.nativeText to it.targetText })
+    }
+
+    @Test
+    fun undoingAnImportTakesBackItsNewCardsAndLeavesTheLineBreaksItGave() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        flashcards.addFlashcard(1, "dog", "der Hund pl. die Hunde", "Animals")
+        val viewModel = createViewModel()
+
+        viewModel.onAnkiPackageRead(
+            listOf(
+                AnkiNote(listOf("dog", "der Hund<br>pl. die Hunde"), "German::Animals"),
+                AnkiNote(listOf("bird", "der Vogel"), "German::Birds")
+            )
+        )
+        var result: ImportResult? = null
+        viewModel.confirmImport { result = it }
+        viewModel.undoImport(result!!)
+
+        assertEquals(listOf("dog" to "der Hund\npl. die Hunde"), flashcards.cards.value.map { it.nativeText to it.targetText })
+        assertEquals(listOf("Animals"), flashcards.islands.value.map { it.name })
+    }
+
+    @Test
+    fun aCardWithOtherWordsIsNotTakenForTheSameCard() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        flashcards.addFlashcard(1, "dog", "der Hund", "Animals")
+        val viewModel = createViewModel()
+
+        viewModel.onAnkiPackageRead(listOf(AnkiNote(listOf("dog", "der Hund<br>pl. die Hunde"), "German::Animals")))
+        var result: ImportResult? = null
+        viewModel.confirmImport { result = it }
+
+        assertEquals(Triple(1, 0, 0), Triple(result?.added?.size, result?.duplicates, result?.reformatted))
+        assertEquals(listOf("der Hund", "der Hund\npl. die Hunde"), flashcards.cards.value.map { it.targetText })
+    }
+
+    @Test
+    fun aTextFileWithLinesInItsFieldsIsPreviewedAndImportedWithThem() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = createViewModel()
+
+        viewModel.onImportFileRead("#separator:tab\n#html:true\ndog\t<div>der Hund</div><div>pl. die Hunde</div>\nto run\t1. laufen 2. rennen 3. leiten\n")
+
+        assertEquals(listOf("der Hund\npl. die Hunde", "1. laufen\n2. rennen\n3. leiten"), viewModel.preview?.cardsToImport?.map { it.targetText })
+        viewModel.confirmImport {}
+        assertEquals(listOf("der Hund\npl. die Hunde", "1. laufen\n2. rennen\n3. leiten"), flashcards.cards.value.map { it.targetText })
     }
 }

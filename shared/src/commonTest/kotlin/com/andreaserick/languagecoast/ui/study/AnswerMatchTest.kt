@@ -45,4 +45,34 @@ class AnswerMatchTest {
         assertFalse(isCorrectAnswer("Möchtest du kommen?", card, reversed = true))
         assertFalse(isCorrectAnswer("Willst du kommen?", card, reversed = true))
     }
+
+    @Test
+    fun oneLineOfACardWithSeveralCountsWhenTyped() {
+        val card = Flashcard(cardId = 1, islandId = 1, nativeText = "dog", targetText = "der Hund\npl. die Hunde", alternatives = listOf("der Köter"))
+
+        assertTrue(isCorrectAnswer("der hund", card))
+        assertTrue(isCorrectAnswer("der Köter", card))
+        assertFalse(isCorrectAnswer("die Hunde", card))
+        assertTrue(isCorrectAnswer("dog", card, reversed = true))
+    }
+
+    @Test
+    fun aListOfMeaningsIsAnsweredByAnyOneOfThem() {
+        val card = Flashcard(cardId = 1, islandId = 1, nativeText = "to run\n(verb)", targetText = "1. laufen\n2. rennen\n3. leiten")
+
+        assertTrue(isCorrectAnswer("rennen", card))
+        assertTrue(isCorrectAnswer("1. laufen 2. rennen 3. leiten", card))
+        assertFalse(isCorrectAnswer("gehen", card))
+        // Reversed, the native side is the answer, and one of its lines is enough as well.
+        assertTrue(isCorrectAnswer("to run", card, reversed = true))
+        assertFalse(isCorrectAnswer("laufen", card, reversed = true))
+    }
+
+    @Test
+    fun aCardWithOneLineIsCheckedAsBefore() {
+        val card = Flashcard(cardId = 1, islandId = 1, nativeText = "Where is the beach?", targetText = "Wo ist der Strand?")
+
+        assertTrue(isCorrectAnswer("wo ist der strand", card))
+        assertFalse(isCorrectAnswer("wo ist der", card))
+    }
 }

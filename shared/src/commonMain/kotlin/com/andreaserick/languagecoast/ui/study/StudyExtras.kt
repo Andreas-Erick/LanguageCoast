@@ -2,6 +2,8 @@ package com.andreaserick.languagecoast.ui.study
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +35,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -41,21 +45,26 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.AlternativeVerdict
 import com.andreaserick.languagecoast.data.AnswerMatch
+import com.andreaserick.languagecoast.data.CARD_QUESTION_STARTERS
 import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.Cloze
 import com.andreaserick.languagecoast.data.Flashcard
@@ -77,6 +86,7 @@ import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 /**
  * The switch between "Flip", "Type" and "Fill gap", next to which way cards are studied ("English → German").
@@ -584,6 +594,133 @@ private fun SaveAlternative(label: String, saved: Boolean, accent: Boolean, onSa
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
         )
+    }
+}
+
+/**
+ * A bottom sheet for asking the AI provider about a card: the card, what was asked so far with the answers,
+ * and a field for the next question. Before the first question it offers a few to start with. Nothing on
+ * the card changes; what was asked is gone once the sheet is closed.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CardQuestionSheet(questions: CardQuestions, onAsk: (String) -> Unit, onDismiss: () -> Unit) {
+    // Opens in full: it ends in a text field, which a half-open sheet would hide behind the keyboard.
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        CardQuestionContent(questions, onAsk)
+    }
+}
+
+/** What [CardQuestionSheet] shows. A composable of its own, so that the focus it clears is the sheet's and not the screen's under it. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CardQuestionContent(questions: CardQuestions, onAsk: (String) -> Unit) {
+    var text by rememberSaveable(questions.cardId) { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+    val latest = remember { BringIntoViewRequester() }
+    val input = remember { BringIntoViewRequester() }
+    var isTyping by remember { mutableStateOf(false) }
+    val last = questions.asked.lastOrNull()
+    // The newest question is under the earlier ones, and its answer arrives later still.
+    LaunchedEffect(questions.asked.size, last?.isLoading) {
+        if (last != null) latest.bringIntoView()
+    }
+
+    fun ask(question: String) {
+        if (question.isBlank() || questions.isAsking) return
+        // The keyboard has done its part; the answer needs the room.
+        focusManager.clearFocus()
+        text = ""
+        onAsk(question)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .imePadding()
+            // The keyboard sliding in takes the room the button under the field was in: keep both above it.
+            .onSizeChanged { if (isTyping) scope.launch { input.bringIntoView() } }
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
+    ) {
+        Text("Ask about this card", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+        Text(
+            text = questions.targetText,
+            style = MaterialTheme.typography.headlineSmall,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        Text(
+            text = questions.nativeText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+
+        if (questions.unavailable != null) {
+            Text(questions.unavailable, style = MaterialTheme.typography.bodyMedium, color = CoralText, modifier = Modifier.padding(top = 16.dp))
+            return@Column
+        }
+
+        questions.asked.forEachIndexed { index, asked ->
+            HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(top = 16.dp, bottom = 14.dp))
+            Column(modifier = if (index == questions.asked.lastIndex) Modifier.fillMaxWidth().bringIntoViewRequester(latest) else Modifier.fillMaxWidth()) {
+                Text(asked.question, style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                when {
+                    asked.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Asking ${questions.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    }
+                    asked.answer != null -> Text(asked.answer, style = MaterialTheme.typography.bodyLarge)
+                    else -> Text(asked.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                }
+            }
+        }
+        if (questions.asked.any { it.answer != null }) {
+            Text(
+                text = "From ${questions.providerLabel} · can make mistakes",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+        }
+
+        if (questions.asked.isEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                CARD_QUESTION_STARTERS.forEach { starter ->
+                    SuggestionChip(
+                        onClick = { ask(starter) },
+                        label = { Text(starter, style = MaterialTheme.typography.labelMedium) },
+                        colors = SuggestionChipDefaults.suggestionChipColors(containerColor = SurfaceRaised, labelColor = TextPrimary),
+                        border = null
+                    )
+                }
+            }
+        }
+        Column(modifier = Modifier.fillMaxWidth().bringIntoViewRequester(input)) {
+            CoastTextField(
+                value = text,
+                // A question, not a letter: Enter asks.
+                onValueChange = { text = it.replace("\n", " ") },
+                label = { Text(if (questions.asked.isEmpty()) "Your question" else "Ask a follow-up") },
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { ask(text) }),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).onFocusChanged { isTyping = it.isFocused }
+            )
+            CoastButton(
+                onClick = { ask(text) },
+                enabled = text.isNotBlank() && !questions.isAsking,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = ButtonHeight)
+            ) {
+                Text("Ask ${questions.providerLabel}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
 

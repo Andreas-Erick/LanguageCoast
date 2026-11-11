@@ -189,7 +189,8 @@ private const val FILE_KIND_SAMPLE = 4_000
  * translation. Anki's file headers (e.g. `#separator:tab`, `#html:true`, `#deck column:3`) are honoured,
  * so files exported by [exportCards] or by Anki itself come back with their islands. Without headers,
  * a third column is read as the island; columns titled "Alternatives" and "Note" in the first row, as in
- * this app's CSV export, are read as those. Rows missing either text are skipped.
+ * this app's CSV export, are read as those. Rows missing either text are skipped. A side keeps the lines
+ * it has in the file (see [cardSideText]).
  */
 fun parseCardFile(text: String): List<ImportedCard> {
     val lines = text.removePrefix(BYTE_ORDER_MARK).lines()
@@ -207,6 +208,8 @@ fun parseCardFile(text: String): List<ImportedCard> {
 
     // The plain text of a field, without HTML if the file says its fields hold HTML.
     fun clean(field: String) = if (isHtml) htmlToText(field) else field.trim()
+    // A side of the card, which keeps its lines.
+    fun side(field: String) = cardSideText(if (isHtml) ankiFieldText(field) else field)
 
     val records = splitRecords(body, separator)
     // A fourth column could be anything in somebody else's file; this app's CSV export says in its first row what it holds.
@@ -217,7 +220,7 @@ fun parseCardFile(text: String): List<ImportedCard> {
 
     return records.mapIndexedNotNull { row, record ->
         val fields = record.filterIndexed { index, _ -> index !in metadataColumns }
-        val nativeText = clean(fields.getOrNull(0).orEmpty())
+        val nativeText = side(fields.getOrNull(0).orEmpty())
         // Anki keeps the back's line breaks as <br>; turn them back into lines to find the alternatives.
         val back = fields.getOrNull(1).orEmpty().let { if (isHtml) it.replace(HTML_BREAK, "\n") else it }
         val (translation, backAlternatives, backNote) = splitCardBack(back)
@@ -225,7 +228,7 @@ fun parseCardFile(text: String): List<ImportedCard> {
         fun cell(column: Int?) = if (row == 0) "" else column?.let(fields::getOrNull).orEmpty()
         val alternatives = backAlternatives + cell(alternativesColumn).split(ALTERNATIVES_SEPARATOR)
         val note = backNote ?: cell(noteColumn)
-        val targetText = clean(translation)
+        val targetText = side(translation)
         if (nativeText.isEmpty() || targetText.isEmpty()) return@mapIndexedNotNull null
         val island = when {
             deckColumn != null -> record.getOrNull(deckColumn)?.substringAfterLast(DECK_SEPARATOR)
@@ -241,6 +244,38 @@ fun parseCardFile(text: String): List<ImportedCard> {
         )
     }
 }
+
+/**
+ * One side of an imported card, laid out to be read: every line of [text] on its own, without space around
+ * it or empty lines between, and a numbered list that was written in one line ("1. house 2. home 3. flat")
+ * taken apart into its items. Without this a back with a word, its forms and an example ran together into
+ * one cramped line.
+ */
+internal fun cardSideText(text: String): String = text.lines()
+    .map { it.trim() }
+    .filter { it.isNotEmpty() }
+    .flatMap(::numberedItems)
+    .joinToString("\n")
+
+/**
+ * [line] split where it counts "1. … 2. … 3. …" (or "1) …"), if it does so at least up to three: two numbers
+ * in a sentence are more often dates ("vom 1. bis 2. Mai") than a list.
+ */
+internal fun numberedItems(line: String): List<String> {
+    var expected = 1
+    val starts = NUMBER_MARK.findAll(line).filter { mark ->
+        val isItem = mark.groupValues[1].toInt() == expected && (mark.range.first == 0 || line[mark.range.first - 1].isWhitespace())
+        if (isItem) expected++
+        isItem
+    }.map { it.range.first }.toList()
+    if (starts.size < MIN_NUMBERED_ITEMS) return listOf(line)
+    val cuts = (listOf(0) + starts + line.length).distinct()
+    return cuts.zipWithNext { from, to -> line.substring(from, to).trim() }.filter { it.isNotEmpty() }
+}
+
+/** A number that may start a list's item: "1." or "2)" with text after it. */
+private val NUMBER_MARK = Regex("(\\d{1,2})[.)](?=\\s+\\S)")
+private const val MIN_NUMBERED_ITEMS = 3
 
 /** The separator an Anki `#separator:` header names, either by name (`tab`, `comma`, …) or as the character itself. */
 private fun separatorFromHeader(value: String): Char? = when (value.lowercase()) {

@@ -83,7 +83,7 @@ class CardTransferTest {
     fun ankiNotesExportSkipsTagsAndStripsHtml() {
         val file = "#separator:tab\n#html:true\n#tags column:3\nGood&nbsp;<b>morning</b>\tGuten<br>Morgen\tgreeting verb\n"
 
-        assertEquals(listOf(ImportedCard("Good morning", "Guten Morgen", null)), parseCardFile(file))
+        assertEquals(listOf(ImportedCard("Good morning", "Guten\nMorgen", null)), parseCardFile(file))
     }
 
     @Test
@@ -259,6 +259,113 @@ class CardTransferTest {
 
         assertTrue(
             "| Do you want to come? | Möchtest du kommen?<br>Also: Willst du kommen? / Möchten Sie kommen?<br>Note: Sie is formal. |" in markdown
+        )
+    }
+
+    @Test
+    fun aSideKeepsItsLinesWithoutTheSpaceAroundThem() {
+        assertEquals("der Hund\npl. die Hunde", cardSideText("  der Hund \r\n\n   pl. die Hunde\n"))
+        assertEquals("Guten Morgen", cardSideText(" Guten Morgen "))
+        assertEquals("", cardSideText(" \n "))
+    }
+
+    @Test
+    fun aNumberedListWrittenInOneLineIsTakenApart() {
+        assertEquals("1. house\n2. home\n3. flat", cardSideText("1. house 2. home 3. flat"))
+        assertEquals("to run:\n1) to move fast\n2) to manage\n3) to flow", cardSideText("to run: 1) to move fast 2) to manage 3) to flow"))
+        // Two numbers are more often dates than a list, and numbers out of order are no list at all.
+        assertEquals("Vom 1. bis 2. Mai", cardSideText("Vom 1. bis 2. Mai"))
+        assertEquals("3. Mai, 1. Juni, 2. Juli", cardSideText("3. Mai, 1. Juni, 2. Juli"))
+        assertEquals("It costs 1.50 or 2.50 or 3.50", cardSideText("It costs 1.50 or 2.50 or 3.50"))
+    }
+
+    @Test
+    fun aFileWithHtmlKeepsTheLinesOfItsSides() {
+        val file = "#separator:tab\n#html:true\ndog\t<div>der Hund</div><div>pl. die Hunde</div>\n"
+
+        assertEquals(listOf(ImportedCard("dog", "der Hund\npl. die Hunde", null)), parseCardFile(file))
+    }
+
+    @Test
+    fun aQuotedFieldWithLinesKeepsThem() {
+        val file = "dog,\"der Hund\npl. die Hunde\n\nDer Hund bellt.\",Animals\n"
+
+        assertEquals(listOf(ImportedCard("dog", "der Hund\npl. die Hunde\nDer Hund bellt.", "Animals")), parseCardFile(file))
+    }
+
+    private val manyLines = german.copy(
+        cards = listOf(
+            Flashcard(
+                cardId = 1, islandId = 1, nativeText = "dog", targetText = "der Hund\npl. die Hunde\nDer Hund bellt.",
+                alternatives = listOf("der Köter"), note = "Köter is rude."
+            ),
+            Flashcard(cardId = 2, islandId = 1, nativeText = "to run", targetText = "1. laufen\n2. rennen\n3. leiten")
+        )
+    )
+
+    private val manyLinesImported = listOf(
+        ImportedCard("dog", "der Hund\npl. die Hunde\nDer Hund bellt.", "Greetings", alternatives = listOf("der Köter"), note = "Köter is rude."),
+        ImportedCard("to run", "1. laufen\n2. rennen\n3. leiten", "Greetings")
+    )
+
+    @Test
+    fun cardsWithSeveralLinesSurviveAnAnkiExportAndImport() {
+        assertEquals(manyLinesImported, parseCardFile(exportCards(listOf(manyLines), ExportFormat.Anki, "English")))
+    }
+
+    @Test
+    fun cardsWithSeveralLinesSurviveACsvExportAndImport() {
+        // The first row holds the columns' titles.
+        assertEquals(manyLinesImported, parseCardFile(exportCards(listOf(manyLines), ExportFormat.Csv, "English")).drop(1))
+    }
+
+    @Test
+    fun markdownPutsACardsLinesInOneCell() {
+        val markdown = exportCards(listOf(manyLines), ExportFormat.Markdown, "English")
+
+        assertTrue("| to run | 1. laufen<br>2. rennen<br>3. leiten |" in markdown, markdown)
+    }
+
+    @Test
+    fun aListIsOnlyTakenApartWhenItCountsFromOneToThreeOrMore() {
+        assertEquals(listOf("1. a", "2. b", "3. c", "4. d"), numberedItems("1. a 2. b 3. c 4. d"))
+        assertEquals(listOf("meanings:", "1) a", "2) b", "3) c"), numberedItems("meanings: 1) a 2) b 3) c"))
+        // Two items, a list that starts at two, a number inside a word and a number at the very end are left alone.
+        assertEquals(listOf("1. a 2. b"), numberedItems("1. a 2. b"))
+        assertEquals(listOf("2. a 3. b 4. c"), numberedItems("2. a 3. b 4. c"))
+        assertEquals(listOf("v1. a v2. b v3. c"), numberedItems("v1. a v2. b v3. c"))
+        assertEquals(listOf("see 1. 2. 3."), numberedItems("see 1. 2. 3."))
+        assertEquals(listOf("no numbers here"), numberedItems("no numbers here"))
+        assertEquals(listOf(""), numberedItems(""))
+    }
+
+    @Test
+    fun aListLongerThanNineIsTakenApartToo() {
+        val line = (1..12).joinToString(" ") { "$it. word$it" }
+
+        assertEquals((1..12).map { "$it. word$it" }, numberedItems(line))
+    }
+
+    @Test
+    fun aSideThatAlreadyHasItsListOnLinesStaysTheSame() {
+        val side = "1. laufen\n2. rennen\n3. leiten"
+
+        assertEquals(side, cardSideText(side))
+        assertEquals(side, cardSideText(cardSideText("1. laufen 2. rennen 3. leiten")))
+    }
+
+    @Test
+    fun theNativeSideOfAFileWithHtmlKeepsItsLinesToo() {
+        val file = "#separator:tab\n#html:true\nto run<br>(verb)\tlaufen\n"
+
+        assertEquals(listOf(ImportedCard("to run\n(verb)", "laufen", null)), parseCardFile(file))
+    }
+
+    @Test
+    fun aPlainFileWithoutLineBreaksReadsAsBefore() {
+        assertEquals(
+            listOf(ImportedCard("Hello", "Hallo", "Greetings"), ImportedCard("Thanks a lot", "Vielen Dank", null)),
+            parseCardFile("Hello,Hallo,Greetings\n  Thanks a lot ,Vielen Dank  \n")
         )
     }
 }
