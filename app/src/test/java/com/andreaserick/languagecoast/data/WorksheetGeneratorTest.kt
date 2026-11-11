@@ -303,6 +303,113 @@ class WorksheetGeneratorTest {
     }
 
     @Test
+    fun aCoastOfTensOfThousandsOfCardsGivesTheSameSheetAsASmallOne() = runTest {
+        // 60 000 cards: an imported deck of 40 000 on one island and 20 000 on 400 more, next to a coast as large that must stay out of it.
+        flashcards.islands.value = (1..401).map { LanguageIsland(islandId = it, coastId = 1, name = if (it == 1) "Deck" else "Insel $it") } +
+            LanguageIsland(islandId = 402, coastId = 2, name = "Mazo")
+        flashcards.cards.value = (1..60_000).map {
+            Flashcard(
+                cardId = it, islandId = if (it <= 40_000) 1 else (it - 40_001) / 50 + 2,
+                nativeText = "native sentence number $it", targetText = "ziel$it satz", alternatives = if (it % 10 == 0) listOf("anders$it") else emptyList()
+            )
+        } + (1..60_000).map { Flashcard(cardId = 60_000 + it, islandId = 402, nativeText = "nativo $it", targetText = "meta$it frase") }
+        var asked = 0
+        translator.completionFor = { prompt ->
+            asked++
+            val batch = Regex("Write (\\d+) new").find(prompt)!!.groupValues[1].toInt()
+            // The first line of every answer copies a card, which the sheet can do without.
+            Completion((1..batch).joinToString("\n") { if (it == 1) "Ziel$asked satz! || Copy $asked" else "ziel$it satz $asked || Sentence $asked $it" })
+        }
+
+        val sheet = (generator.generate(1, WorksheetOptions(count = 500)) as WorksheetResult.Ready).worksheet
+
+        assertEquals(500, sheet.sentences.size)
+        assertEquals(60_000 to 401, sheet.cardCount to sheet.islandCount)
+        assertEquals(21, translator.prompts.size)
+        // Ten spare sentences, so ten of the copies could be left out, and were.
+        assertEquals(11, sheet.sentences.count { it.nativeText.startsWith("Copy") })
+        translator.prompts.forEach { prompt ->
+            assertEquals(400, prompt.lines().count { it.startsWith("ziel") && " = native " in it })
+            assertFalse("meta" in prompt)
+            assertTrue(prompt.length < 30_000)
+        }
+        // The deck doesn't crowd the small islands out, and they all get their turn.
+        assertTrue(translator.prompts.all { prompt -> prompt.lines().count { it.startsWith("[Insel ") } >= 9 })
+        val shown = translator.prompts.flatMap { prompt -> prompt.lines().filter { it.startsWith("[Insel ") } }.distinct()
+        assertTrue(shown.size > 150)
+
+        // A local model's prompt stays as short as ever.
+        translator.prompts.clear()
+        settings.translationProvider.value = TranslationProvider.LocalAi
+        assertEquals(500, (generator.generate(1, WorksheetOptions(count = 500)) as WorksheetResult.Ready).worksheet.sentences.size)
+        assertEquals(100, translator.prompts.size)
+        assertTrue(translator.prompts.all { it.length < 8_000 })
+    }
+
+    /** [card] as it is after studying it [daysAgo] days ago, with a memory FSRS expects to last two days. */
+    private fun studied(card: Flashcard, daysAgo: Int, lapses: Int = 0) = card.copy(
+        stability = 2.0, difficulty = 5.0, lastReviewed = TEST_CLOCK.now().toEpochMilliseconds() - daysAgo * 86_400_000L, lapses = lapses
+    )
+
+    /** How many sentences [prompt] asks for about each island, in the order it names them. */
+    private fun quotas(prompt: String): List<Pair<String, Int>> =
+        Regex("(\\d+) about (.+?)(?:,| and |\\.)").findAll(prompt.lines().single { it.startsWith("2. ") }.substringAfter("Of the sentences, write ")).map { it.groupValues[2] to it.groupValues[1].toInt() }.toList()
+
+    @Test
+    fun aCoastNobodyHasStudiedSharesTheSheetByWhatIsOnItsIslands() = runTest {
+        translator.completion = lines("Wo ist das Kind?" to "Where is the child?")
+
+        generator.generate(1, WorksheetOptions(count = 10))
+
+        // Twelve sentences, two islands of three cards.
+        assertEquals(listOf("Food" to 6, "Travel" to 6), quotas(translator.prompts.first()))
+        assertFalse("The other topics" in translator.prompts.first())
+    }
+
+    @Test
+    fun theIslandWhoseCardsAreSlippingGetsMostOfTheSheet() = runTest {
+        // Food was studied long ago and forgotten more than once; Travel was studied today.
+        flashcards.cards.value = flashcards.cards.value.map { card ->
+            when (card.islandId) {
+                1 -> studied(card, daysAgo = 0)
+                2 -> studied(card, daysAgo = 100, lapses = 4)
+                else -> card
+            }
+        }
+        translator.completion = lines("Wo ist das Kind?" to "Where is the child?")
+
+        generator.generate(1, WorksheetOptions(count = 10))
+
+        val (food, travel) = quotas(translator.prompts.first()).let { it.toMap().getValue("Food") to it.toMap().getValue("Travel") }
+        assertEquals(12, food + travel)
+        assertTrue("Food $food, Travel $travel", food in 8..10 && travel in 2..4)
+        // The coast fits a prompt, so Travel's cards are still there, for their words.
+        assertTrue("Wo ist der Bahnhof? = Where is the station?" in translator.prompts.first())
+    }
+
+    @Test
+    fun ofAHugeIslandThePromptShowsTheCardsThatWereStudied() = runTest {
+        // An imported deck of 3000 cards, 30 of them studied and overdue, next to two islands of 100 nobody has studied.
+        flashcards.islands.value = listOf("Deck", "Reisen", "Essen").mapIndexed { index, name -> LanguageIsland(islandId = index + 1, coastId = 1, name = name) }
+        flashcards.cards.value = (1..3200).map {
+            val card = Flashcard(cardId = it, islandId = when { it <= 3000 -> 1; it <= 3100 -> 2; else -> 3 }, nativeText = "native $it", targetText = "ziel$it")
+            if (it % 100 == 0 && it <= 3000) studied(card, daysAgo = 50) else card
+        }
+        translator.completionFor = { Completion("") }
+
+        generator.generate(1, WorksheetOptions(count = 10))
+
+        translator.prompts.forEach { prompt ->
+            val asked = quotas(prompt).toMap()
+            assertEquals(12, asked.values.sum())
+            // The deck has the cards that need practice, so it gets more than the other two together.
+            assertTrue(asked.toString(), asked.getValue("Deck") > asked.getOrDefault("Reisen", 0) + asked.getOrDefault("Essen", 0))
+            val deck = cardsOf(prompt, "Deck")
+            assertTrue((100..3000 step 100).all { "ziel$it = native $it" in deck })
+        }
+    }
+
+    @Test
     fun cardsWithLongTextsDontMakeAHugePrompt() = runTest {
         // An imported deck whose cards are paragraphs: 200 cards of about 1000 characters.
         val paragraph = "wort ".repeat(200).trim()

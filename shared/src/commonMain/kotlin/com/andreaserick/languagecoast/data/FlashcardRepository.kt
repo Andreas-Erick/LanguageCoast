@@ -130,6 +130,9 @@ interface FlashcardRepository {
     /** Every card with its island and coast, by coast (oldest first), then island name. */
     fun observeAllCards(): Flow<List<PlacedCard>>
 
+    /** The cards of coast [coastId] as a practice sheet needs them, by island name, then the order cards were added. */
+    suspend fun getWorksheetCards(coastId: Int): List<WorksheetSourceCard>
+
     /** Every island on every coast, newest first. */
     fun observeAllIslands(): Flow<List<LanguageIsland>>
 
@@ -253,6 +256,8 @@ class OfflineFlashcardRepository(
     override fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>> = dao.getRecentCards(coastId, limit)
 
     override fun observeAllCards(): Flow<List<PlacedCard>> = dao.getAllPlacedCards()
+
+    override suspend fun getWorksheetCards(coastId: Int): List<WorksheetSourceCard> = dao.getWorksheetCards(coastId)
 
     override fun observeAllIslands(): Flow<List<LanguageIsland>> = dao.getAllIslands()
 

@@ -8,6 +8,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
+import kotlin.math.ln
 import kotlin.random.Random
 import kotlin.time.Clock
 
@@ -138,6 +139,12 @@ class NoWorksheetPrinter : WorksheetPrinter {
 /** A card as the prompt shows it: its two sides and the island it is on. */
 data class WorksheetCard(val island: String, val targetText: String, val nativeText: String)
 
+/** How many of a prompt's sentences are to be about one island. */
+data class IslandQuota(val island: String, val sentences: Int)
+
+/** What one prompt of a sheet is made from: the cards it shows, and the islands its sentences are to be about. */
+internal class WorksheetDeal(val cards: List<WorksheetCard>, val quotas: List<IslandQuota>)
+
 private fun levelRule(difficulty: WorksheetDifficulty): String = when (difficulty) {
     WorksheetDifficulty.Easy ->
         "Level: easy. Short sentences of 3 to 6 words with one simple clause. Stay close to the flashcards: take one and change a word or two for other words of its topic."
@@ -157,6 +164,7 @@ private fun levelRule(difficulty: WorksheetDifficulty): String = when (difficult
  * @param cards The coast's cards (or some of its islands, when there are too many), island by island.
  * @param region Where the language will be used, so the sentences use that place's words; null for no preference.
  * @param avoid Sentences in [targetLanguage] already written for this sheet, when asking for more.
+ * @param quotas How many of the sentences are to be about which island, adding up to [count]; none to leave the spread to the model.
  */
 fun buildWorksheetPrompt(
     cards: List<WorksheetCard>,
@@ -165,10 +173,23 @@ fun buildWorksheetPrompt(
     count: Int,
     difficulty: WorksheetDifficulty,
     region: String? = null,
-    avoid: List<String> = emptyList()
+    avoid: List<String> = emptyList(),
+    quotas: List<IslandQuota> = emptyList()
 ): String {
-    val flashcards = cards.groupBy { it.island }.entries.joinToString("\n\n") { (island, group) ->
+    val byIsland = cards.groupBy { it.island }
+    val flashcards = byIsland.entries.joinToString("\n\n") { (island, group) ->
         "[$island]\n" + group.joinToString("\n") { "${it.targetText} = ${it.nativeText}" }
+    }
+    val spread = when {
+        quotas.isEmpty() -> "Spread the sentences over the topics."
+        // In words and without the brackets of the topics' headings: a small model copies brackets into its
+        // answer, whose format has brackets of its own.
+        else -> {
+            val shares = quotas.map { "${it.sentences} about ${it.island}" }
+            val listed = if (shares.size == 1) shares.single() else shares.dropLast(1).joinToString(", ") + " and " + shares.last()
+            "Of the sentences, write $listed." +
+                if (byIsland.keys.any { island -> quotas.none { it.island == island } }) " The other topics get no sentence of their own this time." else ""
+        }
     }
     val where = region?.trim()?.takeIf { it.isNotEmpty() }?.let { " from $it" } ?: ""
     // Raw strings don't process escapes, so the rule's line break (with the raw string's indent) is built outside it.
@@ -185,7 +206,7 @@ fun buildWorksheetPrompt(
 
         Rules:
         1. Every sentence must make sense: something a real person would say or hear in an everyday situation. If you can't picture who would say it and when, write a different sentence.
-        2. Every sentence belongs to one topic and fits that topic's situation. Build it from that topic's flashcards; small everyday words (pronouns, articles, "and", "not", "very") may come from any flashcard. Never put words from unrelated topics together just to make a sentence new. Spread the sentences over the topics.
+        2. Every sentence belongs to one topic and fits that topic's situation. Build it from that topic's flashcards; small everyday words (pronouns, articles, "and", "not", "very") may come from any flashcard. Never put words from unrelated topics together just to make a sentence new. $spread
         3. Build the sentences from the $targetLanguage words on the flashcards. A word may take another form of itself (a verb for another person, a noun in the plural or in another case, an adjective that agrees), and names and numbers are allowed. Where a sentence needs it to make sense or to sound natural, it may also use one common, simple word that is not on the flashcards; never more than one, and never a rare word.
         4. Use only grammar the flashcards show: their tenses and their constructions.
         5. Every sentence must be new: different from every flashcard and from the other sentences. Never copy a flashcard.
@@ -241,8 +262,10 @@ class CoastVocabulary(texts: List<String>) {
     private val characters = HashSet<Char>()
 
     init {
-        texts.flatMap(::normalizedWords).forEach { word ->
-            words += word
+        // A text at a time: a large coast's words, all in one list, would be millions.
+        for (text in texts) for (word in normalizedWords(text)) {
+            // The same words come back card after card; only a new one has stems to add.
+            if (!words.add(word)) continue
             for (length in stemLength(word.length, STEM_SHARE)..word.length) stems += word.substring(0, length)
             word.forEach { if (writtenWithoutSpaces(it)) characters += it }
         }
@@ -315,13 +338,18 @@ fun pickWorksheetSentences(
     count: Int
 ): List<WorksheetSentence> {
     if (candidates.size <= count) return candidates
-    val knownWords = known.mapTo(HashSet(), ::normalizedWords)
     // Worked out once per sentence, not once per comparison: a long sheet from a large coast has hundreds.
+    val words = candidates.map { normalizedWords(it.targetText) }
+    // The cards are looked up among the sentences, not the other way round: there are a few hundred
+    // sentences, and there can be tens of thousands of cards, which this way are never all held at once.
+    val written = words.toHashSet()
+    val copies = HashSet<List<String>>()
+    for (text in known) normalizedWords(text).let { if (it in written) copies += it }
     class Ranked(val index: Int, val isCopy: Boolean, val strays: Double)
     val best = candidates
         .mapIndexed { index, sentence ->
             val text = sentence.targetText
-            Ranked(index, normalizedWords(text) in knownWords, if (vocabulary.keepsToCoast(text)) 0.0 else vocabulary.unknownShare(text))
+            Ranked(index, words[index] in copies, if (vocabulary.keepsToCoast(text)) 0.0 else vocabulary.unknownShare(text))
         }
         .sortedWith(compareBy({ it.isCopy }, { it.strays }, { it.index }))
         .take(count)
@@ -332,31 +360,61 @@ fun pickWorksheetSentences(
  * Deals out a coast's cards to the prompts of one sheet, [limit] cards and [characters] of card text per
  * prompt at most, in the coast's order.
  *
- * A coast that fits is shown whole every time. A larger one, be it thousands of cards, is shown island by
- * island: a sentence is built from one island's cards, so a prompt gets up to [perIsland] cards of an island
- * (enough to build from) rather than a few of each. The islands take turns from one prompt to the next, so
- * a long sheet gets around the whole coast, and a huge island can't crowd the others out. Room that is left
- * once every island had its turn goes to more of their cards.
+ * Every prompt is told which islands its sentences are to be about and how many each ([WorksheetDeal.quotas]):
+ * the islands whose cards need practice most get the most, by the rules in `WorksheetFocus.kt`.
+ *
+ * A coast that fits is shown whole every time. A larger one, be it tens of thousands of cards, is shown
+ * island by island: a sentence is built from one island's cards, so a prompt gets up to [perIsland] cards of
+ * an island (enough to build from) rather than a few of each. The islands the prompt's sentences are about
+ * come first, and of an island the cards the learner has studied, those most that need practice ([now]
+ * being when that is asked). Room that is left goes to other islands, for their everyday words, the ones
+ * that haven't been shown for longest first, and then to more cards of the islands that are there.
  */
 internal class WorksheetCardDealer(
-    cards: List<PlacedCard>,
+    cards: List<WorksheetSourceCard>,
     private val limit: Int,
     private val perIsland: Int,
     private val characters: Int,
+    now: Long,
     private val random: Random
 ) {
-    private val lines = cards.map { WorksheetCard(it.islandName, oneLine(it.card.targetText), oneLine(it.card.nativeText)) }
-    private val sizes = lines.map { it.targetText.length + it.nativeText.length + SEPARATOR_LENGTH }
+    private val lines = cards.map { WorksheetCard(it.islandName, oneLine(it.targetText), oneLine(it.nativeText)) }
+    private val sizes = IntArray(lines.size) { lines[it].targetText.length + lines[it].nativeText.length + SEPARATOR_LENGTH }
     private val shortest = sizes.minOrNull() ?: 0
-    private val fitsWhole = lines.size <= limit && sizes.sum() <= characters
+    private val fitsWhole = lines.size <= limit && sizes.sumOf { it.toLong() } <= characters
 
-    /** The islands' cards (as indices), in the order the islands take their turns. */
-    private val islands = cards.indices.groupBy { cards[it].card.islandId }.values.shuffled(random)
-    private var turn = 0
+    /** How much each card needs practice ([practiceNeed]), or [NOT_STUDIED] for one the learner has never studied. */
+    private val needs = DoubleArray(cards.size) { if (isStudied(cards[it])) practiceNeed(cards[it], now) else NOT_STUDIED }
 
-    /** The cards for the next prompt. */
-    fun next(): List<WorksheetCard> {
-        if (fitsWhole) return lines
+    /** The islands' cards (as indices), and the islands' names. */
+    private val islands: List<List<Int>> = cards.indices.groupBy { cards[it].islandId }.values.toList()
+    private val names = islands.map { cards[it.first()].islandName }
+    private val planner = FocusPlanner(
+        DoubleArray(islands.size) { island -> islandFocus(islands[island].size, islands[island].sumOf { needs[it].coerceAtLeast(0.0) }) },
+        random
+    )
+
+    /** Where the cards of the island being dealt stand in a prompt's draw; see [inPickOrder]. */
+    private val draw = DoubleArray(cards.size)
+
+    /** The number of the prompt an island's cards were last in, 0 for none yet. */
+    private val lastShown = IntArray(islands.size)
+    private var prompts = 0
+
+    /** How many islands the cards are on. */
+    val islandCount: Int get() = islands.size
+
+    /** The cards for the next prompt, which asks for [sentences] sentences, and the islands those are to be about. */
+    fun next(sentences: Int): WorksheetDeal {
+        prompts++
+        val quotas = planner.plan(sentences, maxIslands = if (fitsWhole) islands.size else maxOf(1, limit / perIsland))
+        val planned = islands.indices.filter { quotas[it] > 0 }
+        // The prompt names the islands in the order it shows them, which is the coast's. Islands of one name are one topic to it.
+        val named = LinkedHashMap<String, Int>()
+        if (islands.size > 1) planned.sortedBy { islands[it].first() }.forEach { named[names[it]] = (named[names[it]] ?: 0) + quotas[it] }
+        val islandQuotas = named.map { (island, count) -> IslandQuota(island, count) }
+        if (fitsWhole) return WorksheetDeal(lines, islandQuotas)
+
         val picked = ArrayList<Int>(limit)
         val passedOver = ArrayList<Int>()
         var room = characters
@@ -368,27 +426,59 @@ internal class WorksheetCardDealer(
             return true
         }
 
-        var visited = 0
-        while (!full() && visited < islands.size) {
+        val others = islands.indices.filter { quotas[it] == 0 }.sortedWith(compareBy({ lastShown[it] }, { planner.due(it) }))
+        for (island in planned.sortedByDescending { quotas[it] } + others) {
+            if (full()) break
             var taken = 0
-            for (index in islands[(turn + visited) % islands.size].shuffled(random)) {
+            for (index in inPickOrder(islands[island])) {
                 if (taken < perIsland && take(index)) taken++ else passedOver += index
             }
-            visited++
+            if (taken > 0) lastShown[island] = prompts
         }
-        turn = (turn + visited) % islands.size
         if (!full()) for (index in passedOver.shuffled(random)) if (full()) break else take(index)
         // Cards too long for any prompt: the shortest ones are still better than a prompt without cards.
         if (picked.isEmpty()) picked += sizes.indices.sortedBy { sizes[it] }.take(WORKSHEET_MIN_CARDS)
-        return picked.sorted().map { lines[it] }
+        return WorksheetDeal(picked.sorted().map { lines[it] }, islandQuotas)
+    }
+
+    /**
+     * An island's [cards] in the order a prompt takes them: the studied ones first, drawn by their need (the
+     * more, the earlier, most of the time), then the ones never studied, shuffled. A different order every
+     * time, so the prompts of a sheet don't all show the same cards of a large island.
+     */
+    private fun inPickOrder(cards: List<Int>): List<Int> {
+        // A weighted draw without putting back is a sort by -ln(u)/weight (Efraimidis & Spirakis, 2006).
+        for (index in cards) {
+            val need = needs[index]
+            draw[index] = if (need == NOT_STUDIED) NEVER_STUDIED + random.nextDouble() else -ln(1 - random.nextDouble()) / (STUDIED_PICK + need)
+        }
+        return cards.sortedBy { draw[it] }
     }
 
     private companion object {
         /** " = " and the line break around a card's two sides. */
         const val SEPARATOR_LENGTH = 4
 
-        /** A card's text on one line, as the prompt lists one card per line. */
-        fun oneLine(text: String): String = text.lines().joinToString(" ") { it.trim() }.trim()
+        /**
+         * A studied card's weight in a prompt's draw before its need is added: a card that needs all the
+         * practice there is (1) is five times as likely to be drawn next as one that needs none.
+         */
+        const val STUDIED_PICK = 0.25
+
+        /** Sorts the cards never studied behind every studied one, whose keys are far below it. */
+        const val NEVER_STUDIED = 1e9
+
+        /** Stands for a card's need where the card was never studied. */
+        const val NOT_STUDIED = -1.0
+
+        /**
+         * A card's text on one line, as the prompt lists one card per line. Nearly every text is on one line
+         * already and is used as it is, so a large coast's texts aren't all held twice.
+         */
+        fun oneLine(text: String): String {
+            val oneLine = text.none { it == '\n' || it == '\r' } && text.firstOrNull()?.isWhitespace() != true && text.lastOrNull()?.isWhitespace() != true
+            return if (oneLine) text else text.lines().joinToString(" ") { it.trim() }.trim()
+        }
     }
 }
 
@@ -405,9 +495,13 @@ sealed interface WorksheetResult {
  * model that sends too few is asked again, but not forever: a small coast only has so many sentences in it,
  * so a long sheet can come out shorter than asked for.
  *
- * A coast of any size works: a prompt never carries more than a fixed number of cards and characters, a
- * large coast's islands take turns in the prompts ([WorksheetCardDealer]), and a local model, which reads a
- * short prompt, gets a few islands at a time. A long sheet from a large coast is many large requests in a
+ * What a sheet practises follows from how the coast's cards have been studied: every request is told how
+ * many of its sentences to write about which island, and the islands whose cards are slipping or keep being
+ * forgotten get the most (`WorksheetFocus.kt`).
+ *
+ * A coast of any size works: a prompt never carries more than a fixed number of cards and characters, of a
+ * large coast it shows the islands its sentences are about ([WorksheetCardDealer]), and a local model, which
+ * reads a short prompt, gets a few islands at a time. A long sheet from a large coast is many large requests in a
  * row, which a provider's per-minute limit can turn away; the sheet then waits as long as the provider says
  * ([Completion.retryAfterSeconds]) and carries on, instead of coming out short.
  */
@@ -429,8 +523,10 @@ class WorksheetGenerator(
      */
     suspend fun generate(coastId: Int, options: WorksheetOptions, onProgress: (Int) -> Unit = {}): WorksheetResult {
         val coast = flashcards.observeCoast(coastId).first() ?: return WorksheetResult.Failed("This coast is gone.")
-        val placed = flashcards.observeAllCards().first().filter { it.coastId == coastId }
-        if (placed.size < WORKSHEET_MIN_CARDS) {
+        // This coast's cards only, and of a card only what a sheet is made from: there can be tens of thousands.
+        val cards = flashcards.getWorksheetCards(coastId)
+        val cardCount = cards.size
+        if (cardCount < WORKSHEET_MIN_CARDS) {
             return WorksheetResult.Failed("A practice sheet needs at least $WORKSHEET_MIN_CARDS cards on the coast to make new sentences from.")
         }
         val provider = settings.translationProvider.first()
@@ -445,14 +541,23 @@ class WorksheetGenerator(
         val nativeLanguage = settings.nativeLanguage.first()
         val count = options.count.coerceIn(WORKSHEET_COUNT_RANGE)
         val isLocal = engine is TranslationEngine.LocalAi
-        val known = placed.flatMap { listOf(it.card.targetText) + it.card.alternatives }
-        val (vocabulary, dealer) = withContext(background) {
-            CoastVocabulary(known) to WorksheetCardDealer(
-                cards = placed,
-                limit = if (isLocal) LOCAL_CARD_LIMIT else CARD_LIMIT,
-                perIsland = if (isLocal) LOCAL_ISLAND_CARDS else ISLAND_CARDS,
-                characters = if (isLocal) LOCAL_CHARACTER_LIMIT else CHARACTER_LIMIT,
-                random = random
+        val (known, vocabulary, dealer) = withContext(background) {
+            val known = ArrayList<String>(cards.size)
+            cards.forEach {
+                known += it.targetText
+                known += it.alternatives
+            }
+            Triple(
+                known,
+                CoastVocabulary(known),
+                WorksheetCardDealer(
+                    cards = cards,
+                    limit = if (isLocal) LOCAL_CARD_LIMIT else CARD_LIMIT,
+                    perIsland = if (isLocal) LOCAL_ISLAND_CARDS else ISLAND_CARDS,
+                    characters = if (isLocal) LOCAL_CHARACTER_LIMIT else CHARACTER_LIMIT,
+                    now = clock.now().toEpochMilliseconds(),
+                    random = random
+                )
             )
         }
         val wanted = worksheetSentencesWanted(count, isLocal)
@@ -471,15 +576,18 @@ class WorksheetGenerator(
         while (moreNeeded() && requests < planned + EXTRA_REQUESTS && barren < MAX_BARREN_REQUESTS) {
             requests++
             val prompt = withContext(background) {
+                val asked = minOf(perRequest, wanted - written.size)
+                val deal = dealer.next(asked)
                 buildWorksheetPrompt(
-                    cards = dealer.next(),
+                    cards = deal.cards,
                     targetLanguage = coast.language,
                     nativeLanguage = nativeLanguage,
-                    count = minOf(perRequest, wanted - written.size),
+                    count = asked,
                     difficulty = options.difficulty,
                     region = coast.region,
                     // Every repeat is dropped below anyway; the prompt names the latest ones, which a model repeats most readily.
-                    avoid = written.takeLast(AVOID_LIMIT).map { it.targetText }
+                    avoid = written.takeLast(AVOID_LIMIT).map { it.targetText },
+                    quotas = deal.quotas
                 )
             }
             var completion = translator.complete(engine, prompt)
@@ -520,8 +628,8 @@ class WorksheetGenerator(
                 sentences = sentences,
                 date = clock.todayIn(timeZone),
                 providerLabel = provider.label,
-                cardCount = placed.size,
-                islandCount = placed.distinctBy { it.card.islandId }.size
+                cardCount = cardCount,
+                islandCount = dealer.islandCount
             )
         )
     }

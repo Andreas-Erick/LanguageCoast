@@ -27,6 +27,7 @@ import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.Worksheet
 import com.andreaserick.languagecoast.data.WorksheetPdf
 import com.andreaserick.languagecoast.data.WorksheetPrinter
+import com.andreaserick.languagecoast.data.WorksheetSourceCard
 import com.andreaserick.languagecoast.data.emojiForCategory
 import com.andreaserick.languagecoast.data.starterTopicKey
 import com.andreaserick.languagecoast.data.isDue
@@ -254,6 +255,19 @@ class FakeFlashcardRepository : FlashcardRepository {
                 PlacedCard(card, island.name, island.emoji, coast.coastId, coast.language)
             }.sortedWith(compareBy({ it.coastId }, { it.islandName }, { it.card.cardId }))
         }
+
+    override suspend fun getWorksheetCards(coastId: Int): List<WorksheetSourceCard> {
+        val names = islands.value.filter { it.coastId == coastId }.associate { it.islandId to it.name }
+        return cards.value
+            .filter { it.islandId in names }
+            .sortedWith(compareBy({ names.getValue(it.islandId) }, { it.cardId }))
+            .map {
+                WorksheetSourceCard(
+                    it.islandId, names.getValue(it.islandId), it.targetText, it.nativeText, it.alternatives,
+                    it.stability, it.difficulty, it.lastReviewed, it.lapses
+                )
+            }
+    }
 
     override fun observeAllIslands(): Flow<List<LanguageIsland>> = islands
 
