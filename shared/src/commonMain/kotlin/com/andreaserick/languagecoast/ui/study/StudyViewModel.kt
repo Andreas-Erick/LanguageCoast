@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.AlternativeVerdict
+import com.andreaserick.languagecoast.data.CardExchange
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.Cloze
@@ -23,6 +24,7 @@ import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.buildAlternativeCheckPrompt
 import com.andreaserick.languagecoast.data.buildCardCheckPrompt
+import com.andreaserick.languagecoast.data.buildCardQuestionPrompt
 import com.andreaserick.languagecoast.data.buildCardReadingPrompt
 import com.andreaserick.languagecoast.data.buildExplainPrompt
 import com.andreaserick.languagecoast.data.clozeOf
@@ -33,6 +35,7 @@ import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.data.isLeaky
 import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.data.parseAlternativeCheck
+import com.andreaserick.languagecoast.data.parseCardAnswer
 import com.andreaserick.languagecoast.data.parseCardCheck
 import com.andreaserick.languagecoast.data.parseCardReading
 import com.andreaserick.languagecoast.data.reviewOutcomes
@@ -135,6 +138,28 @@ data class AlternativeCheck(
         }
 }
 
+/**
+ * The questions the user asked the AI provider about a card, newest last; see [StudyViewModel.askAboutCard].
+ *
+ * @property unavailable Why nothing can be asked (no provider set up, or one that only translates); null when it can.
+ */
+data class CardQuestions(
+    val cardId: Int,
+    val nativeText: String,
+    val targetText: String,
+    val providerLabel: String,
+    val unavailable: String? = null,
+    val asked: List<AskedQuestion> = emptyList()
+) {
+    /** Whether a question is still waiting for its answer; the next one can be asked once it has it. */
+    val isAsking: Boolean get() = asked.lastOrNull()?.isLoading == true
+}
+
+/** A question about a card, with the provider's answer or why there is none. */
+data class AskedQuestion(val question: String, val answer: String? = null, val error: String? = null) {
+    val isLoading: Boolean get() = answer == null && error == null
+}
+
 data class StudyUiState(
     /** The island's name, or the session's title for the other scopes ("Today's review"). */
     val islandName: String = "",
@@ -171,6 +196,8 @@ data class StudyUiState(
     val explanation: WordExplanation? = null,
     /** A check of a card's translation being shown (or fetched). */
     val cardCheck: CardCheck? = null,
+    /** The questions asked about a card, while their sheet is open. */
+    val cardQuestions: CardQuestions? = null,
     /** In a daily session: the new sentence being offered, once the due cards are done; null while reviewing. */
     val learning: SuggestedSentence? = null,
     /** New sentences the daily session started with, and how many are still to be offered. */
@@ -273,6 +300,11 @@ class StudyViewModel(
     private val cardCheck = MutableStateFlow<CardCheck?>(null)
     private var checkJob: Job? = null
     private var alternativeJob: Job? = null
+    private val cardQuestions = MutableStateFlow<CardQuestions?>(null)
+    private var questionJob: Job? = null
+
+    /** What the sheets over a session show. */
+    private data class Sheets(val explanation: WordExplanation?, val cardCheck: CardCheck?, val cardQuestions: CardQuestions?)
 
     /** The languages of the session's coasts that have a voice. */
     private val spokenLanguages: Flow<Set<String>> = session
@@ -286,12 +318,12 @@ class StudyViewModel(
         }
 
     val uiState: StateFlow<StudyUiState> = combine(
-        combine(session, explanation, cardCheck) { s, e, c -> Triple(s, e, c) },
+        combine(session, explanation, cardCheck, cardQuestions) { s, e, c, q -> s to Sheets(e, c, q) },
         settings.nativeLanguage,
         combine(spokenLanguages, flashcards.observeAllIslands()) { spoken, islands -> spoken to islands },
         settings.streakCount,
         settings.studyReversed
-    ) { (s, explanation, cardCheck), nativeLanguage, (spoken, islands), streak, reversed ->
+    ) { (s, sheets), nativeLanguage, (spoken, islands), streak, reversed ->
         val now = clock.now()
         StudyUiState(
             islandName = title,
@@ -319,8 +351,9 @@ class StudyViewModel(
             spokenLanguages = spoken,
             allIslands = islands,
             isReversed = reversed,
-            explanation = explanation,
-            cardCheck = cardCheck,
+            explanation = sheets.explanation,
+            cardCheck = sheets.cardCheck,
+            cardQuestions = sheets.cardQuestions,
             learning = s.learning,
             learnTotal = s.learnTotal,
             learnLeft = s.learnQueue.size,
@@ -659,6 +692,66 @@ class StudyViewModel(
         cardCheck.value = null
     }
 
+    /**
+     * Opens the questions about the current card, with none asked yet; see [askAboutCard]. Says right away
+     * if the provider picked in Settings can't answer any.
+     */
+    fun openCardQuestions() {
+        val card = uiState.value.currentCard ?: return
+        questionJob?.cancel()
+        questionJob = viewModelScope.launch {
+            val provider = settings.translationProvider.first()
+            val unavailable = when (val choice = settings.currentEngine(provider)) {
+                is EngineChoice.Missing -> choice.message
+                is EngineChoice.Ready -> ON_DEVICE_CANNOT_ANSWER.takeIf { choice.engine == TranslationEngine.OnDevice }
+            }
+            cardQuestions.value = CardQuestions(card.cardId, card.nativeText, card.targetText, provider.label, unavailable)
+        }
+    }
+
+    /**
+     * Asks the AI provider picked in Settings [text], a question of the user's about the card whose questions
+     * are open ("why 'dem' and not 'den'?"). The provider gets the card and what was asked about it before,
+     * so a question can follow up on an answer. The answer (or why there is none) arrives in
+     * [StudyUiState.cardQuestions]; one question is asked at a time.
+     */
+    fun askAboutCard(text: String) {
+        val open = cardQuestions.value ?: return
+        val question = text.trim()
+        if (question.isEmpty() || open.unavailable != null || open.isAsking) return
+        val placed = session.value.allCards.firstOrNull { it.card.cardId == open.cardId } ?: return
+        val earlier = open.asked.mapNotNull { asked -> asked.answer?.let { CardExchange(asked.question, it) } }
+        cardQuestions.value = open.copy(asked = open.asked + AskedQuestion(question))
+        val nativeLanguage = uiState.value.nativeLanguage
+        questionJob?.cancel()
+        questionJob = viewModelScope.launch {
+            val provider = settings.translationProvider.first()
+            val answer: Pair<String?, String?> = when (val choice = settings.currentEngine(provider)) {
+                is EngineChoice.Missing -> null to choice.message
+                is EngineChoice.Ready -> if (choice.engine == TranslationEngine.OnDevice) null to ON_DEVICE_CANNOT_ANSWER else {
+                    val region = flashcards.observeCoast(placed.coastId).first()?.region
+                    val completion = translator.complete(
+                        choice.engine,
+                        buildCardQuestionPrompt(placed.card, nativeLanguage, placed.language, region, earlier, question)
+                    )
+                    val parsed = completion.text?.let(::parseCardAnswer)
+                    parsed to (completion.errorMessage ?: "No answer.").takeIf { parsed == null }
+                }
+            }
+            cardQuestions.update { current ->
+                val last = current?.asked?.lastOrNull()
+                if (current == null || current.cardId != open.cardId || last?.question != question || !last.isLoading) current
+                else current.copy(asked = current.asked.dropLast(1) + last.copy(answer = answer.first, error = answer.second))
+            }
+        }
+    }
+
+    /** Closes the questions about a card; what was asked isn't kept. */
+    fun dismissCardQuestions() {
+        questionJob?.cancel()
+        cardQuestions.value = null
+    }
+
     /** Deletes the current card; [onDeleted] receives it so the delete can be undone. */
     fun deleteCurrentCard(onDeleted: (DeletedContent) -> Unit) {
         val card = uiState.value.currentCard ?: return
@@ -704,6 +797,8 @@ class StudyViewModel(
     private companion object {
         /** A provider's remark on an alternative becomes part of the card's note only up to this length. */
         const val MAX_SAVED_NOTE = 160
+
+        const val ON_DEVICE_CANNOT_ANSWER = "On-device translation can't answer questions. Pick an AI provider in Settings."
     }
 
     /** Days from [now] until the earliest card that isn't due yet becomes due, or null if there is none. */

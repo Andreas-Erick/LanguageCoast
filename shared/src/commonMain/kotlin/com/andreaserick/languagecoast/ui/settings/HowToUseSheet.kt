@@ -115,6 +115,7 @@ private val GUIDE = listOf(
             "Tap a card there, or \"Edit card\" in the ⋮ menu while studying, to fix its translation and alternatives or move it to another island.",
             "Not sure a card is right? \"Check translation\" in the ⋮ menu while studying has your AI provider read it as a native speaker would. Nothing changes unless you tap \"Use this\".",
             "Would you say it differently? In the same sheet, type your own translation under \"Correct as well?\". If your AI provider agrees, save it as an alternative: it then counts as correct when you type it.",
+            "Something about a card you don't get? \"Ask about this card\" in the ⋮ menu while studying lets you ask your AI provider anything about it, and follow up on its answer.",
             "Export a coast to Anki, to a CSV file for a spreadsheet or to Markdown, or import cards from an Anki deck (.apkg) or a CSV file, under \"Your cards\" in Settings. " +
                 "An Anki deck's notes become cards on islands named after its decks; if it has the foreign language on the front, turn on \"Swap sides\" in the preview."
                 .takeIf { fileTransferAvailable },

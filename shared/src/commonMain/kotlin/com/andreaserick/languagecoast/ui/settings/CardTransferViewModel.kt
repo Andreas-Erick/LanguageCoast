@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.AnkiNote
+import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.ExportFormat
 import com.andreaserick.languagecoast.data.FlashcardRepository
@@ -59,8 +60,13 @@ data class CardTransferUiState(
 /** An export ready to be written to a file. */
 data class ExportFile(val text: String, val cardCount: Int)
 
-/** What an import added, so it can be undone, and how many cards it skipped because the coast already had them. */
-data class ImportResult(val added: List<AddedCard>, val duplicates: Int)
+/**
+ * What an import added, so it can be undone, and how many cards it skipped because the coast already had them.
+ *
+ * @property reformatted How many of the [duplicates] got their line breaks from the file: cards imported
+ *     before imports kept them, whose sides ran together into one line. Undoing the import leaves them so.
+ */
+data class ImportResult(val added: List<AddedCard>, val duplicates: Int, val reformatted: Int = 0)
 
 /** Island for imported cards whose file doesn't name one. */
 const val DEFAULT_IMPORT_ISLAND = "Imported"
@@ -146,19 +152,29 @@ class CardTransferViewModel(
 
     /**
      * Adds the previewed cards to their coast, each into the island the file names (or [DEFAULT_IMPORT_ISLAND]).
-     * Cards the coast already has, or that appear twice in the file, are skipped.
+     * Cards the coast already has, or that appear twice in the file, are skipped; one the coast has in fewer
+     * lines than the file is given the file's layout, and keeps everything else (see [ImportResult.reformatted]).
      */
     fun confirmImport(onImported: (ImportResult) -> Unit) {
         val preview = state.value.importPreview ?: return
         state.update { it.copy(isImporting = true) }
         viewModelScope.launch {
             val existing = flashcards.getAllContent().firstOrNull { it.coast.coastId == preview.coastId }?.cards.orEmpty()
-            val seen = existing.mapTo(HashSet()) { duplicateKey(it.nativeText, it.targetText) }
+                .associateByTo(HashMap()) { duplicateKey(it.nativeText, it.targetText) }
+            val seen = existing.keys.toHashSet()
             val added = mutableListOf<AddedCard>()
             var duplicates = 0
+            var reformatted = 0
             preview.cardsToImport.forEach { card ->
-                if (!seen.add(duplicateKey(card.nativeText, card.targetText))) {
+                val key = duplicateKey(card.nativeText, card.targetText)
+                if (!seen.add(key)) {
                     duplicates++
+                    // Once per card: the file may have it twice.
+                    val old = existing.remove(key)
+                    if (old != null && (hasNewLines(old.nativeText, card.nativeText) || hasNewLines(old.targetText, card.targetText))) {
+                        flashcards.editCard(old.cardId, CardEdit(card.nativeText, card.targetText, old.alternatives, old.note, old.islandId))
+                        reformatted++
+                    }
                 } else {
                     added += flashcards.addFlashcard(
                         coastId = preview.coastId,
@@ -171,7 +187,7 @@ class CardTransferViewModel(
                 }
             }
             state.update { it.copy(importPreview = null, isImporting = false) }
-            onImported(ImportResult(added, duplicates))
+            onImported(ImportResult(added, duplicates, reformatted))
         }
     }
 
@@ -198,7 +214,14 @@ class CardTransferViewModel(
         return first.nativeText.lowercase() in names && first.targetText.lowercase() in names
     }
 
-    /** Cards with the same texts, ignoring case and surrounding spaces, count as duplicates. */
+    /** Cards with the same texts, ignoring case and how the text is spaced and broken into lines, count as duplicates. */
     private fun duplicateKey(nativeText: String, targetText: String) =
-        nativeText.trim().lowercase() to targetText.trim().lowercase()
+        nativeText.trim().replace(WHITESPACE, " ").lowercase() to targetText.trim().replace(WHITESPACE, " ").lowercase()
+
+    /** Whether [imported] has the same text as [old] (as duplicates do), but set in more lines. */
+    private fun hasNewLines(old: String, imported: String) = imported.lines().size > old.lines().size
+
+    private companion object {
+        val WHITESPACE = Regex("\\s+")
+    }
 }

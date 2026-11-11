@@ -13,7 +13,8 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * A note is a list of fields (Front and Back for the usual note type, more for others), stored as HTML. Its
  * first two fields with any text become the card's two sides, and the deck its first card is in names the
- * island. Pictures, sounds, styling, tags and Anki's review history are left behind.
+ * island. A side keeps the lines its field had (see [cardSideText]). Pictures, sounds, styling, tags and
+ * Anki's review history are left behind.
  */
 
 /**
@@ -74,10 +75,10 @@ fun ankiNoteCards(notes: List<AnkiNote>): List<ImportedCard> = notes.mapNotNull 
     val sides = note.fields.map(::ankiFieldText).filter { it.isNotEmpty() }
     if (sides.size < 2) return@mapNotNull null
     val (translation, alternatives, cardNote) = splitCardBack(sides[1])
-    val targetText = oneLine(translation)
+    val targetText = cardSideText(translation)
     if (targetText.isEmpty()) return@mapNotNull null
     ImportedCard(
-        nativeText = oneLine(sides[0]),
+        nativeText = cardSideText(sides[0]),
         targetText = targetText,
         island = note.deck?.let(::ankiIsland),
         alternatives = alternatives,
@@ -91,7 +92,8 @@ internal fun ankiIsland(deck: String): String? =
 
 /**
  * The text of a note's field: its HTML without tags, sounds and pictures, with cloze deletions filled in.
- * Line breaks and blocks stay as lines, each without space around it; empty lines are dropped.
+ * Line breaks, blocks, list items and table rows stay as lines, each without space around it; empty lines
+ * are dropped. The cells of a table's row are set apart by a space.
  */
 internal fun ankiFieldText(html: String): String {
     val text = html
@@ -99,6 +101,7 @@ internal fun ankiFieldText(html: String): String {
         .replace(SOUND, "")
         .replace(CLOZE, "$1")
         .replace(LINE_END, "\n")
+        .replace(CELL_END, " ")
         .replace(TAG, "")
     return decodeHtmlEntities(text.replace(NUMERIC_ENTITY) { match -> entityChar(match.groupValues[1]) ?: match.value })
         .lines()
@@ -106,8 +109,6 @@ internal fun ankiFieldText(html: String): String {
         .filter { it.isNotEmpty() }
         .joinToString("\n")
 }
-
-private fun oneLine(text: String): String = text.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" ")
 
 /** The character of `&#228;` or `&#xE4;`, given what is between `&#` and `;`; null if that is no character. */
 private fun entityChar(code: String): String? {
@@ -124,8 +125,14 @@ private val SOUND = Regex("\\[sound:[^\\]]*\\]")
 /** A cloze deletion, `{{c1::answer}}` or `{{c1::answer::hint}}`; the answer is its first group. */
 private val CLOZE = Regex("\\{\\{c\\d+::(.*?)(?:::.*?)?\\}\\}")
 
-/** What ends a line in a field: a break, or the start or end of a block. */
-private val LINE_END = Regex("<br\\s*/?>|</?(?:div|p|li|tr|h[1-6])\\b[^>]*>", RegexOption.IGNORE_CASE)
+/** What ends a line in a field: a break, a rule, or the start or end of a block. */
+private val LINE_END = Regex(
+    "<(?:br|hr)\\s*/?>|</?(?:div|p|li|ul|ol|dl|dt|dd|tr|table|blockquote|pre|section|article|h[1-6])\\b[^>]*>",
+    RegexOption.IGNORE_CASE
+)
+
+/** The end of a table's cell, after which the next cell's text must not run into this one's. */
+private val CELL_END = Regex("</t[dh]\\s*>", RegexOption.IGNORE_CASE)
 private val TAG = Regex("<[^>]+>")
 private val NUMERIC_ENTITY = Regex("&#(x?[0-9a-fA-F]+);")
 private val SPACES = Regex("[ \\t\u00A0]+")

@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.BeachAccess
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Spellcheck
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.ButtonDefaults
@@ -91,8 +92,10 @@ import com.andreaserick.languagecoast.data.AnswerMatch
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.data.SuggestedSentence
+import com.andreaserick.languagecoast.data.acceptedAnswers
 import com.andreaserick.languagecoast.data.checkAnswer
 import com.andreaserick.languagecoast.data.emojiForCategory
+import com.andreaserick.languagecoast.data.isListItem
 import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CardOptionsMenu
@@ -161,6 +164,10 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
         )
     }
 
+    uiState.cardQuestions?.let { questions ->
+        CardQuestionSheet(questions = questions, onAsk = viewModel::askAboutCard, onDismiss = viewModel::dismissCardQuestions)
+    }
+
     editingCard?.let { card ->
         EditCardSheet(
             card = card,
@@ -188,6 +195,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                 onPrevious = viewModel::previous,
                 onSkip = viewModel::next,
                 onCheck = viewModel::checkCard,
+                onAsk = viewModel::openCardQuestions,
                 onEdit = { editingCard = currentCard },
                 onDelete = {
                     viewModel.deleteCurrentCard { deleted ->
@@ -319,6 +327,7 @@ private fun SessionTopBar(
     onPrevious: () -> Unit,
     onSkip: () -> Unit,
     onCheck: () -> Unit,
+    onAsk: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -392,6 +401,14 @@ private fun SessionTopBar(
                     onClick = {
                         dismiss()
                         onCheck()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Ask about this card") },
+                    leadingIcon = { Icon(Icons.Default.QuestionAnswer, contentDescription = null) },
+                    onClick = {
+                        dismiss()
+                        onAsk()
                     }
                 )
             }
@@ -567,13 +584,9 @@ fun FlipStudyView(
                             if (isFlipped) {
                                 Text(question, style = MaterialTheme.typography.titleMedium, color = TextSecondary)
                                 HorizontalDivider(color = SurfaceSelected, modifier = Modifier.padding(vertical = 16.dp))
-                                if (hasDictionary && onExplain != null) {
-                                    ClickableWordSentence(sentence = answer, onWordClick = onExplain)
-                                } else {
-                                    Text(answer, style = MaterialTheme.typography.headlineLarge)
-                                }
+                                CardSideText(text = answer, onWordClick = onExplain.takeIf { hasDictionary })
                             } else {
-                                Text(question, style = MaterialTheme.typography.headlineLarge)
+                                CardSideText(text = question)
                             }
                         }
                     }
@@ -892,10 +905,11 @@ private fun AlternativesSheet(
 
 /**
  * How [typed] compares with [card]'s translation or one of its alternatives (see [checkAnswer]),
- * or with its native text when studying [reversed].
+ * or with its native text when studying [reversed]. Of a side with several lines, one line is enough
+ * (see [acceptedAnswers]).
  */
 internal fun matchAnswer(typed: String, card: Flashcard, reversed: Boolean = false): AnswerMatch =
-    checkAnswer(typed, if (reversed) listOf(card.nativeText) else listOf(card.targetText) + card.alternatives)
+    checkAnswer(typed, if (reversed) acceptedAnswers(card.nativeText) else acceptedAnswers(card.targetText) + card.alternatives)
 
 /**
  * Whether [typed] matches [card]'s translation or one of its alternatives (see [answerMatches]),
@@ -1084,24 +1098,58 @@ private fun Confetti(modifier: Modifier = Modifier) {
 private data class ConfettiPiece(val x: Float, val delay: Float, val speed: Float, val drift: Float, val color: Color)
 
 /**
+ * One side of a card as the flip card shows it. A side with several lines (an imported card with a word,
+ * its forms and an example) gets room between them, and its first line stands out as the headline; a list
+ * of equals ("1. house", "2. home") is set in one size instead.
+ *
+ * @param onWordClick Makes the words tappable (see [ClickableWordSentence]); null shows plain text.
+ */
+@Composable
+internal fun CardSideText(text: String, onWordClick: ((String) -> Unit)? = null) {
+    val lines = remember(text) { text.lines().map { it.trim() }.filter { it.isNotEmpty() } }
+    if (lines.size < 2) {
+        CardSideLine(text, MaterialTheme.typography.headlineLarge, onWordClick)
+        return
+    }
+    val isList = isListItem(lines.first())
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        lines.forEachIndexed { index, line ->
+            val style = when {
+                isList -> MaterialTheme.typography.headlineSmall
+                index == 0 -> MaterialTheme.typography.headlineLarge
+                else -> MaterialTheme.typography.titleLarge
+            }
+            CardSideLine(line, style, onWordClick)
+        }
+    }
+}
+
+/** A line of a card's side in [style], with tappable words if [onWordClick] is given. */
+@Composable
+private fun CardSideLine(text: String, style: TextStyle, onWordClick: ((String) -> Unit)?) {
+    if (onWordClick != null) ClickableWordSentence(sentence = text, onWordClick = onWordClick, style = style)
+    else Text(text, style = style)
+}
+
+/**
  * Renders a sentence where each word can be tapped. Tappable words get a dotted underline;
  * punctuation stays attached to its word but isn't underlined or part of the lookup.
  *
  * @param sentence The full sentence to display.
  * @param onWordClick Callback triggered when a word is clicked, passing the sanitized word.
  *   If null, the words are shown as plain text.
+ * @param style The size the words are set in.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ClickableWordSentence(sentence: String, onWordClick: ((String) -> Unit)?) {
-    val style = MaterialTheme.typography.headlineLarge
+fun ClickableWordSentence(sentence: String, onWordClick: ((String) -> Unit)?, style: TextStyle = MaterialTheme.typography.headlineLarge) {
     // FlowRow automatically wraps words to the next line
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        sentence.split(" ").filter { it.isNotEmpty() }.forEach { token ->
+        sentence.split(' ', '\n', '\t').filter { it.isNotEmpty() }.forEach { token ->
             val (leading, word, trailing) = splitPunctuation(token)
             Row {
                 if (leading.isNotEmpty()) WordText(leading, style)
@@ -1109,7 +1157,8 @@ fun ClickableWordSentence(sentence: String, onWordClick: ((String) -> Unit)?) {
                     WordText(
                         text = word,
                         style = style,
-                        modifier = if (onWordClick == null) Modifier else Modifier
+                        // A list's number ("1.") is no word to look up.
+                        modifier = if (onWordClick == null || word.none { it.isLetter() }) Modifier else Modifier
                             .dottedUnderline(TextSecondary)
                             .clickable { onWordClick(word) }
                     )

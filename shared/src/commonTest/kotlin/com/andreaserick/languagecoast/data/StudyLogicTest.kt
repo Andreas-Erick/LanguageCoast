@@ -3,6 +3,7 @@ package com.andreaserick.languagecoast.data
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -67,5 +68,57 @@ class StudyLogicTest {
     fun pastedTextIsSplitIntoSentencesWithoutBulletsOrRepeats() {
         val text = "Where is the beach? It is far.\n- The water is cold!\nWhere is the beach?\nOk"
         assertEquals(listOf("Where is the beach?", "It is far.", "The water is cold!"), splitSentences(text))
+    }
+
+    @Test
+    fun oneLineOfASideWithSeveralIsEnoughToType() {
+        assertEquals(listOf("Guten Morgen"), acceptedAnswers("Guten Morgen"))
+        val side = "der Hund\npl. die Hunde"
+        assertEquals(listOf(side, "der Hund", "pl. die Hunde"), acceptedAnswers(side))
+        assertEquals(AnswerMatch.Exact, checkAnswer("der hund", acceptedAnswers(side)))
+        assertEquals(AnswerMatch.Exact, checkAnswer("der Hund pl. die Hunde", acceptedAnswers(side)))
+        // A list of meanings is typed without its numbers.
+        assertEquals(AnswerMatch.Exact, checkAnswer("home", acceptedAnswers("1. house\n2. home\n- flat")))
+        assertEquals(AnswerMatch.Wrong, checkAnswer("die Katze", acceptedAnswers(side)))
+    }
+
+    @Test
+    fun listItemsAreToldFromOtherLines() {
+        assertTrue(isListItem("1. house"))
+        assertTrue(isListItem("2) home"))
+        assertTrue(isListItem("- flat"))
+        assertFalse(isListItem("der Hund"))
+        assertFalse(isListItem("1.50 Euro"))
+    }
+
+    @Test
+    fun aSlipInOneLineOfASideWithSeveralIsStillAlmost() {
+        val side = "der Hund\npl. die Hunde\nDer Hund bellt laut."
+
+        assertEquals(AnswerMatch.Almost("Der Hund bellt laut.", "Der Hund belt laut"), checkAnswer("Der Hund belt laut", acceptedAnswers(side)))
+        assertEquals(AnswerMatch.Exact, checkAnswer("pl die hunde", acceptedAnswers(side)))
+    }
+
+    @Test
+    fun emptyLinesAndWindowsLineEndingsDoNotCountAsAnswers() {
+        assertEquals(listOf("der Hund\r\n\npl. die Hunde", "der Hund", "pl. die Hunde"), acceptedAnswers("der Hund\r\n\npl. die Hunde"))
+        // One line with space around it is one answer, not two.
+        assertEquals(listOf(" Guten Morgen\n"), acceptedAnswers(" Guten Morgen\n"))
+        assertEquals(AnswerMatch.Wrong, checkAnswer(" ", acceptedAnswers("der Hund\n\npl. die Hunde")))
+    }
+
+    @Test
+    fun theSameSentenceIsTheSameHoweverItIsBrokenIntoLines() {
+        assertTrue(isSameSentence("der Hund pl. die Hunde", "der Hund\npl. die Hunde"))
+        assertFalse(isSameSentence("der Hund", "der Hund\npl. die Hunde"))
+    }
+
+    @Test
+    fun aGapIsMadeInASideWithSeveralLinesWithoutLosingThem() {
+        val cloze = clozeOf("der Hund\nDer Hund bellt furchtbar.")!!
+
+        assertEquals("furchtbar", cloze.word)
+        assertEquals("der Hund\nDer Hund bellt ", cloze.before)
+        assertEquals("der Hund\nDer Hund bellt furchtbar.", cloze.before + cloze.word + cloze.after)
     }
 }

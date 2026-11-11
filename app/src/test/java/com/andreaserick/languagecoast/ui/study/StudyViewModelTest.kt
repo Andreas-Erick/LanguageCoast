@@ -5,6 +5,11 @@ import com.andreaserick.languagecoast.data.AlternativeVerdict
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.DeletedContent
+import com.andreaserick.languagecoast.data.TranslationEngine
+import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.TranslationRequest
+import com.andreaserick.languagecoast.data.TranslationResult
+import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.DAILY_REVIEW_CAP
 import com.andreaserick.languagecoast.data.Grade
@@ -18,6 +23,7 @@ import com.andreaserick.languagecoast.testing.FakeTranslator
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
 import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -785,4 +791,254 @@ class StudyViewModelTest {
 
     private fun startOfDay(date: String): Long =
         LocalDate.parse(date).atStartOfDayIn(TEST_TIME_ZONE).toEpochMilliseconds()
+
+    @Test
+    fun aQuestionAboutTheCardIsAnsweredAndAFollowUpKnowsWhatWasSaid() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        settings.apiKey.value = "key"
+        translator.completion = Completion("**t1** is a greeting.")
+        val viewModel = createViewModel()
+
+        viewModel.openCardQuestions()
+        val open = viewModel.state.cardQuestions!!
+        assertEquals("n1" to "t1", open.nativeText to open.targetText)
+        assertEquals(null, open.unavailable)
+        assertTrue(open.asked.isEmpty())
+
+        viewModel.askAboutCard(" When would I say this? ")
+        assertEquals(listOf(AskedQuestion("When would I say this?", answer = "t1 is a greeting.")), viewModel.state.cardQuestions?.asked)
+        assertTrue("The learner asks: When would I say this?" in translator.prompts.single())
+        assertTrue("Spanish: t1" in translator.prompts.single())
+
+        translator.completion = Completion("Only among friends.")
+        viewModel.askAboutCard("Is it formal?")
+        assertEquals(listOf("t1 is a greeting.", "Only among friends."), viewModel.state.cardQuestions?.asked?.map { it.answer })
+        assertTrue("Learner: When would I say this?\nYou: t1 is a greeting." in translator.prompts.last())
+
+        viewModel.askAboutCard("   ")
+        assertEquals(2, translator.prompts.size)
+
+        viewModel.dismissCardQuestions()
+        assertEquals(null, viewModel.state.cardQuestions)
+    }
+
+    @Test
+    fun aQuestionThatCannotBeAnsweredSaysWhy() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        val viewModel = createViewModel()
+
+        // No API key yet: the sheet says so instead of offering a field.
+        viewModel.openCardQuestions()
+        assertTrue(viewModel.state.cardQuestions?.unavailable.orEmpty().contains("API key"))
+        viewModel.askAboutCard("Why?")
+        assertTrue(translator.prompts.isEmpty())
+
+        settings.apiKey.value = "key"
+        translator.completion = Completion.failure("No connection.")
+        viewModel.openCardQuestions()
+        viewModel.askAboutCard("Why?")
+        assertEquals(listOf(AskedQuestion("Why?", error = "No connection.")), viewModel.state.cardQuestions?.asked)
+
+        // The next question can be asked right after one that failed.
+        translator.completion = Completion("Because.")
+        viewModel.askAboutCard("Why?")
+        assertEquals(listOf(null, "Because."), viewModel.state.cardQuestions?.asked?.map { it.answer })
+    }
+
+    @Test
+    fun onDeviceTranslationCannotBeAskedAboutACard() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.translationProvider.value = TranslationProvider.OnDevice
+        val viewModel = createViewModel()
+
+        viewModel.openCardQuestions()
+
+        assertTrue(viewModel.state.cardQuestions?.unavailable.orEmpty().contains("On-device"))
+    }
+
+    @Test
+    fun aQuestionIsSentWithTheCardsAlternativesItsNoteAndTheCoastsRegion() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        flashcards.setCoastGoal(1, null, "Mexico")
+        flashcards.editCard(1, CardEdit("How are you?", "¿Cómo estás?", listOf("¿Qué tal?"), "Qué tal is casual.", 1))
+        settings.apiKey.value = "key"
+        val viewModel = createViewModel()
+
+        viewModel.openCardQuestions()
+        viewModel.askAboutCard("Is it formal?")
+
+        val prompt = translator.prompts.single()
+        assertTrue("English: How are you?" in prompt)
+        assertTrue("Spanish: ¿Cómo estás?" in prompt)
+        assertTrue("¿Qué tal?" in prompt)
+        assertTrue("Note on the card: Qué tal is casual." in prompt)
+        assertTrue("Spanish in Mexico" in prompt)
+    }
+
+    @Test
+    fun aQuestionThatGotNoAnswerIsNotPassedOnWithTheNextOne() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        translator.completion = Completion.failure("No connection.")
+        val viewModel = createViewModel()
+
+        viewModel.openCardQuestions()
+        viewModel.askAboutCard("First?")
+        translator.completion = Completion("An answer.")
+        viewModel.askAboutCard("Second?")
+
+        assertFalse("Earlier in this conversation" in translator.prompts.last())
+        assertFalse("First?" in translator.prompts.last())
+        assertEquals(listOf("First?", "Second?"), viewModel.state.cardQuestions?.asked?.map { it.question })
+    }
+
+    @Test
+    fun anEmptyAnswerCountsAsNoAnswer() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        translator.completion = Completion(" \n``` ")
+        val viewModel = createViewModel()
+
+        viewModel.openCardQuestions()
+        viewModel.askAboutCard("Why?")
+
+        assertEquals(listOf(AskedQuestion("Why?", error = "No answer.")), viewModel.state.cardQuestions?.asked)
+    }
+
+    @Test
+    fun questionsStayWithTheCardTheyWereOpenedOn() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        settings.apiKey.value = "key"
+        val viewModel = createViewModel()
+
+        viewModel.openCardQuestions()
+        viewModel.next()
+        viewModel.askAboutCard("Why?")
+
+        assertEquals("n2", viewModel.currentText)
+        assertTrue("Spanish: t1" in translator.prompts.single())
+        assertFalse("t2" in translator.prompts.single())
+    }
+
+    @Test
+    fun openingTheQuestionsAgainStartsWithNoneAsked() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        val viewModel = createViewModel()
+
+        viewModel.openCardQuestions()
+        viewModel.askAboutCard("Why?")
+        viewModel.dismissCardQuestions()
+        viewModel.openCardQuestions()
+
+        assertTrue(viewModel.state.cardQuestions!!.asked.isEmpty())
+        viewModel.askAboutCard("And now?")
+        assertFalse("Earlier in this conversation" in translator.prompts.last())
+    }
+
+    @Test
+    fun nothingIsAskedWithoutACardOrWithoutTheSheet() = runTest {
+        settings.apiKey.value = "key"
+        val empty = createViewModel()
+        empty.openCardQuestions()
+        assertEquals(null, empty.state.cardQuestions)
+
+        flashcards.seed(islandId = 1, cardCount = 1)
+        val viewModel = createViewModel()
+        viewModel.askAboutCard("Why?")
+        assertEquals(null, viewModel.state.cardQuestions)
+        assertTrue(translator.prompts.isEmpty())
+    }
+
+    @Test
+    fun aQuestionAboutACardThatWasDeletedMeanwhileIsNotSent() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        settings.apiKey.value = "key"
+        val viewModel = createViewModel()
+
+        viewModel.openCardQuestions()
+        viewModel.deleteCurrentCard {}
+        viewModel.askAboutCard("Why?")
+
+        assertTrue(translator.prompts.isEmpty())
+        assertTrue(viewModel.state.cardQuestions!!.asked.isEmpty())
+    }
+
+    /** A provider that answers only once [answer] is completed, to look at what happens while it is asked. */
+    private class SlowTranslator : Translator {
+        val answer = CompletableDeferred<Completion>()
+        var asked = 0
+
+        override suspend fun translateAndCategorize(request: TranslationRequest) = TranslationResult.FAILURE
+
+        override suspend fun complete(engine: TranslationEngine, prompt: String): Completion {
+            asked++
+            return answer.await()
+        }
+    }
+
+    private fun TestScope.createViewModel(translator: Translator): StudyViewModel {
+        val viewModel = StudyViewModel(
+            SavedStateHandle(mapOf("islandId" to 1, "islandName" to "Island 1", "scope" to "island", "coastId" to 0)),
+            flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE, speaker, translator
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        return viewModel
+    }
+
+    @Test
+    fun oneQuestionIsAskedAtATimeAndShowsAsWaitingUntilItIsAnswered() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        val slow = SlowTranslator()
+        val viewModel = createViewModel(slow)
+
+        viewModel.openCardQuestions()
+        viewModel.askAboutCard("First?")
+        assertTrue(viewModel.state.cardQuestions!!.isAsking)
+        assertEquals(listOf(AskedQuestion("First?")), viewModel.state.cardQuestions?.asked)
+
+        viewModel.askAboutCard("Second?")
+        assertEquals(1, slow.asked)
+        assertEquals(listOf("First?"), viewModel.state.cardQuestions?.asked?.map { it.question })
+
+        slow.answer.complete(Completion("Because."))
+        assertFalse(viewModel.state.cardQuestions!!.isAsking)
+        assertEquals(listOf(AskedQuestion("First?", answer = "Because.")), viewModel.state.cardQuestions?.asked)
+    }
+
+    @Test
+    fun anAnswerThatArrivesAfterTheSheetWasClosedIsDropped() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        val slow = SlowTranslator()
+        val viewModel = createViewModel(slow)
+
+        viewModel.openCardQuestions()
+        viewModel.askAboutCard("First?")
+        viewModel.dismissCardQuestions()
+        viewModel.openCardQuestions()
+        slow.answer.complete(Completion("Too late."))
+
+        assertTrue(viewModel.state.cardQuestions!!.asked.isEmpty())
+    }
+
+    @Test
+    fun localAiCanBeAskedAboutACard() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.translationProvider.value = TranslationProvider.LocalAi
+        val viewModel = createViewModel()
+
+        viewModel.openCardQuestions()
+        val open = viewModel.state.cardQuestions!!
+
+        // Either it is ready, or the sheet says what is missing (no model yet); it never just stays silent.
+        if (open.unavailable == null) {
+            viewModel.askAboutCard("Why?")
+            assertEquals(listOf("A short explanation."), viewModel.state.cardQuestions?.asked?.map { it.answer })
+        } else {
+            assertTrue(open.unavailable!!.isNotBlank())
+        }
+        assertEquals("Local AI", open.providerLabel)
+    }
 }
