@@ -167,6 +167,20 @@ interface LanguageCoastDao {
     )
     fun getAllPlacedCards(): Flow<List<PlacedCard>>
 
+    /** The cards of coast [coastId] as a practice sheet needs them, by island name, then the order cards were added. */
+    @Query(
+        """
+        SELECT flashcards.islandId AS islandId, language_islands.name AS islandName,
+            flashcards.targetText AS targetText, flashcards.nativeText AS nativeText, flashcards.alternatives AS alternatives,
+            flashcards.stability AS stability, flashcards.difficulty AS difficulty, flashcards.lastReviewed AS lastReviewed,
+            flashcards.lapses AS lapses
+        FROM flashcards INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
+        WHERE language_islands.coastId = :coastId
+        ORDER BY language_islands.name, flashcards.cardId
+        """
+    )
+    suspend fun getWorksheetCards(coastId: Int): List<WorksheetSourceCard>
+
     /** Every island on every coast, newest first. */
     @Query("SELECT * FROM language_islands ORDER BY creationDate DESC")
     fun getAllIslands(): Flow<List<LanguageIsland>>

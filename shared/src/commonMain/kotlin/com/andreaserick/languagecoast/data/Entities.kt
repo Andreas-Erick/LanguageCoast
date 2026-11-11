@@ -143,6 +143,24 @@ data class PlacedCard(
     val emoji: String get() = islandEmoji ?: emojiForCategory(islandName)
 }
 
+/**
+ * What a practice sheet needs of a card: its two sides, its alternatives, the island it is on, and how
+ * well it is remembered (the scheduling fields of [Flashcard]), by which the sheet decides what to practise.
+ * A coast can hold tens of thousands of cards, and a sheet keeps them for as long as it is being written,
+ * so it reads these columns only.
+ */
+data class WorksheetSourceCard(
+    val islandId: Int,
+    val islandName: String,
+    val targetText: String,
+    val nativeText: String,
+    val alternatives: List<String> = emptyList(),
+    val stability: Double? = null,
+    val difficulty: Double? = null,
+    val lastReviewed: Long? = null,
+    val lapses: Int = 0
+)
+
 /** A [LanguageIsland] with its number of cards, and how many of them are due (see [isDue]). */
 data class IslandSummary(
     @Embedded val island: LanguageIsland,
