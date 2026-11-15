@@ -1,399 +1,1273 @@
 {
  "format": "language-coast-backup",
  "version": 1,
- "createdAt": 1793610000000,
+ "createdAt": 1794682800000,
  "settings": {
   "nativeLanguage": "English",
   "activeCoastId": 1,
   "translationProvider": "OnDevice",
   "streakCount": 12,
-  "lastStudyDate": "2026-11-02",
+  "lastStudyDate": "2026-11-14",
   "studyDays": [
-   "2026-11-02",
-   "2026-11-01",
-   "2026-10-31",
-   "2026-10-30",
-   "2026-10-29",
-   "2026-10-28",
-   "2026-10-27",
-   "2026-10-26",
-   "2026-10-25",
-   "2026-10-24",
-   "2026-10-23",
-   "2026-10-22",
-   "2026-10-21"
+   "2026-11-14",
+   "2026-11-13",
+   "2026-11-12",
+   "2026-11-11",
+   "2026-11-10",
+   "2026-11-09",
+   "2026-11-08",
+   "2026-11-07",
+   "2026-11-06",
+   "2026-11-05",
+   "2026-11-04",
+   "2026-11-03"
   ],
   "reminderEnabled": true,
   "reminderMinuteOfDay": 1140,
   "studyReversed": false,
   "weeklyGoal": 5,
-  "themeMode": "dark"
+  "themeMode": "dark",
+  "starterTopicsAdded": [
+   "1:Greetings",
+   "1:Getting By",
+   "1:Small Talk",
+   "1:About Me",
+   "1:Restaurant",
+   "1:Directions",
+   "1:Shopping",
+   "1:Time",
+   "1:Numbers",
+   "1:Food & Drink",
+   "1:Days & Months",
+   "1:Airport",
+   "1:Hotel",
+   "2:Greetings",
+   "2:Restaurant",
+   "2:Family & People",
+   "3:Greetings"
+  ],
+  "profile": {
+   "name": "Anna",
+   "city": "Oslo",
+   "country": "Norway",
+   "home country": "Norway",
+   "hometown": "Bergen",
+   "job": "designer"
+  },
+  "personalAnswers": {
+   "details_age": "34",
+   "details_birthday": "12 March",
+   "details_languages": "Norwegian (native), English (fluent)",
+   "details_relationship": "married for three years",
+   "family_parents": "Kari, a retired teacher, and Jon; they live in Bergen",
+   "family_siblings": "one older sister, Ingrid, 38, a doctor in Trondheim",
+   "family_together": "I call my mother every Sunday; we all meet at Christmas"
+  },
+  "personalIslandsBuilt": {
+   "1:details": "-1178793240",
+   "1:family": "352196332"
+  },
+  "wording": "feminine",
+  "pace": "steady"
  },
  "coasts": [
   {
    "id": 1,
    "language": "German",
-   "creationDate": 1788426000000
+   "creationDate": 1788652800000,
+   "bankOffered": 60,
+   "goal": "A trip to Berlin in May",
+   "region": "Germany"
   },
   {
    "id": 2,
    "language": "Spanish",
-   "creationDate": 1791018000000
+   "creationDate": 1791244800000,
+   "bankOffered": 12,
+   "goal": "Talking with Lucía's family",
+   "region": "Mexico"
   },
   {
    "id": 3,
    "language": "Italian",
-   "creationDate": 1792746000000
+   "creationDate": 1794182400000,
+   "bankOffered": 4
   }
  ],
  "islands": [
   {
    "id": 1,
    "coastId": 1,
-   "name": "Travel",
-   "creationDate": 1789290000000,
-   "emoji": "✈️",
-   "lastStudied": 1793523600000
+   "name": "Greetings",
+   "creationDate": 1788652800000,
+   "emoji": "👋",
+   "lastStudied": 1794682800000
   },
   {
    "id": 2,
    "coastId": 1,
-   "name": "Restaurant",
-   "creationDate": 1789290000000,
-   "emoji": "🍽️",
-   "lastStudied": 1793523600000
+   "name": "Getting By",
+   "creationDate": 1788998400000,
+   "emoji": "🗣️",
+   "lastStudied": 1794596400000
   },
   {
    "id": 3,
    "coastId": 1,
-   "name": "Small talk",
-   "creationDate": 1789290000000,
+   "name": "Small Talk",
+   "creationDate": 1789344000000,
    "emoji": "💬",
-   "lastStudied": 1793523600000
+   "lastStudied": 1794510000000
   },
   {
    "id": 4,
    "coastId": 1,
-   "name": "Work",
-   "creationDate": 1789290000000,
-   "emoji": "💼",
-   "lastStudied": 1793523600000
+   "name": "About Me",
+   "creationDate": 1789689600000,
+   "emoji": "🙋",
+   "lastStudied": 1794423600000
   },
   {
    "id": 5,
-   "coastId": 2,
-   "name": "Travel",
-   "creationDate": 1789290000000,
-   "emoji": "✈️",
-   "lastStudied": 1793523600000
+   "coastId": 1,
+   "name": "Restaurant",
+   "creationDate": 1790035200000,
+   "emoji": "🍽️",
+   "lastStudied": 1793818800000
   },
   {
    "id": 6,
-   "coastId": 2,
-   "name": "Food",
-   "creationDate": 1789290000000,
-   "emoji": "🥘",
-   "lastStudied": 1793523600000
+   "coastId": 1,
+   "name": "Directions",
+   "creationDate": 1790380800000,
+   "emoji": "🧭",
+   "lastStudied": 1794164400000
   },
   {
    "id": 7,
-   "coastId": 3,
-   "name": "Basics",
-   "creationDate": 1793527200000,
+   "coastId": 1,
+   "name": "Shopping",
+   "creationDate": 1790726400000,
+   "emoji": "🛍️",
+   "lastStudied": 1794078000000
+  },
+  {
+   "id": 8,
+   "coastId": 1,
+   "name": "Time",
+   "creationDate": 1791072000000,
+   "emoji": "🕰️",
+   "lastStudied": 1793991600000
+  },
+  {
+   "id": 9,
+   "coastId": 1,
+   "name": "Numbers",
+   "creationDate": 1791417600000,
+   "emoji": "🔢",
+   "lastStudied": 1793905200000
+  },
+  {
+   "id": 10,
+   "coastId": 1,
+   "name": "Food & Drink",
+   "creationDate": 1791763200000,
+   "emoji": "🥐",
+   "lastStudied": 1793818800000
+  },
+  {
+   "id": 11,
+   "coastId": 1,
+   "name": "Personal Details",
+   "creationDate": 1792108800000,
+   "emoji": "🪪",
+   "lastStudied": 1794164400000
+  },
+  {
+   "id": 12,
+   "coastId": 1,
+   "name": "Days & Months",
+   "creationDate": 1792454400000,
+   "emoji": "📆",
+   "lastStudied": 1794078000000
+  },
+  {
+   "id": 13,
+   "coastId": 1,
+   "name": "Airport",
+   "creationDate": 1792800000000,
+   "emoji": "✈️",
+   "lastStudied": 1793991600000
+  },
+  {
+   "id": 14,
+   "coastId": 1,
+   "name": "Hotel",
+   "creationDate": 1793145600000,
+   "emoji": "🏨"
+  },
+  {
+   "id": 15,
+   "coastId": 1,
+   "name": "My Family",
+   "creationDate": 1793491200000,
+   "emoji": "👪",
+   "lastStudied": 1793818800000
+  },
+  {
+   "id": 16,
+   "coastId": 2,
+   "name": "Greetings",
+   "creationDate": 1791244800000,
    "emoji": "👋",
-   "lastStudied": 1793523600000
+   "lastStudied": 1794164400000
+  },
+  {
+   "id": 17,
+   "coastId": 2,
+   "name": "Restaurant",
+   "creationDate": 1791590400000,
+   "emoji": "🍽️",
+   "lastStudied": 1794078000000
+  },
+  {
+   "id": 18,
+   "coastId": 2,
+   "name": "Family & People",
+   "creationDate": 1791936000000,
+   "emoji": "👨‍👩‍👧",
+   "lastStudied": 1793991600000
+  },
+  {
+   "id": 19,
+   "coastId": 3,
+   "name": "Greetings",
+   "creationDate": 1794182400000,
+   "emoji": "👋",
+   "lastStudied": 1794164400000
   }
  ],
  "cards": [
   {
    "id": 1,
    "islandId": 1,
-   "nativeText": "Where is the train station?",
-   "targetText": "Wo ist der Bahnhof?",
+   "nativeText": "Good morning!",
+   "targetText": "Guten Morgen!",
    "alternatives": [],
-   "stability": 4.5,
+   "stability": 16.0,
    "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1793523600000,
-   "lapses": 2
+   "lastReviewed": 1794423600000,
+   "due": 1795737600000
   },
   {
    "id": 2,
    "islandId": 1,
-   "nativeText": "I'd like a ticket to Munich, please.",
-   "targetText": "Ich hätte gern eine Fahrkarte nach München, bitte.",
+   "nativeText": "Good evening.",
+   "targetText": "Guten Abend.",
    "alternatives": [],
-   "stability": 2.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1793610000000,
-   "lapses": 2
+   "stability": 23.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794164400000,
+   "due": 1796083200000
   },
   {
    "id": 3,
    "islandId": 1,
-   "nativeText": "Does this train stop in Cologne?",
-   "targetText": "Hält dieser Zug in Köln?",
-   "alternatives": []
+   "nativeText": "How are you?",
+   "targetText": "Wie geht es dir?",
+   "alternatives": [],
+   "stability": 30.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1793905200000,
+   "due": 1796428800000
   },
   {
    "id": 4,
    "islandId": 1,
-   "nativeText": "How long does the trip take?",
-   "targetText": "Wie lange dauert die Fahrt?",
-   "alternatives": [
-    "Wie lange fährt man?"
-   ],
-   "stability": 2.0,
+   "nativeText": "Nice to meet you.",
+   "targetText": "Freut mich, Sie kennenzulernen.",
+   "alternatives": [],
+   "stability": 37.0,
    "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1793610000000
+   "lastReviewed": 1794682800000,
+   "due": 1797811200000
   },
   {
    "id": 5,
    "islandId": 1,
-   "nativeText": "Is breakfast included?",
-   "targetText": "Ist das Frühstück inbegriffen?",
+   "nativeText": "See you tomorrow.",
+   "targetText": "Bis morgen.",
    "alternatives": [],
-   "stability": 9.5,
-   "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1793869200000
+   "stability": 44.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794423600000,
+   "due": 1798156800000
   },
   {
    "id": 6,
    "islandId": 1,
-   "nativeText": "Could you call me a taxi?",
-   "targetText": "Könnten Sie mir ein Taxi rufen?",
+   "nativeText": "Have a nice day.",
+   "targetText": "Schönen Tag noch.",
    "alternatives": [],
-   "stability": 17.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1794128400000
+   "stability": 11.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794164400000,
+   "due": 1795046400000
   },
   {
    "id": 7,
    "islandId": 2,
-   "nativeText": "A table for two, please.",
-   "targetText": "Einen Tisch für zwei, bitte.",
+   "nativeText": "I only speak a little German.",
+   "targetText": "Ich spreche nur ein bisschen Deutsch.",
    "alternatives": [],
-   "stability": 2.0,
+   "stability": 18.0,
    "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1793610000000
+   "lastReviewed": 1793905200000,
+   "due": 1795392000000
   },
   {
    "id": 8,
    "islandId": 2,
-   "nativeText": "Could we have the menu?",
-   "targetText": "Könnten wir die Speisekarte haben?",
+   "nativeText": "Could you say that again, more slowly?",
+   "targetText": "Könnten Sie das bitte langsamer wiederholen?",
    "alternatives": [],
-   "stability": 7.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1793782800000
+   "stability": 1.5,
+   "difficulty": 7.5,
+   "lastReviewed": 1794596400000,
+   "due": 1794700800000,
+   "lapses": 3
   },
   {
    "id": 9,
    "islandId": 2,
-   "nativeText": "I'm allergic to nuts.",
-   "targetText": "Ich bin allergisch gegen Nüsse.",
-   "alternatives": []
+   "nativeText": "Sorry, I didn't understand that.",
+   "targetText": "Entschuldigung, das habe ich nicht verstanden.",
+   "alternatives": [],
+   "stability": 32.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794423600000,
+   "due": 1797120000000
   },
   {
    "id": 10,
    "islandId": 2,
-   "nativeText": "The check, please.",
-   "targetText": "Die Rechnung, bitte.",
-   "alternatives": [
-    "Zahlen, bitte."
-   ],
-   "stability": 14.5,
+   "nativeText": "What does that mean?",
+   "targetText": "Was bedeutet das?",
+   "alternatives": [],
+   "stability": 39.0,
    "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1794042000000
+   "lastReviewed": 1794164400000,
+   "due": 1797465600000
   },
   {
    "id": 11,
    "islandId": 2,
-   "nativeText": "That was delicious!",
-   "targetText": "Das war köstlich!",
-   "alternatives": [
-    "Das hat sehr gut geschmeckt!"
-   ],
-   "stability": 24.5,
-   "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1794387600000
+   "nativeText": "How do you say that in German?",
+   "targetText": "Wie sagt man das auf Deutsch?",
+   "alternatives": [],
+   "stability": 46.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1793905200000,
+   "due": 1797811200000
   },
   {
    "id": 12,
-   "islandId": 3,
-   "nativeText": "Where are you from?",
-   "targetText": "Woher kommst du?",
-   "alternatives": [
-    "Woher kommen Sie?"
-   ],
-   "stability": 12.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1793955600000
+   "islandId": 2,
+   "nativeText": "Could you write that down, please?",
+   "targetText": "Könnten Sie das bitte aufschreiben?",
+   "alternatives": [],
+   "stability": 13.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794682800000,
+   "due": 1795737600000
   },
   {
    "id": 13,
    "islandId": 3,
-   "nativeText": "I've been learning German for a year.",
-   "targetText": "Ich lerne seit einem Jahr Deutsch.",
+   "nativeText": "How was your day?",
+   "targetText": "Wie war dein Tag?",
    "alternatives": [],
-   "stability": 2.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1793610000000
+   "stability": 3.0,
+   "difficulty": 5.5,
+   "lastReviewed": 1794510000000,
+   "due": 1794700800000
   },
   {
    "id": 14,
    "islandId": 3,
-   "nativeText": "What do you do on weekends?",
-   "targetText": "Was machst du am Wochenende?",
+   "nativeText": "Where are you from?",
+   "targetText": "Woher kommst du?",
    "alternatives": [],
-   "stability": 32.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1794646800000
+   "stability": 27.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794164400000,
+   "due": 1796428800000
   },
   {
    "id": 15,
    "islandId": 3,
-   "nativeText": "Nice to meet you.",
-   "targetText": "Freut mich, dich kennenzulernen.",
-   "alternatives": [
-    "Schön, Sie kennenzulernen."
-   ],
-   "stability": 52.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1795338000000
+   "nativeText": "What do you do for work?",
+   "targetText": "Was machst du beruflich?",
+   "alternatives": [],
+   "stability": 3.0,
+   "difficulty": 5.5,
+   "lastReviewed": 1794510000000,
+   "due": 1794700800000
   },
   {
    "id": 16,
-   "islandId": 4,
-   "nativeText": "I'll send you the report tomorrow.",
-   "targetText": "Ich schicke Ihnen den Bericht morgen.",
+   "islandId": 3,
+   "nativeText": "The weather is lovely today.",
+   "targetText": "Das Wetter ist heute herrlich.",
    "alternatives": [],
-   "stability": 19.5,
+   "stability": 41.0,
    "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1794214800000
+   "lastReviewed": 1794682800000,
+   "due": 1798156800000
   },
   {
    "id": 17,
-   "islandId": 4,
-   "nativeText": "Can we move the meeting to Thursday?",
-   "targetText": "Können wir das Meeting auf Donnerstag verschieben?",
-   "alternatives": [
-    "Können wir die Besprechung auf Donnerstag verlegen?"
-   ],
-   "stability": 4.5,
-   "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1793696400000
+   "islandId": 3,
+   "nativeText": "Do you live around here?",
+   "targetText": "Wohnst du hier in der Nähe?",
+   "alternatives": [],
+   "stability": 48.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794423600000,
+   "due": 1798502400000
   },
   {
    "id": 18,
-   "islandId": 4,
-   "nativeText": "I'm working from home today.",
-   "targetText": "Ich arbeite heute von zu Hause.",
+   "islandId": 3,
+   "nativeText": "What are you doing this weekend?",
+   "targetText": "Was machst du am Wochenende?",
    "alternatives": [],
-   "stability": 39.5,
-   "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1794906000000
+   "stability": 15.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794164400000,
+   "due": 1795392000000
   },
   {
    "id": 19,
-   "islandId": 5,
-   "nativeText": "Where is the beach?",
-   "targetText": "¿Dónde está la playa?",
-   "alternatives": [],
-   "stability": 2.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1793610000000
-  },
-  {
-   "id": 20,
-   "islandId": 5,
-   "nativeText": "We're looking for the old town.",
-   "targetText": "Buscamos el casco antiguo.",
-   "alternatives": [],
-   "stability": 7.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1793782800000
-  },
-  {
-   "id": 21,
-   "islandId": 5,
-   "nativeText": "How much does it cost?",
-   "targetText": "¿Cuánto cuesta?",
+   "islandId": 4,
+   "nativeText": "My name is Anna.",
+   "targetText": "Ich heiße Anna.",
    "alternatives": [],
    "stability": 22.0,
    "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1794301200000
+   "lastReviewed": 1793905200000,
+   "due": 1795737600000
+  },
+  {
+   "id": 20,
+   "islandId": 4,
+   "nativeText": "I'm from Norway.",
+   "targetText": "Ich komme aus Norwegen.",
+   "alternatives": [],
+   "stability": 29.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794682800000,
+   "due": 1797120000000
+  },
+  {
+   "id": 21,
+   "islandId": 4,
+   "nativeText": "I live in Oslo.",
+   "targetText": "Ich wohne in Oslo.",
+   "alternatives": [],
+   "stability": 36.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794423600000,
+   "due": 1797465600000
   },
   {
    "id": 22,
-   "islandId": 6,
-   "nativeText": "I'd like a coffee with milk.",
-   "targetText": "Quisiera un café con leche.",
-   "alternatives": []
+   "islandId": 4,
+   "nativeText": "I'm a designer.",
+   "targetText": "Ich bin Designerin.",
+   "alternatives": [],
+   "stability": 43.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794164400000,
+   "due": 1797811200000
   },
   {
    "id": 23,
-   "islandId": 6,
-   "nativeText": "Can you recommend a restaurant?",
-   "targetText": "¿Puede recomendarme un restaurante?",
+   "islandId": 4,
+   "nativeText": "I'm learning German.",
+   "targetText": "Ich lerne Deutsch.",
    "alternatives": [],
-   "stability": 9.5,
-   "difficulty": 5.0,
-   "lastReviewed": 1793523600000,
-   "due": 1793869200000
+   "stability": 10.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1793905200000,
+   "due": 1794700800000
   },
   {
    "id": 24,
-   "islandId": 7,
-   "nativeText": "Good morning!",
-   "targetText": "Buongiorno!",
+   "islandId": 5,
+   "nativeText": "A table for two, please.",
+   "targetText": "Einen Tisch für zwei, bitte.",
    "alternatives": [],
-   "stability": 14.5,
-   "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1794042000000
+   "stability": 17.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794682800000,
+   "due": 1796083200000
   },
   {
    "id": 25,
+   "islandId": 5,
+   "nativeText": "Could we see the menu, please?",
+   "targetText": "Könnten wir bitte die Speisekarte sehen?",
+   "alternatives": [],
+   "stability": 3.0,
+   "difficulty": 5.5,
+   "lastReviewed": 1794510000000,
+   "due": 1794700800000
+  },
+  {
+   "id": 26,
+   "islandId": 5,
+   "nativeText": "I'd like the soup of the day.",
+   "targetText": "Ich hätte gern die Tagessuppe.",
+   "alternatives": [],
+   "stability": 31.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794164400000,
+   "due": 1796774400000
+  },
+  {
+   "id": 27,
+   "islandId": 5,
+   "nativeText": "What do you recommend?",
+   "targetText": "Was empfehlen Sie?",
+   "alternatives": [],
+   "stability": 38.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1793905200000,
+   "due": 1797120000000
+  },
+  {
+   "id": 28,
+   "islandId": 5,
+   "nativeText": "The bill, please.",
+   "targetText": "Die Rechnung, bitte.",
+   "alternatives": [],
+   "stability": 45.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794682800000,
+   "due": 1798502400000
+  },
+  {
+   "id": 29,
+   "islandId": 5,
+   "nativeText": "Can I pay by card?",
+   "targetText": "Kann ich mit Karte zahlen?",
+   "alternatives": [],
+   "stability": 3.0,
+   "difficulty": 5.5,
+   "lastReviewed": 1794510000000,
+   "due": 1794700800000
+  },
+  {
+   "id": 30,
+   "islandId": 6,
+   "nativeText": "Where is the train station?",
+   "targetText": "Wo ist der Bahnhof?",
+   "alternatives": [],
+   "stability": 19.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794164400000,
+   "due": 1795737600000
+  },
+  {
+   "id": 31,
+   "islandId": 6,
+   "nativeText": "Is it far from here?",
+   "targetText": "Ist es weit von hier?",
+   "alternatives": [],
+   "stability": 26.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1793905200000,
+   "due": 1796083200000
+  },
+  {
+   "id": 32,
+   "islandId": 6,
+   "nativeText": "Turn left at the traffic lights.",
+   "targetText": "Biegen Sie an der Ampel links ab.",
+   "alternatives": [],
+   "stability": 1.5,
+   "difficulty": 7.5,
+   "lastReviewed": 1794596400000,
+   "due": 1794700800000,
+   "lapses": 3
+  },
+  {
+   "id": 33,
+   "islandId": 6,
+   "nativeText": "Go straight ahead.",
+   "targetText": "Gehen Sie geradeaus.",
+   "alternatives": [],
+   "stability": 40.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794423600000,
+   "due": 1797811200000
+  },
+  {
+   "id": 34,
+   "islandId": 6,
+   "nativeText": "I'm lost.",
+   "targetText": "Ich habe mich verlaufen.",
+   "alternatives": [],
+   "stability": 47.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794164400000,
+   "due": 1798156800000
+  },
+  {
+   "id": 35,
+   "islandId": 6,
+   "nativeText": "Which bus goes to the city centre?",
+   "targetText": "Welcher Bus fährt ins Stadtzentrum?",
+   "alternatives": [],
+   "stability": 14.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1793905200000,
+   "due": 1795046400000
+  },
+  {
+   "id": 36,
    "islandId": 7,
+   "nativeText": "How much does this cost?",
+   "targetText": "Wie viel kostet das?",
+   "alternatives": [],
+   "stability": 21.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794682800000,
+   "due": 1796428800000
+  },
+  {
+   "id": 37,
+   "islandId": 7,
+   "nativeText": "I'm just looking, thank you.",
+   "targetText": "Ich schaue mich nur um, danke.",
+   "alternatives": [],
+   "stability": 28.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794423600000,
+   "due": 1796774400000
+  },
+  {
+   "id": 38,
+   "islandId": 7,
+   "nativeText": "Do you have this in a bigger size?",
+   "targetText": "Haben Sie das eine Nummer größer?",
+   "alternatives": [],
+   "stability": 35.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794164400000,
+   "due": 1797120000000
+  },
+  {
+   "id": 39,
+   "islandId": 7,
+   "nativeText": "Can I try this on?",
+   "targetText": "Kann ich das anprobieren?",
+   "alternatives": [],
+   "stability": 42.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1793905200000,
+   "due": 1797465600000
+  },
+  {
+   "id": 40,
+   "islandId": 7,
+   "nativeText": "I'll take it.",
+   "targetText": "Ich nehme es.",
+   "alternatives": [],
+   "stability": 9.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794682800000,
+   "due": 1795392000000
+  },
+  {
+   "id": 41,
+   "islandId": 8,
+   "nativeText": "What time is it?",
+   "targetText": "Wie spät ist es?",
+   "alternatives": [],
+   "stability": 16.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794423600000,
+   "due": 1795737600000
+  },
+  {
+   "id": 42,
+   "islandId": 8,
+   "nativeText": "It's half past eight.",
+   "targetText": "Es ist halb neun.",
+   "alternatives": [],
+   "stability": 23.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794164400000,
+   "due": 1796083200000
+  },
+  {
+   "id": 43,
+   "islandId": 8,
+   "nativeText": "It's a quarter to six.",
+   "targetText": "Es ist Viertel vor sechs.",
+   "alternatives": [],
+   "stability": 30.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1793905200000,
+   "due": 1796428800000
+  },
+  {
+   "id": 44,
+   "islandId": 8,
+   "nativeText": "At what time does it open?",
+   "targetText": "Um wie viel Uhr öffnet es?",
+   "alternatives": [],
+   "stability": 37.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794682800000,
+   "due": 1797811200000
+  },
+  {
+   "id": 45,
+   "islandId": 8,
+   "nativeText": "I'm running late.",
+   "targetText": "Ich bin spät dran.",
+   "alternatives": [],
+   "stability": 44.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794423600000,
+   "due": 1798156800000
+  },
+  {
+   "id": 46,
+   "islandId": 9,
+   "nativeText": "One coffee and two teas, please.",
+   "targetText": "Einen Kaffee und zwei Tee, bitte.",
+   "alternatives": [],
+   "stability": 11.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794164400000,
+   "due": 1795046400000
+  },
+  {
+   "id": 47,
+   "islandId": 9,
+   "nativeText": "That's twelve euros fifty.",
+   "targetText": "Das macht zwölf Euro fünfzig.",
+   "alternatives": [],
+   "stability": 18.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1793905200000,
+   "due": 1795392000000
+  },
+  {
+   "id": 48,
+   "islandId": 9,
+   "nativeText": "My room number is forty-two.",
+   "targetText": "Meine Zimmernummer ist zweiundvierzig.",
+   "alternatives": [],
+   "stability": 25.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794682800000,
+   "due": 1796774400000
+  },
+  {
+   "id": 49,
+   "islandId": 9,
+   "nativeText": "I'm thirty-four years old.",
+   "targetText": "Ich bin vierunddreißig Jahre alt.",
+   "alternatives": [],
+   "stability": 32.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794423600000,
+   "due": 1797120000000
+  },
+  {
+   "id": 50,
+   "islandId": 9,
+   "nativeText": "Platform seven.",
+   "targetText": "Gleis sieben.",
+   "alternatives": [],
+   "stability": 39.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794164400000,
+   "due": 1797465600000
+  },
+  {
+   "id": 51,
+   "islandId": 10,
+   "nativeText": "I'd like a coffee with milk.",
+   "targetText": "Ich hätte gern einen Kaffee mit Milch.",
+   "alternatives": [],
+   "stability": 46.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1793905200000,
+   "due": 1797811200000
+  },
+  {
+   "id": 52,
+   "islandId": 10,
+   "nativeText": "A glass of water, please.",
+   "targetText": "Ein Glas Wasser, bitte.",
+   "alternatives": [],
+   "stability": 13.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794682800000,
+   "due": 1795737600000
+  },
+  {
+   "id": 53,
+   "islandId": 10,
+   "nativeText": "I don't eat meat.",
+   "targetText": "Ich esse kein Fleisch.",
+   "alternatives": [],
+   "stability": 20.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794423600000,
+   "due": 1796083200000
+  },
+  {
+   "id": 54,
+   "islandId": 10,
+   "nativeText": "The bread is fresh.",
+   "targetText": "Das Brot ist frisch.",
+   "alternatives": [],
+   "stability": 27.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794164400000,
+   "due": 1796428800000
+  },
+  {
+   "id": 55,
+   "islandId": 10,
+   "nativeText": "Is there cheese in it?",
+   "targetText": "Ist da Käse drin?",
+   "alternatives": []
+  },
+  {
+   "id": 56,
+   "islandId": 10,
+   "nativeText": "Breakfast is at eight.",
+   "targetText": "Frühstück gibt es um acht.",
+   "alternatives": []
+  },
+  {
+   "id": 57,
+   "islandId": 11,
+   "nativeText": "I'm 34 years old.",
+   "targetText": "Ich bin 34 Jahre alt.",
+   "alternatives": [],
+   "stability": 48.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794423600000,
+   "due": 1798502400000
+  },
+  {
+   "id": 58,
+   "islandId": 11,
+   "nativeText": "My birthday is on the twelfth of March.",
+   "targetText": "Ich habe am zwölften März Geburtstag.",
+   "alternatives": [],
+   "stability": 15.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794164400000,
+   "due": 1795392000000
+  },
+  {
+   "id": 59,
+   "islandId": 11,
+   "nativeText": "I speak Norwegian and English.",
+   "targetText": "Ich spreche Norwegisch und Englisch.",
+   "alternatives": [],
+   "stability": 22.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1793905200000,
+   "due": 1795737600000
+  },
+  {
+   "id": 60,
+   "islandId": 11,
+   "nativeText": "I've been married for three years.",
+   "targetText": "Ich bin seit drei Jahren verheiratet.",
+   "alternatives": [],
+   "stability": 29.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794682800000,
+   "due": 1797120000000
+  },
+  {
+   "id": 61,
+   "islandId": 11,
+   "nativeText": "I was born in Bergen.",
+   "targetText": "Ich bin in Bergen geboren.",
+   "alternatives": [],
+   "stability": 36.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794423600000,
+   "due": 1797465600000
+  },
+  {
+   "id": 62,
+   "islandId": 11,
+   "nativeText": "I work as a designer in Oslo.",
+   "targetText": "Ich arbeite als Designerin in Oslo.",
+   "alternatives": [],
+   "stability": 43.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794164400000,
+   "due": 1797811200000
+  },
+  {
+   "id": 63,
+   "islandId": 12,
+   "nativeText": "See you on Monday.",
+   "targetText": "Bis Montag.",
+   "alternatives": [],
+   "stability": 10.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1793905200000,
+   "due": 1794700800000
+  },
+  {
+   "id": 64,
+   "islandId": 12,
+   "nativeText": "The museum is closed on Sundays.",
+   "targetText": "Das Museum ist sonntags geschlossen.",
+   "alternatives": [],
+   "stability": 17.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794682800000,
+   "due": 1796083200000
+  },
+  {
+   "id": 65,
+   "islandId": 12,
+   "nativeText": "I'm arriving in May.",
+   "targetText": "Ich komme im Mai an.",
+   "alternatives": []
+  },
+  {
+   "id": 66,
+   "islandId": 12,
+   "nativeText": "What's the date today?",
+   "targetText": "Der Wievielte ist heute?",
+   "alternatives": []
+  },
+  {
+   "id": 67,
+   "islandId": 12,
+   "nativeText": "My train leaves on Friday morning.",
+   "targetText": "Mein Zug fährt am Freitagmorgen.",
+   "alternatives": []
+  },
+  {
+   "id": 68,
+   "islandId": 13,
+   "nativeText": "Where is the check-in desk for Berlin?",
+   "targetText": "Wo ist der Check-in-Schalter für Berlin?",
+   "alternatives": [],
+   "stability": 45.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794682800000,
+   "due": 1798502400000
+  },
+  {
+   "id": 69,
+   "islandId": 13,
+   "nativeText": "I'd like a window seat, please.",
+   "targetText": "Ich hätte gern einen Fensterplatz, bitte.",
+   "alternatives": [],
+   "stability": 12.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794423600000,
+   "due": 1795392000000
+  },
+  {
+   "id": 70,
+   "islandId": 13,
+   "nativeText": "My flight is delayed.",
+   "targetText": "Mein Flug hat Verspätung.",
+   "alternatives": [],
+   "stability": 19.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794164400000,
+   "due": 1795737600000
+  },
+  {
+   "id": 71,
+   "islandId": 13,
+   "nativeText": "Where is passport control?",
+   "targetText": "Wo ist die Passkontrolle?",
+   "alternatives": []
+  },
+  {
+   "id": 72,
+   "islandId": 13,
+   "nativeText": "I only have hand luggage.",
+   "targetText": "Ich habe nur Handgepäck.",
+   "alternatives": []
+  },
+  {
+   "id": 73,
+   "islandId": 14,
+   "nativeText": "I have a reservation under the name Anna Berg.",
+   "targetText": "Ich habe eine Reservierung auf den Namen Anna Berg.",
+   "alternatives": []
+  },
+  {
+   "id": 74,
+   "islandId": 14,
+   "nativeText": "Is breakfast included?",
+   "targetText": "Ist das Frühstück inbegriffen?",
+   "alternatives": []
+  },
+  {
+   "id": 75,
+   "islandId": 14,
+   "nativeText": "What time is check-out?",
+   "targetText": "Wann muss ich auschecken?",
+   "alternatives": []
+  },
+  {
+   "id": 76,
+   "islandId": 14,
+   "nativeText": "The key card doesn't work.",
+   "targetText": "Die Schlüsselkarte funktioniert nicht.",
+   "alternatives": []
+  },
+  {
+   "id": 77,
+   "islandId": 14,
+   "nativeText": "Could I have another towel?",
+   "targetText": "Könnte ich noch ein Handtuch bekommen?",
+   "alternatives": []
+  },
+  {
+   "id": 78,
+   "islandId": 15,
+   "nativeText": "My parents live in Bergen.",
+   "targetText": "Meine Eltern wohnen in Bergen.",
+   "alternatives": [],
+   "stability": 35.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794164400000,
+   "due": 1797120000000
+  },
+  {
+   "id": 79,
+   "islandId": 15,
+   "nativeText": "My mother is a retired teacher.",
+   "targetText": "Meine Mutter ist pensionierte Lehrerin.",
+   "alternatives": [],
+   "stability": 42.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1793905200000,
+   "due": 1797465600000
+  },
+  {
+   "id": 80,
+   "islandId": 15,
+   "nativeText": "I have an older sister called Ingrid.",
+   "targetText": "Ich habe eine ältere Schwester, sie heißt Ingrid.",
+   "alternatives": [],
+   "stability": 9.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794682800000,
+   "due": 1795392000000
+  },
+  {
+   "id": 81,
+   "islandId": 15,
+   "nativeText": "She is a doctor in Trondheim.",
+   "targetText": "Sie ist Ärztin in Trondheim.",
+   "alternatives": []
+  },
+  {
+   "id": 82,
+   "islandId": 15,
+   "nativeText": "I call my mother every Sunday.",
+   "targetText": "Ich rufe meine Mutter jeden Sonntag an.",
+   "alternatives": []
+  },
+  {
+   "id": 83,
+   "islandId": 15,
+   "nativeText": "We all meet at Christmas.",
+   "targetText": "Wir treffen uns alle an Weihnachten.",
+   "alternatives": []
+  },
+  {
+   "id": 84,
+   "islandId": 16,
+   "nativeText": "Good morning!",
+   "targetText": "¡Buenos días!",
+   "alternatives": [],
+   "stability": 37.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794682800000,
+   "due": 1797811200000
+  },
+  {
+   "id": 85,
+   "islandId": 16,
+   "nativeText": "How are you?",
+   "targetText": "¿Cómo estás?",
+   "alternatives": [],
+   "stability": 44.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794423600000,
+   "due": 1798156800000
+  },
+  {
+   "id": 86,
+   "islandId": 16,
+   "nativeText": "Nice to meet you.",
+   "targetText": "Mucho gusto.",
+   "alternatives": [],
+   "stability": 11.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794164400000,
+   "due": 1795046400000
+  },
+  {
+   "id": 87,
+   "islandId": 16,
+   "nativeText": "See you later.",
+   "targetText": "Hasta luego.",
+   "alternatives": [],
+   "stability": 3.0,
+   "difficulty": 5.5,
+   "lastReviewed": 1794510000000,
+   "due": 1794700800000
+  },
+  {
+   "id": 88,
+   "islandId": 16,
+   "nativeText": "Thank you very much.",
+   "targetText": "Muchas gracias.",
+   "alternatives": [],
+   "stability": 25.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794682800000,
+   "due": 1796774400000
+  },
+  {
+   "id": 89,
+   "islandId": 17,
+   "nativeText": "A table for two, please.",
+   "targetText": "Una mesa para dos, por favor.",
+   "alternatives": [],
+   "stability": 32.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794423600000,
+   "due": 1797120000000
+  },
+  {
+   "id": 90,
+   "islandId": 17,
+   "nativeText": "The bill, please.",
+   "targetText": "La cuenta, por favor.",
+   "alternatives": [],
+   "stability": 39.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794164400000,
+   "due": 1797465600000
+  },
+  {
+   "id": 91,
+   "islandId": 17,
+   "nativeText": "What do you recommend?",
+   "targetText": "¿Qué me recomienda?",
+   "alternatives": [],
+   "stability": 3.0,
+   "difficulty": 5.5,
+   "lastReviewed": 1794510000000,
+   "due": 1794700800000
+  },
+  {
+   "id": 92,
+   "islandId": 17,
+   "nativeText": "It was delicious.",
+   "targetText": "Estuvo delicioso.",
+   "alternatives": []
+  },
+  {
+   "id": 93,
+   "islandId": 18,
+   "nativeText": "This is my husband.",
+   "targetText": "Él es mi esposo.",
+   "alternatives": [],
+   "stability": 20.0,
+   "difficulty": 4.0,
+   "lastReviewed": 1794423600000,
+   "due": 1796083200000
+  },
+  {
+   "id": 94,
+   "islandId": 18,
+   "nativeText": "Do you have brothers or sisters?",
+   "targetText": "¿Tienes hermanos?",
+   "alternatives": [],
+   "stability": 27.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794164400000,
+   "due": 1796428800000
+  },
+  {
+   "id": 95,
+   "islandId": 18,
+   "nativeText": "My sister lives in Oslo.",
+   "targetText": "Mi hermana vive en Oslo.",
+   "alternatives": []
+  },
+  {
+   "id": 96,
+   "islandId": 18,
+   "nativeText": "Your family is lovely.",
+   "targetText": "Tu familia es encantadora.",
+   "alternatives": []
+  },
+  {
+   "id": 97,
+   "islandId": 19,
+   "nativeText": "Good morning!",
+   "targetText": "Buongiorno!",
+   "alternatives": [],
+   "stability": 48.0,
+   "difficulty": 5.0,
+   "lastReviewed": 1794423600000,
+   "due": 1798502400000
+  },
+  {
+   "id": 98,
+   "islandId": 19,
+   "nativeText": "How are you?",
+   "targetText": "Come stai?",
+   "alternatives": [],
+   "stability": 15.0,
+   "difficulty": 6.0,
+   "lastReviewed": 1794164400000,
+   "due": 1795392000000
+  },
+  {
+   "id": 99,
+   "islandId": 19,
    "nativeText": "Thank you very much.",
    "targetText": "Grazie mille.",
    "alternatives": []
   },
   {
-   "id": 26,
-   "islandId": 7,
-   "nativeText": "I don't understand.",
-   "targetText": "Non capisco.",
-   "alternatives": [],
-   "stability": 2.0,
-   "difficulty": 5.0,
-   "lastReviewed": 1793642400000,
-   "due": 1793610000000
-  },
-  {
-   "id": 27,
-   "islandId": 7,
-   "nativeText": "Can you speak more slowly?",
-   "targetText": "Può parlare più lentamente?",
+   "id": 100,
+   "islandId": 19,
+   "nativeText": "See you tomorrow.",
+   "targetText": "A domani.",
    "alternatives": []
   }
  ]
