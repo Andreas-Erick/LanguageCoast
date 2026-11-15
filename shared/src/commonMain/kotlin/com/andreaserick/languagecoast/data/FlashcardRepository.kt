@@ -112,7 +112,11 @@ interface FlashcardRepository {
     /** Saves [edit] to card [cardId], keeping its review progress. */
     suspend fun editCard(cardId: Int, edit: CardEdit)
 
-    /** Number of cards on all coasts that are due at [now]. */
+    /**
+     * What there is to study at [now] on all coasts: the studied cards that are due, and of the cards never
+     * studied as many as a day at the steady [Pace] introduces. A whole island added in one go waits its turn,
+     * so it isn't counted as a pile.
+     */
     suspend fun countDueCards(now: Long): Int
 
     /** Puts back what a delete removed, with the original IDs. */
@@ -241,7 +245,7 @@ class OfflineFlashcardRepository(
     override suspend fun editCard(cardId: Int, edit: CardEdit) =
         dao.editCard(cardId, edit.nativeText, edit.targetText, edit.alternatives, edit.note, edit.islandId)
 
-    override suspend fun countDueCards(now: Long): Int = dao.countDueCards(now)
+    override suspend fun countDueCards(now: Long): Int = dao.countDueCards(now, Pace.Steady.newPerDay)
 
     override suspend fun restore(content: DeletedContent) = dao.restore(content)
 

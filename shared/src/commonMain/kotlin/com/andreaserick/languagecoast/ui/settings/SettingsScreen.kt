@@ -68,6 +68,8 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -85,10 +87,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.DeviceHardwareProfile
 import com.andreaserick.languagecoast.data.Languages
+import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.Profile
-import com.andreaserick.languagecoast.data.profileExample
+import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.ui.components.PaceOptions
+import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 import com.andreaserick.languagecoast.data.profilePreview
-import com.andreaserick.languagecoast.data.profileShortLabel
 import com.andreaserick.languagecoast.data.ModelFitLevel
 import com.andreaserick.languagecoast.data.ModelInstallStatus
 import com.andreaserick.languagecoast.data.ModelRecommendation
@@ -129,12 +134,12 @@ import kotlinx.datetime.LocalTime
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * The "Settings" screen, grouped into cards: languages, AI & translation hub
+ * The "Settings" screen, grouped into cards (About you opens its own screen through [onAboutYou]): languages, AI & translation hub
  * (with Local AI hardware scanner & model installer plus multi-cloud providers),
  * study reminders, exporting / importing cards, backup, how-to-use guide and app info.
  */
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
+fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showHowToUse by remember { mutableStateOf(false) }
 
@@ -177,7 +182,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
             }
 
             SettingsCard(title = "About you", icon = Icons.Default.Person) {
-                ProfileSection(profile = uiState.profile, onChange = viewModel::setProfileField)
+                ProfileSection(profile = uiState.profile, onOpen = onAboutYou)
+            }
+
+            SettingsCard(title = "Pace", icon = Icons.Default.Speed) {
+                PaceSection()
             }
 
             SettingsCard(title = "Weekly goal", icon = Icons.Default.Flag) {
@@ -293,6 +302,16 @@ fun SettingsScreen(viewModel: SettingsViewModel = koinViewModel()) {
     }
 }
 
+/** How much new a day's session brings, picked from the three paces and stored at once. */
+@Composable
+private fun PaceSection() {
+    val settings = koinInject<SettingsRepository>()
+    val pace by settings.pace.collectAsState(initial = Pace.Steady)
+    val scope = rememberCoroutineScope()
+    PaceOptions(pace = pace, waiting = 0, onPick = { scope.launch { settings.setPace(it) } })
+    Hint("How many new cards a day's session on Today introduces. Everything new comes back for review, so a faster pace means longer sessions for weeks. Miss a few days and the session shrinks by itself.")
+}
+
 /** A setting that is on or off, with a title and a line explaining it. */
 @Composable
 private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
@@ -309,57 +328,17 @@ private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onCheck
 private const val PRIVACY_POLICY_URL =
     "https://github.com/Andreas-Erick/LanguageCoast/blob/main/docs/privacy-policy.md"
 
-/** A titled group of settings. */
 /**
- * The user's name, city and so on: the blanks starter sentences use, entered once here and filled in
- * wherever one appears. Each field is saved as it is typed.
+ * What the app knows about the user, in short: how their starter sentences read, and the way to the
+ * "About you" screen, where the basics and the questions behind the islands about them are filled in.
  */
 @Composable
-private fun ProfileSection(profile: Profile, onChange: (placeholder: String, value: String) -> Unit) {
-    Hint("Starter sentences have blanks like [name] and [city]. Fill these in once and they're filled in for you. Leave out what you'd rather not share.")
-    val fillers = profile.fillers()
-
-    @Composable
-    fun Field(placeholder: String, modifier: Modifier) {
-        val saved = fillers[placeholder].orEmpty()
-        // Typing is kept locally so the field doesn't lag behind the saved value. Until the user types, the
-        // field follows what is saved (which arrives from disk after the first composition); after that, saved
-        // values only echo the user's own keystrokes and are ignored, so a slow write can't eat a letter.
-        var draft by remember(placeholder) { mutableStateOf(saved) }
-        var typed by remember(placeholder) { mutableStateOf(false) }
-        LaunchedEffect(saved) { if (!typed) draft = saved }
-        CoastTextField(
-            value = draft,
-            onValueChange = {
-                typed = true
-                draft = it
-                onChange(placeholder, it)
-            },
-            label = { Text(profileShortLabel(placeholder)) },
-            placeholder = { Text(profileExample(placeholder)) },
-            singleLine = true,
-            modifier = modifier
-        )
-    }
-
-    @Composable
-    fun Pair(heading: String, first: String, second: String) {
-        FieldLabel(heading)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Field(first, Modifier.weight(1f))
-            Field(second, Modifier.weight(1f))
-        }
-    }
-
-    Pair("You", "name", "job")
-    Pair("Where you live", "city", "country")
-    Pair("Where you're from", "home country", "hometown")
-
+private fun ProfileSection(profile: Profile, onOpen: () -> Unit) {
     profilePreview(profile)?.let { preview ->
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp)
+                .padding(bottom = 12.dp)
                 .background(SurfaceRaised, MaterialTheme.shapes.small)
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
@@ -367,8 +346,18 @@ private fun ProfileSection(profile: Profile, onChange: (placeholder: String, val
             Text(preview, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
         }
     }
+    CoastSecondaryButton(
+        onClick = onOpen,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = ButtonHeight)
+    ) {
+        Text(if (profile.isEmpty) "Tell the app about you" else "Open About you")
+    }
+    Hint("Your name, family, work and free time. Starter sentences are filled in with them, and on a coast your AI provider writes whole islands about you from your answers.")
 }
 
+/** A titled group of settings. */
 @Composable
 private fun SettingsCard(title: String, icon: ImageVector, content: @Composable ColumnScope.() -> Unit) {
     ContentCard(padding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 18.dp)) {

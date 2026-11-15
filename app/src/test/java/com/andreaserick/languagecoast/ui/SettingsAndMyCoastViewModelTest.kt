@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.DeletedContent
+import com.andreaserick.languagecoast.data.PersonalIslandBuilder
 import com.andreaserick.languagecoast.data.PhraseBank
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.StarterImporter
@@ -17,6 +18,7 @@ import com.andreaserick.languagecoast.data.WorksheetOptions
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeReminderScheduler
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
+import com.andreaserick.languagecoast.testing.FakeSpeaker
 import com.andreaserick.languagecoast.testing.FakeTranslator
 import com.andreaserick.languagecoast.testing.FakeWorksheetPrinter
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
@@ -55,11 +57,13 @@ class SettingsAndMyCoastViewModelTest {
     private val printer = FakeWorksheetPrinter()
     private val importer by lazy { StarterImporter(flashcards, settings, StarterTranslator(translator), CoroutineScope(Job())) }
 
+    private val builder by lazy { PersonalIslandBuilder(flashcards, settings, translator, StarterTranslator(translator), CoroutineScope(Job())) }
+
     private fun coastViewModel(coastId: Int) =
         CoastViewModel(
-            SavedStateHandle(mapOf("coastId" to coastId, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE, importer,
+            SavedStateHandle(mapOf("coastId" to coastId, "coastName" to "")), flashcards, settings, TEST_CLOCK, TEST_TIME_ZONE, importer, builder,
             // The generator sorts through the cards on a background thread; here it stays on the test's.
-            WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE, background = UnconfinedTestDispatcher()), printer
+            WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE, background = UnconfinedTestDispatcher()), printer, translator, FakeSpeaker()
         )
 
     @Test
@@ -254,6 +258,8 @@ class SettingsAndMyCoastViewModelTest {
     fun coastOffersEveryStarterTopicItDoesNotHaveYet() = runTest {
         flashcards.seedCoast(coastId = 1, language = "German")
         settings.markStarterTopicAdded(1, "Numbers")
+        flashcards.addFlashcard(1, "one", "eins", "Numbers")
+        settings.markStarterTopicAdded(1, "Colours") // Its island was deleted since, so it can be added again.
         settings.markStarterTopicAdded(2, "Greetings") // Another coast's topics don't count.
         val viewModel = coastViewModel(coastId = 1)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }

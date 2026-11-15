@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.SuggestedSentence
 import com.andreaserick.languagecoast.data.emojiForCategory
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
@@ -40,8 +41,8 @@ import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
 /**
- * The learn step of a daily session: a new sentence with both sides shown, to keep (it becomes a card,
- * practiced at the end of the session) or skip.
+ * The learn step of a daily session for a sentence the app suggests: both sides shown, to keep (it becomes
+ * a card, practiced at the end of the session) or skip.
  *
  * @param index Which of the session's [total] new sentences this is, from 1.
  * @param onSpeak Reads the translation aloud; null hides the speaker button.
@@ -54,6 +55,59 @@ internal fun LearnView(
     onKeep: () -> Unit,
     onSkip: () -> Unit,
     onSpeak: (() -> Unit)?
+) = LearnStep(
+    heading = "New sentence · $index of $total",
+    category = "${sentence.emoji ?: emojiForCategory(sentence.category)} ${sentence.category}",
+    targetText = sentence.targetText,
+    nativeText = sentence.nativeText,
+    hint = "Keep it and it goes on your coast; you practice it at the end of today's session.",
+    primary = "Keep it",
+    secondary = "Skip",
+    onPrimary = onKeep,
+    onSecondary = onSkip,
+    onSpeak = onSpeak
+)
+
+/**
+ * The learn step of a daily session for a card that is on the coast but was never studied: both sides
+ * shown, to learn (practiced at the end of the session) or to wave through as known already.
+ *
+ * @param index Which of the session's [total] new cards this is, from 1.
+ */
+@Composable
+internal fun IntroduceView(
+    card: PlacedCard,
+    index: Int,
+    total: Int,
+    onLearn: () -> Unit,
+    onKnow: () -> Unit,
+    onSpeak: (() -> Unit)?
+) = LearnStep(
+    heading = "New card · $index of $total",
+    category = "${card.emoji} ${card.islandName}",
+    targetText = card.card.targetText,
+    nativeText = card.card.nativeText,
+    hint = "You practice it at the end of today's session. Know it already? It comes back in a few days instead.",
+    primary = "Learn it",
+    secondary = "I know this",
+    onPrimary = onLearn,
+    onSecondary = onKnow,
+    onSpeak = onSpeak
+)
+
+/** A new sentence or card with both sides shown and two ways on. */
+@Composable
+private fun LearnStep(
+    heading: String,
+    category: String,
+    targetText: String,
+    nativeText: String,
+    hint: String,
+    primary: String,
+    secondary: String,
+    onPrimary: () -> Unit,
+    onSecondary: () -> Unit,
+    onSpeak: (() -> Unit)?
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -63,7 +117,7 @@ internal fun LearnView(
             .padding(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 20.dp)
     ) {
         Text(
-            text = "New sentence · $index of $total",
+            text = heading,
             style = MaterialTheme.typography.labelMedium,
             color = Sunlit
         )
@@ -72,7 +126,7 @@ internal fun LearnView(
         Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             ContentCard(padding = PaddingValues(horizontal = 20.dp, vertical = 24.dp)) {
                 Pill(
-                    text = "${sentence.emoji ?: emojiForCategory(sentence.category)} ${sentence.category}",
+                    text = category,
                     container = SurfaceRaised,
                     content = TextSecondary,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -80,7 +134,7 @@ internal fun LearnView(
                 Spacer(modifier = Modifier.height(20.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = sentence.targetText,
+                        text = targetText,
                         style = MaterialTheme.typography.headlineSmall,
                         color = TextPrimary,
                         textAlign = TextAlign.Center,
@@ -95,7 +149,7 @@ internal fun LearnView(
                 }
                 HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 16.dp))
                 Text(
-                    text = sentence.nativeText,
+                    text = nativeText,
                     style = MaterialTheme.typography.bodyLarge,
                     color = TextSecondary,
                     textAlign = TextAlign.Center,
@@ -106,18 +160,18 @@ internal fun LearnView(
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Keep it and it goes on your coast; you practice it at the end of today's session.",
+            text = hint,
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            CoastSecondaryButton(onClick = onSkip, modifier = Modifier.weight(1f).heightIn(min = ButtonHeight)) {
-                Text("Skip")
+            CoastSecondaryButton(onClick = onSecondary, modifier = Modifier.weight(1f).heightIn(min = ButtonHeight)) {
+                Text(secondary, maxLines = 1)
             }
-            CoastButton(onClick = onKeep, modifier = Modifier.weight(2f).heightIn(min = ButtonHeight)) {
-                Text("Keep it")
+            CoastButton(onClick = onPrimary, modifier = Modifier.weight(1f).heightIn(min = ButtonHeight)) {
+                Text(primary, maxLines = 1)
             }
         }
     }

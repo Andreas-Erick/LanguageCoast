@@ -37,20 +37,51 @@ const val SUGGESTION_BATCH = 8
 const val BASICS_FROM_BANK = 120
 
 /**
+ * How fast the user wants to go: how much new a daily session brings, and how many reviews it takes on
+ * to keep up with that. Steady is the default; the faster ones are for someone racing to the next level,
+ * and are a choice, since the reviews of twenty new cards a day add up.
+ *
+ * @property newPerDay New cards and sentences a session introduces at most.
+ * @property reviewCap Due cards a session reviews at most.
+ */
+enum class Pace(val key: String, val label: String, val newPerDay: Int, val reviewCap: Int) {
+    Steady("steady", "Steady", DAILY_NEW_SENTENCES, DAILY_REVIEW_CAP),
+    Fast("fast", "Fast", 10, 40),
+    Sprint("sprint", "Sprint", 20, 80);
+
+    companion object {
+        fun fromKey(key: String?): Pace = entries.firstOrNull { it.key == key } ?: Steady
+    }
+}
+
+/** Days a coast's remaining new cards take at [pace], rounded up; 0 when there are none. */
+fun daysToLearn(newCards: Int, pace: Pace): Int = (newCards + pace.newPerDay - 1) / pace.newPerDay
+
+/**
  * What today's session on a coast holds.
  *
  * @property reviewCount Due cards it reviews (capped).
- * @property newCount New sentences it offers.
+ * @property newCount Everything new it brings: [newCardCount] cards waiting on the coast, and sentences the app suggests.
+ * @property newCardCount Cards on the coast that were never studied, which it introduces.
  * @property isWelcomeBack Whether it was shrunk because the user was away (see [WELCOME_BACK_AFTER_DAYS]).
- * @property dueOnCoast All due cards on the coast, which [reviewCount] was cut from.
+ * @property dueOnCoast All studied cards due on the coast, which [reviewCount] was cut from.
+ * @property newOnCoast All cards on the coast that were never studied, which [newCardCount] was cut from.
  */
 data class DailyPlan(
     val reviewCount: Int,
     val newCount: Int,
     val isWelcomeBack: Boolean,
-    val dueOnCoast: Int
+    val dueOnCoast: Int,
+    val newCardCount: Int = 0,
+    val newOnCoast: Int = 0
 ) {
     val isEmpty: Boolean get() = reviewCount == 0 && newCount == 0
+
+    /** New sentences the app suggests, on top of the cards waiting on the coast. */
+    val newSentenceCount: Int get() = newCount - newCardCount
+
+    /** New cards on the coast the session leaves for the days after. */
+    val newLeftOver: Int get() = newOnCoast - newCardCount
 
     /** How many due cards the session leaves for another day. */
     val leftOver: Int get() = dueOnCoast - reviewCount
@@ -64,19 +95,39 @@ fun isWelcomeBack(lastStudy: LocalDate?, today: LocalDate): Boolean =
     lastStudy != null && lastStudy <= today.minus(WELCOME_BACK_AFTER_DAYS, DateTimeUnit.DAY)
 
 /**
- * Today's session for a coast with [dueOnCoast] due cards and [readySuggestions] prepared sentences,
- * given when the user last studied.
+ * Today's session for a coast with [dueOnCoast] studied cards due, [newOnCoast] cards never studied and
+ * [readySuggestions] prepared sentences, given when the user last studied and their [pace]. The cards
+ * already on the coast come before suggested sentences: what the user put there is what they asked for.
+ * After days away the session is a third of the usual size (never under the welcome-back minimum).
  */
-fun dailyPlan(dueOnCoast: Int, readySuggestions: Int, lastStudy: LocalDate?, today: LocalDate): DailyPlan {
+fun dailyPlan(dueOnCoast: Int, newOnCoast: Int, readySuggestions: Int, lastStudy: LocalDate?, today: LocalDate, pace: Pace = Pace.Steady): DailyPlan {
     val welcomeBack = isWelcomeBack(lastStudy, today)
-    val reviewCap = if (welcomeBack) WELCOME_BACK_REVIEW_CAP else DAILY_REVIEW_CAP
-    val newCap = if (welcomeBack) WELCOME_BACK_NEW_SENTENCES else DAILY_NEW_SENTENCES
+    val reviewCap = if (welcomeBack) maxOf(WELCOME_BACK_REVIEW_CAP, pace.reviewCap / 3) else pace.reviewCap
+    val newCap = if (welcomeBack) maxOf(WELCOME_BACK_NEW_SENTENCES, pace.newPerDay / 3) else pace.newPerDay
+    val newCards = minOf(newOnCoast, newCap)
     return DailyPlan(
         reviewCount = minOf(dueOnCoast, reviewCap),
-        newCount = minOf(readySuggestions, newCap),
+        newCount = newCards + minOf(readySuggestions, newCap - newCards),
         isWelcomeBack = welcomeBack,
-        dueOnCoast = dueOnCoast
+        dueOnCoast = dueOnCoast,
+        newCardCount = newCards,
+        newOnCoast = newOnCoast
     )
+}
+
+/**
+ * The never-studied cards of [cards] in the order a daily session introduces them: the islands take turns,
+ * those with the fewest waiting first, so a card the user just added by hand isn't stuck behind a whole
+ * island added in one go.
+ */
+fun newCardsInLearnOrder(cards: List<PlacedCard>): List<PlacedCard> {
+    val queues = cards.filter { it.card.due == null }
+        .groupBy { it.card.islandId }.values
+        .sortedWith(compareBy<List<PlacedCard>> { it.size }.thenBy { queue -> queue.minOf { it.card.cardId } })
+        .map { queue -> ArrayDeque(queue.sortedBy { it.card.cardId }) }
+    val ordered = ArrayList<PlacedCard>()
+    while (queues.any { it.isNotEmpty() }) queues.forEach { queue -> queue.removeFirstOrNull()?.let { ordered += it } }
+    return ordered
 }
 
 // ---------- Asking the AI for sentences ----------
@@ -112,10 +163,12 @@ fun buildSuggestionPrompt(
     avoid: List<String>,
     existingCategories: List<String>,
     cardCount: Int,
-    region: String? = null
+    region: String? = null,
+    wording: Wording = Wording.Unspecified
 ): String {
     val where = region?.trim()?.takeIf { it.isNotEmpty() }
         ?.let { " They will use it in $it: use the words, forms, spelling and register of $it." } ?: ""
+    val speaker = speakerRule(wording, targetLanguage).removePrefix("- ").let { if (it.isEmpty()) "" else "\n        $it" }
     val why = goal?.trim()?.takeIf { it.isNotEmpty() }
         ?.let { "Why they are learning it: \"$it\". Pick sentences they would want to say or understand for exactly that." }
         ?: "They haven't said why they are learning it, so pick sentences for everyday conversation."
@@ -128,7 +181,7 @@ fun buildSuggestionPrompt(
     return """
         You are helping someone learn $targetLanguage. Their native language is $nativeLanguage.$where
         $why
-        $level
+        $level$speaker
 
         Suggest $count sentences in $nativeLanguage that are genuinely useful to them, each 3 to 10 words, with its natural $targetLanguage translation. Mix questions and statements, and avoid stiff textbook phrasing. Every sentence must be different from the others.$avoidText
         $categoriesText

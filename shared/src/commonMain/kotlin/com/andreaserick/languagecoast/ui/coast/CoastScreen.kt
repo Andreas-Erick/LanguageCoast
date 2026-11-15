@@ -17,10 +17,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
-import androidx.compose.material.icons.filled.BeachAccess
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -39,18 +39,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.IslandSummary
-import com.andreaserick.languagecoast.data.PhraseBank
+import com.andreaserick.languagecoast.data.PersonalIslands
+import com.andreaserick.languagecoast.data.RouteLevel
+import com.andreaserick.languagecoast.data.RouteStop
+import com.andreaserick.languagecoast.data.TALK_MIN_CARDS
+import com.andreaserick.languagecoast.data.aboutStopId
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
-import com.andreaserick.languagecoast.ui.components.EmptyState
 import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
+import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
@@ -58,12 +62,14 @@ import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * A single coast: a button to review its busiest island, and a grid of its "Language Islands"
- * (categories) that contain flashcards. The PDF icon in the header makes a practice sheet from its cards.
+ * A single coast: its route through the levels (where the user is, and the next island to take), a
+ * button to review what is due, and a grid of its "Language Islands" (categories) that contain flashcards.
+ * The PDF icon in the header makes a practice sheet from its cards.
  *
  * @param onIslandClick Called with the island ID and name when an island is tapped.
- * @param onReviewCoast Called with the coast ID and name to study every due card on the coast.
+ * @param onReviewCoast Called with the coast ID and name to review every due card on the coast.
  * @param onShowCards Called with the island ID and name when See cards is picked in an island's menu.
+ * @param onAboutYou Opens the questions about the user, at the island about them with this id (or the top, if empty).
  * @param onNavigateBack Called when the back arrow is tapped.
  */
 @Composable
@@ -71,21 +77,65 @@ fun CoastScreen(
     onIslandClick: (Int, String) -> Unit,
     onReviewCoast: (Int, String) -> Unit,
     onShowCards: (Int, String) -> Unit,
+    onAboutYou: (String) -> Unit,
     onNavigateBack: () -> Unit,
     viewModel: CoastViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current
     var topicSheet by remember { mutableStateOf<List<StarterTopicOption>?>(null) }
+    var personalSheet by remember { mutableStateOf<List<PersonalIslandOption>?>(null) }
     var showWorksheet by remember { mutableStateOf(false) }
+    var showRoute by remember { mutableStateOf(false) }
+    var showReview by remember { mutableStateOf(false) }
     val worksheetFiles = rememberWorksheetFiles()
+    val busy = uiState.isBuilding || uiState.import?.isFinished == false
+
+    /** What writing the island behind [stop] would be, or null for a stop that isn't written (a starter topic). */
+    fun optionFor(stop: RouteStop): PersonalIslandOption? {
+        val islandId = stop.id.removePrefix("about:").substringBefore('@')
+        val island = PersonalIslands.byId(islandId) ?: return null
+        return PersonalIslandOption(
+            island = island,
+            state = if (stop.state == RouteStop.State.Changed) PersonalIslandState.Changed else PersonalIslandState.Ready,
+            facts = uiState.islandFacts[islandId].orEmpty(),
+            raiseTo = stop.level.takeIf { stop.kind == RouteStop.Kind.LevelUp }
+        )
+    }
+
+    /** Takes a stop of the route: adds the topic, writes the island, or opens its questions. */
+    fun take(stop: RouteStop) {
+        showRoute = false
+        when {
+            stop.kind == RouteStop.Kind.Topic -> uiState.starterTopics.firstOrNull { it.theme.category == stop.name }?.let { topicSheet = listOf(it) }
+            // An island can only be taken a level up once it is on the coast: take the island itself first.
+            stop.kind == RouteStop.Kind.LevelUp && stop.state == RouteStop.State.Locked ->
+                uiState.route?.stop(aboutStopId(stop.id.removePrefix("about:").substringBefore('@')))?.let { take(it) }
+            stop.state == RouteStop.State.Locked -> onAboutYou(stop.id.removePrefix("about:"))
+            else -> optionFor(stop)?.let { personalSheet = listOf(it) }
+        }
+    }
+
+    fun addTopics(level: RouteLevel) {
+        showRoute = false
+        val wanted = level.stops.filter { it.kind == RouteStop.Kind.Topic && it.state == RouteStop.State.Ready }.mapTo(HashSet()) { it.name }
+        uiState.starterTopics.filter { it.theme.category in wanted }.takeIf { it.isNotEmpty() }?.let { topicSheet = it }
+    }
+
+    fun writeAll(level: RouteLevel) {
+        showRoute = false
+        level.stops
+            .filter { it.kind != RouteStop.Kind.Topic && (it.state == RouteStop.State.Ready || it.state == RouteStop.State.Changed) }
+            .mapNotNull(::optionFor)
+            .takeIf { it.isNotEmpty() }?.let { personalSheet = it }
+    }
 
     if (showWorksheet) {
         WorksheetSheet(
             state = uiState.worksheet,
             coastLanguage = uiState.coastLanguage,
             nativeLanguage = uiState.nativeLanguage,
-            cardCount = uiState.cardCount,
+            islands = uiState.islands,
             provider = uiState.translationProvider,
             files = worksheetFiles,
             onOptionsChange = viewModel::setWorksheetOptions,
@@ -108,6 +158,37 @@ fun CoastScreen(
             },
             onDismiss = { topicSheet = null }
         )
+    }
+
+    personalSheet?.let { options ->
+        PersonalIslandSheet(
+            options = options,
+            coastLanguage = uiState.coastLanguage,
+            nativeLanguage = uiState.nativeLanguage,
+            provider = uiState.translationProvider,
+            onWrite = {
+                viewModel.buildIslands(options.map { it.order })
+                personalSheet = null
+            },
+            onAboutYou = { islandId ->
+                personalSheet = null
+                onAboutYou(islandId)
+            },
+            onDismiss = { personalSheet = null }
+        )
+    }
+
+    val route = uiState.route
+    if (showRoute && route != null) {
+        RouteSheet(route = route, busy = busy, onStop = ::take, onAddTopics = ::addTopics, onWriteAll = ::writeAll, onDismiss = { showRoute = false })
+    }
+
+    if (showReview) {
+        BuildReviewSheet(review = uiState.buildReview, onRemove = viewModel::removeCards, onDismiss = { showReview = false })
+    }
+
+    uiState.talk?.let { talk ->
+        TalkSheet(state = talk, onSpeak = viewModel::speakTalk, onAnother = { viewModel.writeTalk(talk.island) }, onDismiss = viewModel::dismissTalk)
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -134,27 +215,34 @@ fun CoastScreen(
             )
         }
 
-        when {
-            // Show nothing while loading to avoid flashing the empty state.
-            uiState.isLoading -> Unit
-            uiState.islands.isEmpty() && uiState.starterTopics.isEmpty() -> EmptyState(
-                icon = Icons.Default.BeachAccess,
-                title = "No islands yet",
-                body = "Create a flashcard and its island appears here."
+        uiState.build?.let { progress ->
+            BuildProgressCard(
+                progress = progress,
+                onStop = viewModel::stopBuild,
+                onReview = { showReview = true }.takeIf { uiState.buildReview.added.isNotEmpty() || uiState.buildReview.kept.isNotEmpty() },
+                onDismiss = viewModel::dismissBuild,
+                modifier = Modifier.padding(start = ScreenMargin, end = ScreenMargin, top = 12.dp)
             )
-            else -> LazyVerticalGrid(
+        }
+
+        // Show nothing while loading to avoid flashing the empty state.
+        if (!uiState.isLoading) {
+            LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                if (uiState.starterTopics.isNotEmpty()) {
-                    item(key = "starters", span = { GridItemSpan(maxLineSpan) }) {
-                        StarterTopicsRow(
-                            options = uiState.starterTopics,
-                            onPick = { topicSheet = listOf(it) },
-                            onAddAll = { topicSheet = uiState.starterTopics },
+                if (route != null) {
+                    item(key = "route", span = { GridItemSpan(maxLineSpan) }) {
+                        RouteCard(
+                            route = route,
+                            waiting = uiState.islands.sumOf { it.newCount },
+                            pace = uiState.pace,
+                            busy = busy,
+                            onNext = ::take,
+                            onOpen = { showRoute = true },
                             modifier = Modifier.animateItem()
                         )
                     }
@@ -162,15 +250,15 @@ fun CoastScreen(
                 if (uiState.islands.isEmpty()) {
                     item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
                         Text(
-                            text = "No islands yet. Add a starter topic above, or create a card on Today, and it appears here.",
+                            text = "No islands yet. Take the first one on your route above, or create a card on Today, and it appears here.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }
                 }
-                // One session for everything due on the coast, island by island.
-                val due = uiState.islands.sumOf { it.dueCount }
+                // One session for everything due on the coast, island by island. New cards aren't in it: they come a few a day.
+                val due = uiState.islands.sumOf { it.reviewCount }
                 if (due > 0) {
                     item(key = "review", span = { GridItemSpan(maxLineSpan) }) {
                         CoastButton(
@@ -194,6 +282,7 @@ fun CoastScreen(
                         today = uiState.today ?: return@items,
                         onClick = { onIslandClick(summary.island.islandId, summary.island.name) },
                         onShowCards = { onShowCards(summary.island.islandId, summary.island.name) },
+                        onTalk = { viewModel.writeTalk(summary.island) }.takeIf { uiState.canWrite && summary.cardCount >= TALK_MIN_CARDS },
                         onDeleteClick = {
                             viewModel.deleteIsland(summary.island) { deleted ->
                                 undoMessenger.show("${summary.island.name} deleted") { viewModel.restore(deleted) }
@@ -208,8 +297,11 @@ fun CoastScreen(
 }
 
 /**
- * A card for one "Language Island": its emoji in a small tile, name, card count and either how many
- * cards are due or when it was last studied, with a ⋮ menu to see its cards or delete it.
+ * A card for one "Language Island": its emoji in a small tile, name, card count and what there is to do
+ * on it (cards due, new cards waiting) or when it was last studied, with a ⋮ menu to see its cards,
+ * rehearse it as a talk or delete it.
+ *
+ * @param onTalk Turns the island into a talk to rehearse; null when it can't be (no AI model, or too few cards).
  */
 @Composable
 fun IslandCard(
@@ -217,6 +309,7 @@ fun IslandCard(
     today: LocalDate,
     onClick: () -> Unit,
     onShowCards: () -> Unit,
+    onTalk: (() -> Unit)?,
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -225,7 +318,7 @@ fun IslandCard(
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
             IconTile { Text(islandEmoji(island), fontSize = 22.sp) }
             Spacer(modifier = Modifier.weight(1f))
-            IslandMenu(islandName = island.name, onShowCards = onShowCards, onDelete = onDeleteClick)
+            IslandMenu(islandName = island.name, onShowCards = onShowCards, onTalk = onTalk, onDelete = onDeleteClick)
         }
         Spacer(modifier = Modifier.height(12.dp))
         // The card has no end padding, so that the ⋮ button can sit in its corner.
@@ -237,18 +330,18 @@ fun IslandCard(
                 overflow = TextOverflow.Ellipsis
             )
             Text(plural(summary.cardCount, "card"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-            if (summary.dueCount > 0) {
-                Text("${summary.dueCount} due", style = MaterialTheme.typography.labelMedium, color = Sunlit)
-            } else {
-                Text(lastStudiedLabel(island.lastStudied, today), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            when {
+                summary.reviewCount > 0 -> Text("${summary.reviewCount} due", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                summary.newCount > 0 -> Text("${summary.newCount} new", style = MaterialTheme.typography.labelMedium, color = Seafoam)
+                else -> Text(lastStudiedLabel(island.lastStudied, today), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
         }
     }
 }
 
-/** The ⋮ menu of an island card: See cards and Delete island. */
+/** The ⋮ menu of an island card: See cards, Rehearse as a talk and Delete island. */
 @Composable
-private fun IslandMenu(islandName: String, onShowCards: () -> Unit, onDelete: () -> Unit) {
+private fun IslandMenu(islandName: String, onShowCards: () -> Unit, onTalk: (() -> Unit)?, onDelete: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         // IconButton keeps a 48dp touch target even though the icon is small.
@@ -264,6 +357,16 @@ private fun IslandMenu(islandName: String, onShowCards: () -> Unit, onDelete: ()
                     onShowCards()
                 }
             )
+            if (onTalk != null) {
+                DropdownMenuItem(
+                    text = { Text("Rehearse as a talk") },
+                    leadingIcon = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onTalk()
+                    }
+                )
+            }
             DropdownMenuItem(
                 text = { Text("Delete island") },
                 leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },

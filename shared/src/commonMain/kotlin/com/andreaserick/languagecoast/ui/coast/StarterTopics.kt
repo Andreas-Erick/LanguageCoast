@@ -1,6 +1,5 @@
 package com.andreaserick.languagecoast.ui.coast
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -44,8 +42,6 @@ import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.IconTile
-import com.andreaserick.languagecoast.ui.components.coastChipBorder
-import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.Seafoam
@@ -64,46 +60,6 @@ data class StarterTopicOption(
     val sentenceCount: Int,
     val profileBlanks: List<String>
 )
-
-/**
- * The starter topics the coast doesn't have yet, as chips that add a whole topic as an island, with a
- * link to add all of them at once.
- */
-@Composable
-internal fun StarterTopicsRow(
-    options: List<StarterTopicOption>,
-    onPick: (StarterTopicOption) -> Unit,
-    onAddAll: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Starter topics", style = MaterialTheme.typography.titleMedium)
-                Text("A whole topic as an island, translated for you.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-            }
-            TextButton(onClick = onAddAll, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                Text("Add all · ${options.sumOf { it.sentenceCount }}", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
-            }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-        ) {
-            options.forEach { option ->
-                FilterChip(
-                    selected = false,
-                    onClick = { onPick(option) },
-                    label = { Text("+ ${option.theme.emoji} ${option.theme.category} · ${option.sentenceCount}", style = MaterialTheme.typography.labelMedium) },
-                    colors = coastChipColors(),
-                    border = coastChipBorder(enabled = true, selected = false),
-                    shape = MaterialTheme.shapes.small
-                )
-            }
-        }
-    }
-}
 
 /**
  * Confirms adding [options] (one topic, or all that are left) to the coast: what it will do, the person's
@@ -155,9 +111,9 @@ internal fun StarterTopicSheet(
             if (blanks.isNotEmpty()) {
                 Text(
                     text = when {
-                        missing.isEmpty() -> "Some sentences use your own details, filled in from Settings › About you. Change them here for this topic only."
-                        missing.size < blanks.size -> "Some sentences use your own details. The ones from Settings › About you are filled in; add the rest if you like. A sentence with a blank you leave empty is left out."
-                        else -> "Some sentences use your own details. Fill in what applies, or do it once in Settings › About you; a sentence with a blank you leave empty is left out."
+                        missing.isEmpty() -> "Some sentences use your own details, filled in from About you in Settings. Change them here for this topic only."
+                        missing.size < blanks.size -> "Some sentences use your own details. The ones from About you in Settings are filled in; add the rest if you like. A sentence with a blank you leave empty is left out."
+                        else -> "Some sentences use your own details. Fill in what applies, or do it once under About you in Settings; a sentence with a blank you leave empty is left out."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary

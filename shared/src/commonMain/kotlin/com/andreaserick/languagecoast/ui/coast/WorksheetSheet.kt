@@ -1,6 +1,8 @@
 package com.andreaserick.languagecoast.ui.coast
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,10 +30,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,14 +54,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
@@ -62,7 +73,10 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.islandEmoji
+import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.data.WORKSHEET_COUNT_RANGE
 import com.andreaserick.languagecoast.data.WORKSHEET_MIN_CARDS
 import com.andreaserick.languagecoast.data.WorksheetDifficulty
@@ -90,7 +104,7 @@ import com.andreaserick.languagecoast.ui.theme.TextSecondary
  * to translate, how hard and how many sentences; then the wait while the AI provider writes them; then the
  * file, to download or open.
  *
- * @param cardCount Cards on the coast, which the sentences are made from.
+ * @param islands The coast's islands, of which the user picks the ones the sentences are made from.
  * @param files Saves and opens the finished PDF; null leaves those buttons out.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,7 +113,7 @@ internal fun WorksheetSheet(
     state: WorksheetUiState,
     coastLanguage: String,
     nativeLanguage: String,
-    cardCount: Int,
+    islands: List<IslandSummary>,
     provider: TranslationProvider,
     files: WorksheetFiles?,
     onOptionsChange: (WorksheetOptions) -> Unit,
@@ -118,6 +132,8 @@ internal fun WorksheetSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
             val toLanguage = if (state.options.direction == WorksheetDirection.ToTarget) coastLanguage else nativeLanguage
+            // The cards the sheet is made from: those of the islands picked for it.
+            val cardCount = islands.filter { state.options.includes(it.island.islandId) }.sumOf { it.cardCount }
             when {
                 state.pdf != null -> WorksheetReady(
                     pdf = state.pdf,
@@ -133,6 +149,7 @@ internal fun WorksheetSheet(
                     state = state,
                     coastLanguage = coastLanguage,
                     nativeLanguage = nativeLanguage,
+                    islands = islands,
                     cardCount = cardCount,
                     provider = provider,
                     onOptionsChange = onOptionsChange,
@@ -149,17 +166,23 @@ private fun ColumnScope.WorksheetOptionsForm(
     state: WorksheetUiState,
     coastLanguage: String,
     nativeLanguage: String,
+    islands: List<IslandSummary>,
     cardCount: Int,
     provider: TranslationProvider,
     onOptionsChange: (WorksheetOptions) -> Unit,
     onCreate: () -> Unit
 ) {
     val options = state.options
+    val picked = islands.filter { options.includes(it.island.islandId) }
+    val allPicked = picked.size == islands.size
     // What the number field says, which while typing can be no number or one outside the limits.
     var countText by remember(options.count) { mutableStateOf("${options.count}") }
     val countIsValid = countText.toIntOrNull() in WORKSHEET_COUNT_RANGE
     // What stands in the way, if anything: said here, before a request is spent on finding out.
     val blocker = when {
+        picked.isEmpty() -> "Pick at least one island to make the sheet from."
+        cardCount < WORKSHEET_MIN_CARDS && !allPicked ->
+            "The ${if (picked.size == 1) "island" else "islands"} you picked ${if (picked.size == 1) "has" else "have"} ${plural(cardCount, "card")}. A sheet needs at least $WORKSHEET_MIN_CARDS: pick more."
         cardCount < WORKSHEET_MIN_CARDS ->
             "A practice sheet is made from the coast's cards, and this coast has ${plural(cardCount, "card")}. Add at least $WORKSHEET_MIN_CARDS first."
         provider == TranslationProvider.OnDevice -> "On-device translation can't write sentences. Pick an AI provider in Settings to make a practice sheet."
@@ -168,12 +191,27 @@ private fun ColumnScope.WorksheetOptionsForm(
 
     Text("Practice sheet", style = MaterialTheme.typography.titleLarge)
     Text(
-        text = "New sentences to translate, built from the words on this coast's ${plural(cardCount, "card")}, one island's topic at a time, " +
+        text = "New sentences to translate, built from the words on ${
+            when {
+                allPicked -> "this coast's ${plural(cardCount, "card")}"
+                picked.isEmpty() -> "the islands you pick"
+                else -> "the ${plural(cardCount, "card")} of the islands you picked"
+            }
+        }, one island's topic at a time, " +
             "as a PDF to print or fill in. A sentence may bring one new word where it needs it. The answers come on a page of their own.",
         style = MaterialTheme.typography.bodyMedium,
         color = TextSecondary,
         modifier = Modifier.padding(top = 4.dp)
     )
+
+    if (islands.size > 1) {
+        IslandPicker(
+            islands = islands,
+            picked = picked.mapTo(HashSet()) { it.island.islandId },
+            // Every island picked is stored as "all of them", so an island added later is in the next sheet too.
+            onChange = { ids -> onOptionsChange(options.copy(islandIds = ids.takeIf { it.size < islands.size })) }
+        )
+    }
 
     FieldLabel("Direction")
     DirectionSwitch(
@@ -244,6 +282,91 @@ private fun ColumnScope.WorksheetOptionsForm(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
         )
+    }
+}
+
+/**
+ * Which islands the sheet is made from. Folded, it says how many are in; unfolded, every island of the
+ * coast with a tick to take it in or leave it out, and links for all and none.
+ */
+@Composable
+private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChange: (Set<Int>) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val all = islands.mapTo(HashSet()) { it.island.islandId }
+    FieldLabel("Islands")
+    Column(modifier = Modifier.fillMaxWidth().background(ChipContainer, MaterialTheme.shapes.medium)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .clickable(onClickLabel = if (open) "Hide the islands" else "Choose islands", role = Role.Button) { open = !open }
+                .padding(start = 16.dp, top = 12.dp, end = 12.dp, bottom = 12.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = when (picked.size) {
+                        islands.size -> "All ${islands.size} islands"
+                        0 -> "No island picked"
+                        else -> "${picked.size} of ${islands.size} islands"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (picked.isEmpty()) CoralText else TextPrimary
+                )
+                if (picked.size in 1 until islands.size) {
+                    Text(
+                        text = islands.filter { it.island.islandId in picked }.joinToString(", ") { it.island.name },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Icon(
+                imageVector = if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null,
+                tint = TextSecondary
+            )
+        }
+        AnimatedVisibility(visible = open) {
+            Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp)) {
+                Row(modifier = Modifier.padding(start = 4.dp)) {
+                    TextButton(onClick = { onChange(all) }, enabled = picked.size < islands.size, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        Text("All", style = MaterialTheme.typography.labelMedium, color = if (picked.size < islands.size) Sunlit else TextSecondary)
+                    }
+                    TextButton(onClick = { onChange(emptySet()) }, enabled = picked.isNotEmpty(), contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        Text("None", style = MaterialTheme.typography.labelMedium, color = if (picked.isNotEmpty()) Sunlit else TextSecondary)
+                    }
+                }
+                islands.forEach { summary ->
+                    val id = summary.island.islandId
+                    val ticked = id in picked
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .toggleable(value = ticked, role = Role.Checkbox) { onChange(if (ticked) picked - id else picked + id) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Checkbox(
+                            checked = ticked,
+                            onCheckedChange = null,
+                            colors = CheckboxDefaults.colors(checkedColor = Sunlit, checkmarkColor = OnSunlit, uncheckedColor = TextSecondary)
+                        )
+                        Text(
+                            text = "${islandEmoji(summary.island)} ${summary.island.name}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(start = 12.dp, end = 8.dp)
+                        )
+                        Text(plural(summary.cardCount, "card"), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -384,7 +507,7 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
     }
     Text(
         text = if (state.written > 0) "${state.written} of ${plural(state.options.count, "sentence")} written so far."
-        else "${plural(state.options.count, "sentence")} from the ${plural(cardCount, "card")} on this coast.",
+        else "${plural(state.options.count, "sentence")} from ${plural(cardCount, "card")}.",
         style = MaterialTheme.typography.bodyLarge,
         modifier = Modifier.padding(top = 12.dp)
     )

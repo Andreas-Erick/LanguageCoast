@@ -87,8 +87,13 @@ data class CoastSummary(
     val cardCount: Int,
     val dueCount: Int = 0,
     val lastStudied: Long? = null,
-    val islandsStudiedRecently: Int = 0
-)
+    val islandsStudiedRecently: Int = 0,
+    /** Cards on this coast that were never studied. They count in [dueCount] too. */
+    val newCount: Int = 0
+) {
+    /** Studied cards that are due again: [dueCount] without the cards waiting to be learned. */
+    val reviewCount: Int get() = dueCount - newCount
+}
 
 /**
  * Represents a "Language Island" or category used to group related flashcards.
@@ -165,8 +170,13 @@ data class WorksheetSourceCard(
 data class IslandSummary(
     @Embedded val island: LanguageIsland,
     val cardCount: Int,
-    val dueCount: Int = 0
-)
+    val dueCount: Int = 0,
+    /** Cards on the island that were never studied. They count in [dueCount] too. */
+    val newCount: Int = 0
+) {
+    /** Studied cards that are due again: [dueCount] without the cards waiting to be learned. */
+    val reviewCount: Int get() = dueCount - newCount
+}
 
 /**
  * Represents an individual study card containing a native phrase and its target translation.

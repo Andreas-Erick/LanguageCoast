@@ -96,6 +96,19 @@ interface SettingsRepository {
     val starterTopicsAdded: Flow<Set<String>> get() = flowOf(emptySet())
     /** The user's name, city and so on, for the blanks in starter sentences. */
     val profile: Flow<Profile> get() = flowOf(Profile())
+    /** What the user answered about themselves, by [PersonalQuestion.key]; unanswered questions are left out. */
+    val personalAnswers: Flow<Map<String, String>> get() = flowOf(emptyMap())
+    /**
+     * The islands about the user written on a coast: [personalIslandKey] to the [PersonalIsland.fingerprint]
+     * of the facts they were written from, so a later change to the answers shows.
+     */
+    val personalIslandsBuilt: Flow<Map<String, String>> get() = flowOf(emptyMap())
+    /** How sentences about the user are worded where a language marks the speaker's gender. */
+    val wording: Flow<Wording> get() = flowOf(Wording.Unspecified)
+    /** How much new a daily session brings (see [Pace]). */
+    val pace: Flow<Pace> get() = flowOf(Pace.Steady)
+    /** Whether the user waved away Today's invitation to tell the app about themselves. */
+    val aboutYouInviteDismissed: Flow<Boolean> get() = flowOf(false)
     /** Whether and when the daily study reminder is shown. */
     val reminderSettings: Flow<ReminderSettings>
     /** Whether cards are studied the other way round: from the coast's language to the native language. */
@@ -165,6 +178,21 @@ interface SettingsRepository {
      * Fields are saved as they are typed, so a read-modify-write of the whole profile would let two keystrokes race.
      */
     suspend fun setProfileField(placeholder: String, value: String) = Unit
+
+    /** Stores the answer to the question with [key] ([PersonalQuestion.key]) in one atomic edit; blank clears it. */
+    suspend fun setPersonalAnswer(key: String, value: String) = Unit
+
+    /** Records that the island about the user with [islandId] was written on coast [coastId] from facts with [fingerprint]. */
+    suspend fun markPersonalIslandBuilt(coastId: Int, islandId: String, fingerprint: String) = Unit
+
+    /** Stores how sentences about the user are worded. */
+    suspend fun setWording(wording: Wording) = Unit
+
+    /** Stores how much new a daily session brings. */
+    suspend fun setPace(pace: Pace) = Unit
+
+    /** Records that Today's invitation to tell the app about oneself was waved away. */
+    suspend fun dismissAboutYouInvite() = Unit
 
     /** Records a completed study session for today and updates the streak. */
     suspend fun recordStudySession()
@@ -280,6 +308,32 @@ class DataStoreSettingsRepository(
         dataStore.edit { it[STARTER_TOPICS_ADDED] = it[STARTER_TOPICS_ADDED].orEmpty() + starterTopicKey(coastId, topic) }
     }
 
+    override val personalAnswers: Flow<Map<String, String>> = dataStore.data.map { it.readAnswers() }
+
+    override val personalIslandsBuilt: Flow<Map<String, String>> = dataStore.data.map { it.readBuilt() }
+
+    override val wording: Flow<Wording> = dataStore.data.map { Wording.fromKey(it[WORDING]) }
+    override val pace: Flow<Pace> = dataStore.data.map { Pace.fromKey(it[PACE]) }
+    override val aboutYouInviteDismissed: Flow<Boolean> = dataStore.data.map { it[ABOUT_YOU_INVITE_DISMISSED] ?: false }
+
+    override suspend fun setWording(wording: Wording) {
+        dataStore.edit { preferences -> if (wording == Wording.Unspecified) preferences.remove(WORDING) else preferences[WORDING] = wording.key }
+    }
+    override suspend fun setPace(pace: Pace) = set(PACE, pace.key)
+    override suspend fun dismissAboutYouInvite() = set(ABOUT_YOU_INVITE_DISMISSED, true)
+
+    override suspend fun setPersonalAnswer(key: String, value: String) {
+        val preference = ANSWER_KEYS[key] ?: return
+        dataStore.edit { preferences -> if (value.isBlank()) preferences.remove(preference) else preferences[preference] = value }
+    }
+
+    override suspend fun markPersonalIslandBuilt(coastId: Int, islandId: String, fingerprint: String) {
+        dataStore.edit { preferences ->
+            val others = preferences.readBuilt() - personalIslandKey(coastId, islandId)
+            preferences[PERSONAL_ISLANDS_BUILT] = (others + (personalIslandKey(coastId, islandId) to fingerprint)).mapTo(HashSet()) { "${it.key}=${it.value}" }
+        }
+    }
+
     override val reminderSettings: Flow<ReminderSettings> = dataStore.data.map { preferences ->
         ReminderSettings(
             enabled = preferences[REMINDER_ENABLED] ?: true,
@@ -392,7 +446,11 @@ class DataStoreSettingsRepository(
             hapticsEnabled = preferences[HAPTICS_ENABLED] ?: true,
             soundsEnabled = preferences[SOUNDS_ENABLED] ?: true,
             starterTopicsAdded = preferences[STARTER_TOPICS_ADDED].orEmpty().sorted(),
-            profile = preferences.readProfile().fillers()
+            profile = preferences.readProfile().fillers(),
+            personalAnswers = preferences.readAnswers(),
+            personalIslandsBuilt = preferences.readBuilt(),
+            wording = preferences[WORDING],
+            pace = preferences[PACE]
         )
     }
 
@@ -426,6 +484,10 @@ class DataStoreSettingsRepository(
             put(SOUNDS_ENABLED, backup.soundsEnabled)
             put(STARTER_TOPICS_ADDED, backup.starterTopicsAdded.toSet().takeIf { it.isNotEmpty() })
             PROFILE_KEYS.forEach { (placeholder, key) -> put(key, backup.profile[placeholder]?.takeIf { it.isNotBlank() }) }
+            ANSWER_KEYS.forEach { (question, key) -> put(key, backup.personalAnswers[question]?.takeIf { it.isNotBlank() }) }
+            put(WORDING, backup.wording?.takeIf { key -> Wording.entries.any { it.key == key && it != Wording.Unspecified } })
+            put(PACE, backup.pace?.takeIf { key -> Pace.entries.any { it.key == key } })
+            put(PERSONAL_ISLANDS_BUILT, backup.personalIslandsBuilt.mapTo(HashSet()) { "${it.key}=${it.value}" }.takeIf { it.isNotEmpty() })
         }
     }
 
@@ -436,6 +498,15 @@ class DataStoreSettingsRepository(
 
     private fun Preferences.readProfile(): Profile =
         PROFILE_KEYS.entries.fold(Profile()) { profile, (placeholder, key) -> profile.with(placeholder, this[key].orEmpty()) }
+
+    private fun Preferences.readAnswers(): Map<String, String> =
+        ANSWER_KEYS.mapNotNull { (question, key) -> this[key]?.takeIf { it.isNotBlank() }?.let { question to it } }.toMap()
+
+    /** Entries are stored as "coastId:islandId=fingerprint". */
+    private fun Preferences.readBuilt(): Map<String, String> =
+        this[PERSONAL_ISLANDS_BUILT].orEmpty().mapNotNull { entry ->
+            entry.substringBefore('=', "").takeIf { it.isNotEmpty() }?.let { it to entry.substringAfter('=') }
+        }.toMap()
 
     private companion object {
         val NATIVE_LANG = stringPreferencesKey("native_language")
@@ -471,9 +542,19 @@ class DataStoreSettingsRepository(
         /** One key per profile blank, named after the placeholder. */
         val PROFILE_KEYS: Map<String, Preferences.Key<String>> =
             Profile.PLACEHOLDERS.associateWith { stringPreferencesKey("profile_" + it.replace(' ', '_')) }
+        /** One key per question the app asks about the user. */
+        val ANSWER_KEYS: Map<String, Preferences.Key<String>> =
+            PersonalIslands.QUESTIONS.associate { it.key to stringPreferencesKey("about_" + it.key) }
+        val PERSONAL_ISLANDS_BUILT = stringSetPreferencesKey("personal_islands_built")
+        val WORDING = stringPreferencesKey("about_wording")
+        val PACE = stringPreferencesKey("study_pace")
+        val ABOUT_YOU_INVITE_DISMISSED = booleanPreferencesKey("about_you_invite_dismissed")
         const val STUDY_DAYS_KEPT = 28
     }
 }
+
+/** The entry in [SettingsRepository.personalIslandsBuilt] for the island about the user with [islandId] on coast [coastId]. */
+fun personalIslandKey(coastId: Int, islandId: String): String = "$coastId:$islandId"
 
 /** The entry in [SettingsRepository.starterTopicsAdded] for [topic] on coast [coastId]. */
 fun starterTopicKey(coastId: Int, topic: String): String = "$coastId:$topic"

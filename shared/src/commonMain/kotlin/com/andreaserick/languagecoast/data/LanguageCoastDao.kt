@@ -32,6 +32,9 @@ interface LanguageCoastDao {
             (SELECT COUNT(*) FROM flashcards
                 INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
                 WHERE language_islands.coastId = coasts.coastId AND $DUE) AS dueCount,
+            (SELECT COUNT(*) FROM flashcards
+                INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
+                WHERE language_islands.coastId = coasts.coastId AND flashcards.due IS NULL) AS newCount,
             (SELECT MAX(lastStudied) FROM language_islands WHERE language_islands.coastId = coasts.coastId) AS lastStudied,
             (SELECT COUNT(*) FROM language_islands
                 WHERE language_islands.coastId = coasts.coastId AND language_islands.lastStudied >= :studiedSince) AS islandsStudiedRecently
@@ -108,7 +111,8 @@ interface LanguageCoastDao {
         """
         SELECT language_islands.*,
             (SELECT COUNT(*) FROM flashcards WHERE flashcards.islandId = language_islands.islandId) AS cardCount,
-            (SELECT COUNT(*) FROM flashcards WHERE flashcards.islandId = language_islands.islandId AND $DUE) AS dueCount
+            (SELECT COUNT(*) FROM flashcards WHERE flashcards.islandId = language_islands.islandId AND $DUE) AS dueCount,
+            (SELECT COUNT(*) FROM flashcards WHERE flashcards.islandId = language_islands.islandId AND flashcards.due IS NULL) AS newCount
         FROM language_islands WHERE coastId = :coastId ORDER BY creationDate DESC
         """
     )
@@ -208,8 +212,11 @@ interface LanguageCoastDao {
     suspend fun editCard(cardId: Int, nativeText: String, targetText: String, alternatives: List<String>, note: String?, islandId: Int)
 
     /** Number of cards on all coasts that are due at [now]. */
-    @Query("SELECT COUNT(*) FROM flashcards WHERE $DUE")
-    suspend fun countDueCards(now: Long): Int
+    @Query(
+        "SELECT (SELECT COUNT(*) FROM flashcards WHERE flashcards.due IS NOT NULL AND flashcards.due <= :now) + " +
+            "MIN((SELECT COUNT(*) FROM flashcards WHERE flashcards.due IS NULL), :newCap)"
+    )
+    suspend fun countDueCards(now: Long, newCap: Int): Int
 
     /** Deletes [flashcard]. */
     @Delete

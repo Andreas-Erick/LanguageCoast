@@ -8,13 +8,13 @@ import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.CoastSummary
-import com.andreaserick.languagecoast.data.DAILY_NEW_SENTENCES
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
 import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.EngineChoice
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.LanguageIsland
+import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
@@ -155,7 +155,11 @@ data class CreateUiState(
     /** What the sentence being saved is, for the model (see [TranslationRequest.context]). */
     val translationContext: String? = null,
     /** The user's blanks from Settings, by placeholder, which the starter sheet fills in. */
-    val profile: Map<String, String> = emptyMap()
+    val profile: Map<String, String> = emptyMap(),
+    /** How much new a day's session brings. */
+    val pace: Pace = Pace.Steady,
+    /** Whether to invite the user to tell the app about themselves: they haven't yet, and haven't waved it away. */
+    val showAboutYouInvite: Boolean = false
 ) {
     /** True when the selected coast is in the user's native language, so there's nothing to translate. */
     val isSameLanguage: Boolean get() = selectedCoast?.language == nativeLanguage
@@ -171,7 +175,7 @@ data class CreateUiState(
     val plan: DailyPlan? get() {
         val coast = selectedCoast ?: return null
         val day = today ?: return null
-        return dailyPlan(focusSummary?.dueCount ?: 0, readySuggestions, lastStudy, day)
+        return dailyPlan(focusSummary?.reviewCount ?: 0, focusSummary?.newCount ?: 0, readySuggestions, lastStudy, day, pace)
     }
 }
 
@@ -251,8 +255,8 @@ class CreateViewModel(
                     uiState = uiState.copy(
                         streakCount = streak,
                         hasCards = coasts.any { it.cardCount > 0 },
-                        dueCount = coasts.sumOf { it.dueCount },
-                        dueCoastCount = coasts.count { it.dueCount > 0 },
+                        dueCount = coasts.sumOf { it.reviewCount },
+                        dueCoastCount = coasts.count { it.reviewCount > 0 },
                         coastSummaries = coasts
                     )
                 }
@@ -260,13 +264,18 @@ class CreateViewModel(
         viewModelScope.launch { settings.lastStudyDate.collect { uiState = uiState.copy(lastStudy = it) } }
         viewModelScope.launch { settings.profile.collect { uiState = uiState.copy(profile = it.fillers()) } }
         viewModelScope.launch { readySuggestions().collect { uiState = uiState.copy(readySuggestions = it) } }
+        viewModelScope.launch { settings.pace.collect { uiState = uiState.copy(pace = it) } }
+        viewModelScope.launch {
+            combine(settings.personalAnswers, settings.aboutYouInviteDismissed) { answers, dismissed -> answers.isEmpty() && !dismissed }
+                .collect { uiState = uiState.copy(showAboutYouInvite = it) }
+        }
         viewModelScope.launch {
             combine(selectedCoastId(), pool.preparing) { coastId, preparing -> coastId != null && coastId in preparing }
                 .collect { uiState = uiState.copy(isPreparingSentences = it) }
         }
         viewModelScope.launch {
             // Keep a few sentences ready for the selected coast, so today's session always has something new.
-            combine(selectedCoastId(), readySuggestions()) { coastId, ready -> coastId?.takeIf { ready < DAILY_NEW_SENTENCES } }
+            combine(selectedCoastId(), readySuggestions(), settings.pace) { coastId, ready, pace -> coastId?.takeIf { ready < pace.newPerDay } }
                 .distinctUntilChanged()
                 .collect { coastId -> if (coastId != null) pool.requestTopUp(coastId) }
         }
@@ -330,6 +339,16 @@ class CreateViewModel(
             .flatMapLatest { coastId -> if (coastId == null) flowOf(emptyList()) else flashcards.observeSuggestions(coastId) }
             .map { it.size }
             .distinctUntilChanged()
+
+    /** Stores how much new a day's session brings. */
+    fun setPace(pace: Pace) {
+        viewModelScope.launch { settings.setPace(pace) }
+    }
+
+    /** Waves away the invitation to tell the app about oneself. */
+    fun dismissAboutYouInvite() {
+        viewModelScope.launch { settings.dismissAboutYouInvite() }
+    }
 
     /** Makes [coast] the one new cards are added to. */
     fun onCoastSelected(coast: Coast) {

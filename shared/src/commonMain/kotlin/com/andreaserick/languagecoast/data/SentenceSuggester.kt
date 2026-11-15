@@ -44,15 +44,16 @@ class SentenceSuggester(
         count: Int
     ): Suggestions {
         val engine = (settings.currentEngine() as? EngineChoice.Ready)?.engine
+        val wording = settings.wording.first()
         if (coast.bankOffered < BASICS_FROM_BANK) {
-            val basics = fromBank(engine, coast, nativeLanguage, avoid, count)
+            val basics = fromBank(engine, coast, nativeLanguage, avoid, count, wording)
             if (basics.isNotEmpty()) return Suggestions(basics, fromBank = true)
         }
         val fromModel = if (engine != null && engine != TranslationEngine.OnDevice) {
-            askModel(engine, coast, nativeLanguage, existingCategories, avoid, cardCount, count)
+            askModel(engine, coast, nativeLanguage, existingCategories, avoid, cardCount, count, wording)
         } else emptyList()
         if (fromModel.isNotEmpty()) return Suggestions(fromModel, fromBank = false)
-        return Suggestions(fromBank(engine, coast, nativeLanguage, avoid, count), fromBank = true)
+        return Suggestions(fromBank(engine, coast, nativeLanguage, avoid, count, wording), fromBank = true)
     }
 
     private suspend fun askModel(
@@ -62,7 +63,8 @@ class SentenceSuggester(
         existingCategories: List<String>,
         avoid: List<String>,
         cardCount: Int,
-        count: Int
+        count: Int,
+        wording: Wording
     ): List<ProposedSentence> {
         val prompt = buildSuggestionPrompt(
             targetLanguage = coast.language,
@@ -72,7 +74,8 @@ class SentenceSuggester(
             avoid = avoid.takeLast(AVOID_LIMIT),
             existingCategories = existingCategories,
             cardCount = cardCount,
-            region = coast.region
+            region = coast.region,
+            wording = wording
         )
         val completion = translator.complete(engine, prompt)
         val text = completion.text
@@ -89,13 +92,15 @@ class SentenceSuggester(
      * Sentences from the [PhraseBank] for the coast's goal, translated by [engine] (a model gets the topic's
      * rules and sees them as a batch), or on the device when no provider is set up; empty where neither can.
      */
-    private suspend fun fromBank(engine: TranslationEngine?, coast: Coast, nativeLanguage: String, avoid: List<String>, count: Int): List<ProposedSentence> {
+    private suspend fun fromBank(
+        engine: TranslationEngine?, coast: Coast, nativeLanguage: String, avoid: List<String>, count: Int, wording: Wording
+    ): List<ProposedSentence> {
         val usable = engine ?: if (onDeviceTranslationAvailable) TranslationEngine.OnDevice else return emptyList()
         val fillers = mapOf(PhraseBank.LANGUAGE_PLACEHOLDER to coast.language)
         val picks = PhraseBank.pick(coast.goal, avoid, count, fillers)
         return picks.groupBy { it.category }.flatMap { (category, group) ->
             val theme = PhraseBank.theme(category) ?: return@flatMap emptyList()
-            starterTranslator.translate(usable, theme, nativeLanguage, coast.language, coast.region, group.map { it.nativeText })
+            starterTranslator.translate(usable, theme, nativeLanguage, coast.language, coast.region, group.map { it.nativeText }, wording)
         }
     }
 
@@ -139,13 +144,17 @@ class SuggestionPool(
     }
 
     /**
-     * Fills coast [coastId]'s pool up to [DAILY_NEW_SENTENCES] ready sentences if it has fewer, asking for
-     * [SUGGESTION_BATCH] at a time. Does nothing while the coast's last attempt failed less than
+     * Fills coast [coastId]'s pool up to a day's worth of new sentences at the user's [Pace] if it has fewer,
+     * asking for at least [SUGGESTION_BATCH] at a time. A coast with that many cards still waiting to be
+     * learned needs none: those come first. Does nothing while the coast's last attempt failed less than
      * [RETRY_AFTER_MILLIS] ago.
      */
     suspend fun topUp(coastId: Int) = lock.withLock {
         val coast = flashcards.observeCoast(coastId).first() ?: return
-        if (flashcards.observeSuggestions(coastId).first().size >= DAILY_NEW_SENTENCES) return
+        val pace = settings.pace.first()
+        if (flashcards.observeSuggestions(coastId).first().size >= pace.newPerDay) return
+        val waiting = flashcards.observeAllCards().first().count { it.coastId == coastId && it.card.due == null }
+        if (waiting >= pace.newPerDay) return
         val now = clock.now().toEpochMilliseconds()
         failedAt[coastId]?.let { if (now - it < RETRY_AFTER_MILLIS) return }
 
@@ -160,7 +169,7 @@ class SuggestionPool(
                 existingCategories = flashcards.observeIslands(coastId).first().map { it.name },
                 avoid = avoid,
                 cardCount = cards.size,
-                count = SUGGESTION_BATCH
+                count = maxOf(SUGGESTION_BATCH, pace.newPerDay)
             )
             val proposals = suggestions.sentences
             // The bank can't check the avoid list in a native language other than English, so check translations too.

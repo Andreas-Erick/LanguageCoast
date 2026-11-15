@@ -75,6 +75,10 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        // Code under test logs through android.util.Log when a provider fails; in a unit test that is a no-op.
+        unitTests.isReturnDefaultValues = true
+    }
     packaging {
         resources {
             excludes += "/META-INF/INDEX.LIST"

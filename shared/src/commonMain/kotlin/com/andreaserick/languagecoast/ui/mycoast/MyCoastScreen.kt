@@ -361,9 +361,9 @@ fun CoastCard(
                     color = TextSecondary
                 )
             }
-            if (summary.dueCount > 0) {
+            if (summary.reviewCount > 0) {
                 Spacer(modifier = Modifier.width(8.dp))
-                Pill("${summary.dueCount} due")
+                Pill("${summary.reviewCount} due")
             }
             CoastMenu(coastName = coast.displayName, onDelete = onDeleteClick)
         }

@@ -29,6 +29,9 @@ import com.andreaserick.languagecoast.data.WorksheetPdf
 import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.WorksheetSourceCard
 import com.andreaserick.languagecoast.data.emojiForCategory
+import com.andreaserick.languagecoast.data.Pace
+import com.andreaserick.languagecoast.data.Wording
+import com.andreaserick.languagecoast.data.personalIslandKey
 import com.andreaserick.languagecoast.data.starterTopicKey
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
@@ -69,6 +72,7 @@ class FakeFlashcardRepository : FlashcardRepository {
                     islandCount = islandIds.size,
                     cardCount = cards.count { it.islandId in islandIds },
                     dueCount = cards.count { it.islandId in islandIds && isDue(it, now) },
+                    newCount = cards.count { it.islandId in islandIds && it.due == null },
                     lastStudied = coastIslands.mapNotNull { it.lastStudied }.maxOrNull(),
                     islandsStudiedRecently = coastIslands.count { (it.lastStudied ?: Long.MIN_VALUE) >= studiedSince }
                 )
@@ -139,7 +143,7 @@ class FakeFlashcardRepository : FlashcardRepository {
         combine(islands, cards) { islands, cards ->
             islands.filter { it.coastId == coastId }.map { island ->
                 val islandCards = cards.filter { it.islandId == island.islandId }
-                IslandSummary(island, cardCount = islandCards.size, dueCount = islandCards.count { isDue(it, now) })
+                IslandSummary(island, cardCount = islandCards.size, dueCount = islandCards.count { isDue(it, now) }, newCount = islandCards.count { it.due == null })
             }
         }
 
@@ -218,7 +222,8 @@ class FakeFlashcardRepository : FlashcardRepository {
         }
     }
 
-    override suspend fun countDueCards(now: Long): Int = cards.value.count { isDue(it, now) }
+    override suspend fun countDueCards(now: Long): Int =
+        cards.value.count { it.due != null && isDue(it, now) } + minOf(cards.value.count { it.due == null }, Pace.Steady.newPerDay)
 
     override suspend fun restore(content: DeletedContent) {
         coasts.update { (it + content.coasts).sortedBy { coast -> coast.coastId } }
@@ -284,14 +289,18 @@ class FakeFlashcardRepository : FlashcardRepository {
     /**
      * Seeds an island with cards whose native/target texts are "n<i>"/"t<i>".
      * The island goes on coast [coastId], which is created as a Spanish coast if it doesn't exist.
+     * The cards are new (never studied) unless [studied], which makes them reviewed long ago and due.
      */
-    fun seed(islandId: Int, cardCount: Int, coastId: Int = 1) {
+    fun seed(islandId: Int, cardCount: Int, coastId: Int = 1, studied: Boolean = false) {
         if (coasts.value.none { it.coastId == coastId }) seedCoast(coastId, "Spanish")
         islands.update { it + LanguageIsland(islandId = islandId, coastId = coastId, name = "Island $islandId") }
         cards.update { existing ->
             val firstId = nextId(existing.map { it.cardId })
             existing + (1..cardCount).map { i ->
-                Flashcard(cardId = firstId + i - 1, islandId = islandId, nativeText = "n$i", targetText = "t$i")
+                Flashcard(
+                    cardId = firstId + i - 1, islandId = islandId, nativeText = "n$i", targetText = "t$i",
+                    due = if (studied) 0L else null, lastReviewed = if (studied) 0L else null
+                )
             }
         }
     }
@@ -322,6 +331,14 @@ class FakeSettingsRepository : SettingsRepository {
     override val lastStudyDate = MutableStateFlow<LocalDate?>(null)
     override val starterTopicsAdded = MutableStateFlow<Set<String>>(emptySet())
     override val profile = MutableStateFlow(Profile())
+    override val personalAnswers = MutableStateFlow<Map<String, String>>(emptyMap())
+    override val personalIslandsBuilt = MutableStateFlow<Map<String, String>>(emptyMap())
+    override val wording = MutableStateFlow(Wording.Unspecified)
+    override val pace = MutableStateFlow(Pace.Steady)
+    override val aboutYouInviteDismissed = MutableStateFlow(false)
+    override suspend fun setWording(wording: Wording) { this.wording.value = wording }
+    override suspend fun setPace(pace: Pace) { this.pace.value = pace }
+    override suspend fun dismissAboutYouInvite() { aboutYouInviteDismissed.value = true }
     override val reminderSettings = MutableStateFlow(ReminderSettings())
     override val studyReversed = MutableStateFlow(false)
     override val weeklyGoal = MutableStateFlow(SettingsDefaults.WEEKLY_GOAL)
@@ -376,6 +393,14 @@ class FakeSettingsRepository : SettingsRepository {
 
     override suspend fun setProfileField(placeholder: String, value: String) {
         profile.update { it.with(placeholder, value) }
+    }
+
+    override suspend fun setPersonalAnswer(key: String, value: String) {
+        personalAnswers.update { if (value.isBlank()) it - key else it + (key to value) }
+    }
+
+    override suspend fun markPersonalIslandBuilt(coastId: Int, islandId: String, fingerprint: String) {
+        personalIslandsBuilt.update { it + (personalIslandKey(coastId, islandId) to fingerprint) }
     }
 
     override suspend fun recordStudySession() {

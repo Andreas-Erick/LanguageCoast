@@ -77,6 +77,35 @@ class WorksheetGeneratorTest {
     }
 
     @Test
+    fun aSheetCanBeMadeFromThePickedIslandsOnly() = runTest {
+        flashcards.cards.value += listOf(
+            Flashcard(cardId = 8, islandId = 2, nativeText = "The soup is hot.", targetText = "Die Suppe ist heiß."),
+            Flashcard(cardId = 9, islandId = 2, nativeText = "We eat at eight.", targetText = "Wir essen um acht.")
+        )
+        translator.completion = lines("Der Kaffee ist gut." to "The coffee is good.", "Das Kind isst Brot." to "The child is eating bread.", "Die Suppe ist gut." to "The soup is good.")
+
+        val result = generator.generate(1, WorksheetOptions(count = 3, islandIds = setOf(2)))
+
+        // Only the Food island's cards are shown to the model and counted on the sheet.
+        val sheet = (result as WorksheetResult.Ready).worksheet
+        assertEquals(5 to 1, sheet.cardCount to sheet.islandCount)
+        val prompt = translator.prompts.single()
+        assertTrue("[Food]" in prompt)
+        assertFalse("[Travel]" in prompt)
+        assertFalse("Bahnhof" in prompt)
+        assertTrue(WorksheetOptions().includes(1))
+        assertFalse(WorksheetOptions(islandIds = setOf(2)).includes(1))
+    }
+
+    @Test
+    fun pickedIslandsWithTooFewCardsSayToPickMore() = runTest {
+        val result = generator.generate(1, WorksheetOptions(count = 3, islandIds = setOf(1)))
+
+        assertEquals("A practice sheet needs at least 5 cards to make new sentences from. Pick more islands.", (result as WorksheetResult.Failed).message)
+        assertTrue(translator.prompts.isEmpty())
+    }
+
+    @Test
     fun ofTooManySentencesTheOnesClosestToTheCardsAreKept() = runTest {
         translator.completion = lines(
             "Morgen regnet es in Hamburg." to "It will rain in Hamburg tomorrow.",

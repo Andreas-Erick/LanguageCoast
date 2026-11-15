@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.di
 
+import com.andreaserick.languagecoast.ui.about.AboutYouViewModel
 import com.andreaserick.languagecoast.ui.coast.CoastViewModel
 import com.andreaserick.languagecoast.ui.create.CreateViewModel
 import com.andreaserick.languagecoast.ui.island.IslandViewModel
@@ -15,6 +16,7 @@ import org.koin.dsl.module
 
 /** Every screen's ViewModel; Koin passes in the navigation arguments' SavedStateHandle where one is asked for. */
 val viewModelModule = module {
+    viewModelOf(::AboutYouViewModel)
     viewModelOf(::CoastViewModel)
     viewModelOf(::CreateViewModel)
     viewModelOf(::IslandViewModel)
