@@ -13,6 +13,8 @@ import com.andreaserick.languagecoast.data.IslandOrder
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.IslandTalk
 import com.andreaserick.languagecoast.data.LanguageIsland
+import com.andreaserick.languagecoast.data.Level
+import com.andreaserick.languagecoast.data.levelKey
 import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.PROFILE_PLACEHOLDERS
 import com.andreaserick.languagecoast.data.Pace
@@ -134,7 +136,9 @@ data class CoastUiState(
     val islandFacts: Map<String, List<Pair<String, String>>> = emptyMap(),
     val pace: Pace = Pace.Steady,
     /** An island being turned into a talk, while its sheet is open. */
-    val talk: TalkUiState? = null
+    val talk: TalkUiState? = null,
+    /** A level the user has reached on this coast and hasn't been congratulated on yet (the highest, if several). */
+    val levelReached: Level? = null
 ) {
     /** Cards on all of the coast's islands. */
     val cardCount: Int get() = islands.sumOf { it.cardCount }
@@ -190,12 +194,13 @@ class CoastViewModel(
             flashcards.observeIslandSummaries(coastId, now = clock.now().toEpochMilliseconds()),
             combine(settings.starterTopicsAdded, settings.profile, settings.nativeLanguage, settings.personalAnswers, settings.personalIslandsBuilt, ::About),
             combine(importer.progress, worksheet, builder.progress, buildReview, talk, ::Activity),
-            combine(settings.translationProvider, settings.pace, ::Pair)
-        ) { coast, islands, about, activity, (provider, pace) ->
+            combine(settings.translationProvider, settings.pace, settings.levelsCelebrated, ::Triple)
+        ) { coast, islands, about, activity, (provider, pace, celebrated) ->
             val language = coast?.language.orEmpty()
             val prefix = "$coastId:"
             val builtHere = about.built.filterKeys { it.startsWith(prefix) }.mapKeys { it.key.removePrefix(prefix) }
             val topicsHere = about.starterTopicsAdded.filter { it.startsWith(prefix) }.mapTo(HashSet()) { it.removePrefix(prefix) }
+            val route = routeFor(islands, topicsHere, builtHere, about.profile, about.answers)
             CoastUiState(
                 coastId = coastId,
                 coastName = coast?.displayName ?: coastName,
@@ -234,7 +239,8 @@ class CoastViewModel(
                 },
                 build = activity.build?.takeIf { it.coastId == coastId },
                 buildReview = activity.review,
-                route = routeFor(islands, topicsHere, builtHere, about.profile, about.answers),
+                route = route,
+                levelReached = route.levels.lastOrNull { it.isComplete && levelKey(coastId, it.level) !in celebrated }?.level,
                 islandFacts = (PersonalIslands.ALL + PersonalIslands.WRITTEN).associate { it.id to it.facts(about.profile, about.answers) },
                 pace = pace,
                 talk = activity.talk
@@ -259,6 +265,11 @@ class CoastViewModel(
 
     /** Clears a finished run of [buildIslands] from the screen. */
     fun dismissBuild() = builder.dismiss()
+
+    /** Records that the user saw they reached [level] (and every level under it) on this coast. */
+    fun celebrated(level: Level) {
+        viewModelScope.launch { Level.entries.filter { it <= level }.forEach { settings.markLevelCelebrated(coastId, it) } }
+    }
 
     /** Removes the cards with [cardIds] that the user unticked when looking over what was written. */
     fun removeCards(cardIds: Set<Int>) {

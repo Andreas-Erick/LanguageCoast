@@ -107,6 +107,8 @@ interface SettingsRepository {
     val wording: Flow<Wording> get() = flowOf(Wording.Unspecified)
     /** How much new a daily session brings (see [Pace]). */
     val pace: Flow<Pace> get() = flowOf(Pace.Steady)
+    /** The levels whose reaching the user has been congratulated on, as "coastId:level" (see [levelKey]). */
+    val levelsCelebrated: Flow<Set<String>> get() = flowOf(emptySet())
     /** Whether the user waved away Today's invitation to tell the app about themselves. */
     val aboutYouInviteDismissed: Flow<Boolean> get() = flowOf(false)
     /** Whether and when the daily study reminder is shown. */
@@ -190,6 +192,9 @@ interface SettingsRepository {
 
     /** Stores how much new a daily session brings. */
     suspend fun setPace(pace: Pace) = Unit
+
+    /** Records that reaching [level] on coast [coastId] was celebrated, so it isn't again. */
+    suspend fun markLevelCelebrated(coastId: Int, level: Level) = Unit
 
     /** Records that Today's invitation to tell the app about oneself was waved away. */
     suspend fun dismissAboutYouInvite() = Unit
@@ -320,6 +325,10 @@ class DataStoreSettingsRepository(
         dataStore.edit { preferences -> if (wording == Wording.Unspecified) preferences.remove(WORDING) else preferences[WORDING] = wording.key }
     }
     override suspend fun setPace(pace: Pace) = set(PACE, pace.key)
+    override val levelsCelebrated: Flow<Set<String>> = dataStore.data.map { it[LEVELS_CELEBRATED].orEmpty() }
+    override suspend fun markLevelCelebrated(coastId: Int, level: Level) {
+        dataStore.edit { it[LEVELS_CELEBRATED] = it[LEVELS_CELEBRATED].orEmpty() + levelKey(coastId, level) }
+    }
     override suspend fun dismissAboutYouInvite() = set(ABOUT_YOU_INVITE_DISMISSED, true)
 
     override suspend fun setPersonalAnswer(key: String, value: String) {
@@ -548,6 +557,8 @@ class DataStoreSettingsRepository(
         val PERSONAL_ISLANDS_BUILT = stringSetPreferencesKey("personal_islands_built")
         val WORDING = stringPreferencesKey("about_wording")
         val PACE = stringPreferencesKey("study_pace")
+        /** Not part of a backup: after a restore a reached level is simply congratulated on once more. */
+        val LEVELS_CELEBRATED = stringSetPreferencesKey("levels_celebrated")
         val ABOUT_YOU_INVITE_DISMISSED = booleanPreferencesKey("about_you_invite_dismissed")
         const val STUDY_DAYS_KEPT = 28
     }

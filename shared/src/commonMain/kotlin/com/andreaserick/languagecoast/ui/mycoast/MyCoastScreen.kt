@@ -68,6 +68,9 @@ import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import kotlinx.datetime.DateTimeUnit
+import com.andreaserick.languagecoast.data.RouteLevel
+import com.andreaserick.languagecoast.ui.theme.OnSunlit
+import kotlin.math.roundToInt
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
@@ -165,6 +168,7 @@ fun MyCoastScreen(
                 items(uiState.coasts, key = { it.coast.coastId }) { summary ->
                     CoastCard(
                         summary = summary,
+                        level = uiState.levels[summary.coast.coastId],
                         today = uiState.today ?: return@items,
                         onClick = { onCoastClick(summary.coast.coastId, summary.coast.displayName) },
                         onDeleteClick = {
@@ -321,12 +325,13 @@ private fun WeekBars(studyDays: Set<LocalDate>, today: LocalDate, frozen: LocalD
 }
 
 /**
- * A card for one coast: its flag and name (with the native name), how many cards are due,
- * and how much of the coast was explored in the last week. Deleting is in its ⋮ menu.
+ * A card for one coast: its flag and name (with the native name), how many cards are due, the level the
+ * user is on there with how far they are, and how much of the coast was explored in the last week. Deleting is in its ⋮ menu.
  */
 @Composable
 fun CoastCard(
     summary: CoastSummary,
+    level: RouteLevel?,
     today: LocalDate,
     onClick: () -> Unit,
     onDeleteClick: () -> Unit,
@@ -366,6 +371,23 @@ fun CoastCard(
                 Pill("${summary.reviewCount} due")
             }
             CoastMenu(coastName = coast.displayName, onDelete = onDeleteClick)
+        }
+        if (level != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 12.dp, end = 12.dp)) {
+                Pill(level.level.label, container = Sunlit, content = OnSunlit)
+                Spacer(modifier = Modifier.width(10.dp))
+                LinearProgressIndicator(
+                    progress = { level.progress },
+                    color = Sunlit,
+                    trackColor = SurfaceRaised,
+                    strokeCap = StrokeCap.Round,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                    modifier = Modifier.weight(1f).height(6.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text("${(level.progress * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            }
         }
         if (summary.islandCount > 0) {
             Spacer(modifier = Modifier.height(12.dp))

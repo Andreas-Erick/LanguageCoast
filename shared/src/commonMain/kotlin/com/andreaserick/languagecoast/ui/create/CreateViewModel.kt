@@ -15,6 +15,9 @@ import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.Pace
+import com.andreaserick.languagecoast.data.Route
+import com.andreaserick.languagecoast.data.RouteLevel
+import com.andreaserick.languagecoast.data.observeRoute
 import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
@@ -158,6 +161,8 @@ data class CreateUiState(
     val profile: Map<String, String> = emptyMap(),
     /** How much new a day's session brings. */
     val pace: Pace = Pace.Steady,
+    /** The level the selected coast is on; null until known. */
+    val level: RouteLevel? = null,
     /** Whether to invite the user to tell the app about themselves: they haven't yet, and haven't waved it away. */
     val showAboutYouInvite: Boolean = false
 ) {
@@ -265,6 +270,14 @@ class CreateViewModel(
         viewModelScope.launch { settings.profile.collect { uiState = uiState.copy(profile = it.fillers()) } }
         viewModelScope.launch { readySuggestions().collect { uiState = uiState.copy(readySuggestions = it) } }
         viewModelScope.launch { settings.pace.collect { uiState = uiState.copy(pace = it) } }
+        viewModelScope.launch {
+            selectedCoastId()
+                .flatMapLatest { coastId ->
+                    if (coastId == null) flowOf(null)
+                    else observeRoute(flashcards, settings, coastId, clock.now().toEpochMilliseconds()).map<Route, RouteLevel?> { it.current }
+                }
+                .collect { uiState = uiState.copy(level = it) }
+        }
         viewModelScope.launch {
             combine(settings.personalAnswers, settings.aboutYouInviteDismissed) { answers, dismissed -> answers.isEmpty() && !dismissed }
                 .collect { uiState = uiState.copy(showAboutYouInvite = it) }
