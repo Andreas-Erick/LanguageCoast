@@ -12,6 +12,13 @@ object MyCoastScreenRoute
 @Serializable
 object SettingsScreenRoute
 
+/**
+ * The questions the app asks about the user, opened from Settings or from a coast. [islandId] is the
+ * island about the user ([com.andreaserick.languagecoast.data.PersonalIsland.id]) to open at, or empty.
+ */
+@Serializable
+data class AboutYouScreenRoute(val islandId: String = "")
+
 // Search across all coasts, opened from My Coasts
 @Serializable
 object SearchScreenRoute

@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Sailing
@@ -52,6 +53,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.andreaserick.languagecoast.navigation.AboutYouScreenRoute
 import com.andreaserick.languagecoast.navigation.CoastScreenRoute
 import com.andreaserick.languagecoast.navigation.CreateScreenRoute
 import com.andreaserick.languagecoast.navigation.IslandScreenRoute
@@ -59,6 +61,7 @@ import com.andreaserick.languagecoast.navigation.MyCoastScreenRoute
 import com.andreaserick.languagecoast.navigation.SearchScreenRoute
 import com.andreaserick.languagecoast.navigation.SettingsScreenRoute
 import com.andreaserick.languagecoast.navigation.StudyScreenRoute
+import com.andreaserick.languagecoast.ui.about.AboutYouScreen
 import com.andreaserick.languagecoast.ui.coast.CoastScreen
 import com.andreaserick.languagecoast.ui.components.CoastSnackbar
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
@@ -197,7 +200,8 @@ private fun AppContent() {
                 NavHost(
                     navController = navController,
                     startDestination = CreateScreenRoute,
-                    modifier = Modifier.padding(innerPadding),
+                    // Consumed, so a screen that pads for the keyboard only adds what the bottom bar does not already cover.
+                    modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
                     // Tabs cross-fade; screens opened from a list slide in from the side.
                     enterTransition = { fadeIn(tween(TRANSITION_MILLIS)) },
                     exitTransition = { fadeOut(tween(TRANSITION_MILLIS)) }
@@ -206,7 +210,8 @@ private fun AppContent() {
                         CreateScreen(
                             onStartDaily = { id, language -> navController.navigate(StudyScreenRoute.daily(id, language)) },
                             onReviewCoast = { id, name -> navController.navigate(StudyScreenRoute.coast(id, name)) },
-                            onReviewAll = { navController.navigate(StudyScreenRoute.Today) }
+                            onReviewAll = { navController.navigate(StudyScreenRoute.Today) },
+                            onAboutYou = { navController.navigate(AboutYouScreenRoute()) }
                         )
                     }
                     composable<MyCoastScreenRoute> {
@@ -246,6 +251,16 @@ private fun AppContent() {
                             onShowCards = { id, name ->
                                 navController.navigate(IslandScreenRoute(islandId = id, islandName = name))
                             },
+                            onAboutYou = { islandId -> navController.navigate(AboutYouScreenRoute(islandId)) },
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable<AboutYouScreenRoute>(
+                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
+                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                    ) { entry ->
+                        AboutYouScreen(
+                            openAt = entry.toRoute<AboutYouScreenRoute>().islandId,
                             onNavigateBack = { navController.popBackStack() }
                         )
                     }
@@ -256,7 +271,9 @@ private fun AppContent() {
                         // IslandViewModel reads the route arguments from its SavedStateHandle.
                         IslandScreen(onNavigateBack = { navController.popBackStack() })
                     }
-                    composable<SettingsScreenRoute> { SettingsScreen() }
+                    composable<SettingsScreenRoute> {
+                        SettingsScreen(onAboutYou = { navController.navigate(AboutYouScreenRoute()) })
+                    }
                     composable<StudyScreenRoute>(
                         enterTransition = { slideIntoContainer(SlideDirection.Up, tween(TRANSITION_MILLIS)) + fadeIn() },
                         popExitTransition = { slideOutOfContainer(SlideDirection.Down, tween(TRANSITION_MILLIS)) + fadeOut() }

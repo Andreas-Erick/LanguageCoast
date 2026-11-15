@@ -77,6 +77,7 @@ class StarterImporter(
         val themes = topics.mapNotNull(PhraseBank::theme)
         if (themes.isEmpty()) return
         val nativeLanguage = settings.nativeLanguage.first()
+        val wording = settings.wording.first()
         val known = flashcards.observeAllCards().first().filter { it.coastId == coastId }.map { it.card.nativeText }
         val plan = themes.map { theme ->
             theme to usableSentences(theme, coast.language, fillers).filterNot { sentence -> known.any { isSameSentence(it, sentence) } }
@@ -98,7 +99,7 @@ class StarterImporter(
                 progress = progress.copy(topic = theme.category)
                 _progress.value = progress
                 val doneBefore = progress.done
-                val translated = starterTranslator.translate(engine, theme, nativeLanguage, coast.language, coast.region, sentences) { done ->
+                val translated = starterTranslator.translate(engine, theme, nativeLanguage, coast.language, coast.region, sentences, wording) { done ->
                     progress = progress.copy(done = doneBefore + done)
                     _progress.value = progress
                 }

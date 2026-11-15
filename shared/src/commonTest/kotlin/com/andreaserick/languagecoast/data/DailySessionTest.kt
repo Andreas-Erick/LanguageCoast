@@ -13,7 +13,7 @@ class DailySessionTest {
 
     @Test
     fun planCapsReviewsAndNewSentences() {
-        val plan = dailyPlan(dueOnCoast = 40, readySuggestions = 8, lastStudy = today, today = today)
+        val plan = dailyPlan(dueOnCoast = 40, newOnCoast = 0, readySuggestions = 8, lastStudy = today, today = today)
 
         assertEquals(DAILY_REVIEW_CAP, plan.reviewCount)
         assertEquals(DAILY_NEW_SENTENCES, plan.newCount)
@@ -24,7 +24,7 @@ class DailySessionTest {
 
     @Test
     fun planTakesWhatIsThereWhenBelowTheCaps() {
-        val plan = dailyPlan(dueOnCoast = 2, readySuggestions = 1, lastStudy = null, today = today)
+        val plan = dailyPlan(dueOnCoast = 2, newOnCoast = 0, readySuggestions = 1, lastStudy = null, today = today)
 
         assertEquals(2, plan.reviewCount)
         assertEquals(1, plan.newCount)
@@ -34,7 +34,52 @@ class DailySessionTest {
 
     @Test
     fun planIsEmptyWithNothingDueAndNothingReady() {
-        assertTrue(dailyPlan(dueOnCoast = 0, readySuggestions = 0, lastStudy = today, today = today).isEmpty)
+        assertTrue(dailyPlan(dueOnCoast = 0, newOnCoast = 0, readySuggestions = 0, lastStudy = today, today = today).isEmpty)
+    }
+
+    @Test
+    fun cardsWaitingOnTheCoastComeBeforeSuggestedSentences() {
+        val some = dailyPlan(dueOnCoast = 0, newOnCoast = 2, readySuggestions = 8, lastStudy = today, today = today)
+        assertEquals(2, some.newCardCount)
+        assertEquals(1, some.newSentenceCount)
+        assertEquals(DAILY_NEW_SENTENCES, some.newCount)
+        assertEquals(0, some.newLeftOver)
+
+        // A whole island added at once fills the day's new cards; the rest waits and isn't a pile of due cards.
+        val many = dailyPlan(dueOnCoast = 0, newOnCoast = 475, readySuggestions = 8, lastStudy = today, today = today)
+        assertEquals(DAILY_NEW_SENTENCES, many.newCardCount)
+        assertEquals(0, many.newSentenceCount)
+        assertEquals(0, many.reviewCount)
+        assertEquals(0, many.leftOver)
+        assertEquals(475 - DAILY_NEW_SENTENCES, many.newLeftOver)
+    }
+
+    @Test
+    fun aFasterPaceBringsMoreNewAndTakesMoreReviews() {
+        val sprint = dailyPlan(dueOnCoast = 200, newOnCoast = 475, readySuggestions = 8, lastStudy = today, today = today, pace = Pace.Sprint)
+        assertEquals(20, sprint.newCardCount)
+        assertEquals(80, sprint.reviewCount)
+        assertEquals(159, daysToLearn(475, Pace.Steady))
+        assertEquals(24, daysToLearn(475, Pace.Sprint))
+        assertEquals(0, daysToLearn(0, Pace.Fast))
+
+        // After days away even a sprinter starts small: a third of the usual.
+        val back = dailyPlan(dueOnCoast = 200, newOnCoast = 475, readySuggestions = 0, lastStudy = LocalDate(2026, 9, 1), today = today, pace = Pace.Sprint)
+        assertTrue(back.isWelcomeBack)
+        assertEquals(26, back.reviewCount)
+        assertEquals(6, back.newCardCount)
+        assertEquals(Pace.Steady, Pace.fromKey("nonsense"))
+        assertEquals(Pace.Fast, Pace.fromKey("fast"))
+    }
+
+    @Test
+    fun newCardsAreIntroducedIslandByIslandInTurnSmallestFirst() {
+        fun card(id: Int, island: Int, due: Long? = null) =
+            PlacedCard(Flashcard(cardId = id, islandId = island, nativeText = "n$id", targetText = "t$id", due = due), "Island $island", null, 1, "German")
+        // Island 1 was added whole (cards 1-4); card 9 on island 2 was added by hand afterwards; card 5 was studied.
+        val cards = listOf(card(1, 1), card(2, 1), card(3, 1), card(4, 1), card(5, 1, due = 99L), card(9, 2))
+
+        assertEquals(listOf(9, 1, 2, 3, 4), newCardsInLearnOrder(cards).map { it.card.cardId })
     }
 
     @Test
@@ -43,7 +88,7 @@ class DailySessionTest {
         assertFalse(isWelcomeBack(lastStudy = LocalDate(2026, 10, 7), today = today))
         assertTrue(isWelcomeBack(lastStudy = LocalDate(2026, 10, 6), today = today))
 
-        val plan = dailyPlan(dueOnCoast = 40, readySuggestions = 8, lastStudy = LocalDate(2026, 9, 1), today = today)
+        val plan = dailyPlan(dueOnCoast = 40, newOnCoast = 0, readySuggestions = 8, lastStudy = LocalDate(2026, 9, 1), today = today)
         assertTrue(plan.isWelcomeBack)
         assertEquals(WELCOME_BACK_REVIEW_CAP, plan.reviewCount)
         assertEquals(WELCOME_BACK_NEW_SENTENCES, plan.newCount)
@@ -128,10 +173,10 @@ class DailySessionTest {
     }
 
     @Test
-    fun bankHasAHundredToTwoHundredSentencesWithNoRepeats() {
+    fun bankHasHundredsOfSentencesWithNoRepeats() {
         val all = PhraseBank.THEMES.flatMap { it.sentences }
 
-        assertTrue(all.size in 400..800, "bank has ${all.size} sentences")
+        assertTrue(all.size in 400..1000, "bank has ${all.size} sentences")
         assertEquals(all.size, all.distinctBy { normalizedWords(it) }.size)
         assertTrue(PhraseBank.THEMES.all { it.sentences.size >= 10 })
         // Word lists stay out of the daily session's pool.

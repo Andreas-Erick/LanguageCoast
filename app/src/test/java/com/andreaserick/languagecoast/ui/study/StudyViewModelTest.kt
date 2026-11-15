@@ -13,6 +13,7 @@ import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.DAILY_REVIEW_CAP
 import com.andreaserick.languagecoast.data.Grade
+import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.SuggestedSentence
 import com.andreaserick.languagecoast.data.WELCOME_BACK_NEW_SENTENCES
 import com.andreaserick.languagecoast.data.WELCOME_BACK_REVIEW_CAP
@@ -388,9 +389,9 @@ class StudyViewModelTest {
 
     @Test
     fun todaySessionTakesDueCardsFromEveryCoastInTurns() = runTest {
-        flashcards.seed(islandId = 1, cardCount = 3, coastId = 1)
+        flashcards.seed(islandId = 1, cardCount = 3, coastId = 1, studied = true)
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
-        flashcards.seed(islandId = 2, cardCount = 2, coastId = 2)
+        flashcards.seed(islandId = 2, cardCount = 2, coastId = 2, studied = true)
         setDue("n3", startOfDay("2026-10-11")) // Not due yet.
 
         val viewModel = createViewModel(scope = "today")
@@ -403,8 +404,8 @@ class StudyViewModelTest {
 
     @Test
     fun completingTodaySessionMarksEveryIslandStudied() = runTest {
-        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
-        flashcards.seed(islandId = 2, cardCount = 1, coastId = 1)
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1, studied = true)
+        flashcards.seed(islandId = 2, cardCount = 1, coastId = 1, studied = true)
         val viewModel = createViewModel(scope = "today")
 
         viewModel.onGrade(Grade.Good)
@@ -423,7 +424,7 @@ class StudyViewModelTest {
 
     @Test
     fun dailySessionReviewsACappedNumberThenOffersNewSentences() = runTest {
-        flashcards.seed(islandId = 1, cardCount = DAILY_REVIEW_CAP + 5)
+        flashcards.seed(islandId = 1, cardCount = DAILY_REVIEW_CAP + 5, studied = true)
         suggest("s1", "s2", "s3", "s4")
         val viewModel = createViewModel(scope = "daily", coastId = 1)
 
@@ -442,7 +443,7 @@ class StudyViewModelTest {
 
     @Test
     fun keptSentencesBecomeCardsAndArePracticedAtTheEnd() = runTest {
-        flashcards.seed(islandId = 1, cardCount = 1)
+        flashcards.seed(islandId = 1, cardCount = 1, studied = true)
         suggest("s1", "s2", "s3")
         val viewModel = createViewModel(scope = "daily", coastId = 1)
         viewModel.onGrade(Grade.Good)
@@ -492,7 +493,7 @@ class StudyViewModelTest {
 
     @Test
     fun dailySessionAfterDaysAwayIsSmall() = runTest {
-        flashcards.seed(islandId = 1, cardCount = 10)
+        flashcards.seed(islandId = 1, cardCount = 10, studied = true)
         suggest("s1", "s2", "s3")
         settings.lastStudyDate.value = LocalDate(2026, 10, 1)
         val viewModel = createViewModel(scope = "daily", coastId = 1)
@@ -515,14 +516,76 @@ class StudyViewModelTest {
 
     @Test
     fun coastSessionCoversOnlyThatCoast() = runTest {
-        flashcards.seed(islandId = 1, cardCount = 2, coastId = 1)
+        flashcards.seed(islandId = 1, cardCount = 2, coastId = 1, studied = true)
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
-        flashcards.seed(islandId = 2, cardCount = 2, coastId = 2)
+        flashcards.seed(islandId = 2, cardCount = 2, coastId = 2, studied = true)
 
         val viewModel = createViewModel(scope = "coast", coastId = 2)
 
         assertEquals(listOf("n1", "n2"), viewModel.state.sessionCards.map { it.card.nativeText })
         assertTrue(viewModel.state.sessionCards.all { it.coastId == 2 })
+    }
+
+    @Test
+    fun aCoastSessionReviewsOnlyAndLeavesNewCardsToTheDailySession() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2, studied = true)
+        flashcards.seed(islandId = 2, cardCount = 30) // A whole island added at once: new cards, not a pile of due ones.
+
+        val coast = createViewModel(scope = "coast", coastId = 1)
+        assertEquals(2, coast.state.sessionCards.size)
+        assertTrue(coast.state.sessionCards.all { it.card.islandId == 1 })
+
+        // Opening the island itself is how to learn it in one go.
+        assertEquals(30, createViewModel(islandId = 2).state.sessionCards.size)
+    }
+
+    @Test
+    fun theDailySessionIntroducesNewCardsAtThePaceAndKnownOnesAreWavedThrough() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1, studied = true)
+        flashcards.seed(islandId = 2, cardCount = 30)
+        suggest("s1", "s2")
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+
+        // One review, then three of the thirty new cards; the suggested sentences wait, the coast's own cards come first.
+        assertEquals(1, viewModel.state.sessionCards.size)
+        assertEquals(3, viewModel.state.introTotal)
+        assertEquals(0, viewModel.state.learnTotal)
+        assertEquals(null, viewModel.state.introducing)
+        viewModel.onGrade(Grade.Good)
+
+        val first = viewModel.state.introducing!!
+        assertEquals("n1", first.card.nativeText)
+        assertEquals(2, first.card.islandId)
+        viewModel.learnIntroduced()
+        val known = viewModel.state.introducing!!.card
+        viewModel.knowIntroduced()
+        viewModel.learnIntroduced()
+
+        // The known card is scheduled days ahead without being practiced; the two taken on are practiced now.
+        val saved = flashcards.cards.value.first { it.cardId == known.cardId }
+        assertTrue(saved.due!! > TEST_CLOCK.now().toEpochMilliseconds())
+        assertEquals(null, viewModel.state.introducing)
+        assertEquals(listOf("n1", "n3"), viewModel.state.sessionCards.map { it.card.nativeText })
+        assertEquals(2, viewModel.state.learnedCount)
+        assertFalse(viewModel.state.isSessionComplete)
+
+        viewModel.onGrade(Grade.Good)
+        viewModel.onGrade(Grade.Good)
+
+        assertTrue(viewModel.state.isSessionComplete)
+        assertEquals(1, settings.studySessionsRecorded)
+        assertEquals(27, flashcards.cards.value.count { it.due == null })
+    }
+
+    @Test
+    fun aFasterPaceIntroducesMoreNewCardsADay() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 30)
+        settings.pace.value = Pace.Sprint
+
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+
+        assertEquals(20, viewModel.state.introTotal)
+        assertEquals("n1", viewModel.state.introducing?.card?.nativeText)
     }
 
     @Test

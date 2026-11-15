@@ -183,7 +183,8 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
     }
 
     val learning = uiState.learning
-    val inSession = uiState.hasCards && !uiState.isCaughtUp && !uiState.isSessionComplete && (currentCard != null || learning != null)
+    val introducing = uiState.introducing
+    val inSession = uiState.hasCards && !uiState.isCaughtUp && !uiState.isSessionComplete && (currentCard != null || learning != null || introducing != null)
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (inSession) {
@@ -231,9 +232,17 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                 reviewedCount = uiState.totalCards,
                 againCount = uiState.againCount,
                 streakCount = uiState.streakCount,
-                keptCount = uiState.keptCount,
+                keptCount = uiState.keptCount + uiState.learnedCount,
                 onPracticeAll = viewModel::practiceAll,
                 onBack = onNavigateBack
+            )
+            introducing != null -> IntroduceView(
+                card = introducing,
+                index = uiState.introTotal - uiState.introLeft + 1,
+                total = uiState.introTotal,
+                onLearn = viewModel::learnIntroduced,
+                onKnow = viewModel::knowIntroduced,
+                onSpeak = { viewModel.speak(introducing.card.targetText) }.takeIf { uiState.canSpeak }
             )
             learning != null -> LearnView(
                 sentence = learning,
@@ -354,7 +363,11 @@ private fun SessionTopBar(
                 .height(6.dp)
         )
         Text(
-            text = if (uiState.learning != null) "${uiState.learnLeft} new" else "${uiState.sessionCards.size} left",
+            text = when {
+                uiState.introducing != null -> "${uiState.introLeft + uiState.learnLeft} new"
+                uiState.learning != null -> "${uiState.learnLeft} new"
+                else -> "${uiState.sessionCards.size} left"
+            },
             style = MaterialTheme.typography.labelMedium,
             color = TextSecondary,
             maxLines = 1,
@@ -994,7 +1007,7 @@ fun SessionCompleteView(
             )
             Text(
                 text = when {
-                    scope == StudyScope.Daily && keptCount > 0 -> "${plural(keptCount, "new sentence")} kept. That's today done; see you tomorrow."
+                    scope == StudyScope.Daily && keptCount > 0 -> "${plural(keptCount, "new card")} learned. That's today done; see you tomorrow."
                     scope == StudyScope.Daily -> "That's today done; see you tomorrow."
                     againCount == 0 -> "Every card on the first try. Brilliant!"
                     else -> "You worked through every card."

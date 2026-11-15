@@ -12,6 +12,7 @@ import com.andreaserick.languagecoast.data.ProviderModelLister
 import com.andreaserick.languagecoast.data.OfflineFlashcardRepository
 import com.andreaserick.languagecoast.data.OnDeviceTranslator
 import com.andreaserick.languagecoast.data.OpenRouterTranslator
+import com.andreaserick.languagecoast.data.PersonalIslandBuilder
 import com.andreaserick.languagecoast.data.RoutingTranslator
 import com.andreaserick.languagecoast.data.SentenceSuggester
 import com.andreaserick.languagecoast.data.StarterImporter
@@ -49,6 +50,9 @@ val sharedModule = module {
     factoryOf(::SentenceSuggester)
     single { SuggestionPool(get(), get(), get(), get()) }
     single { StarterImporter(get(), get(), get()) }
+
+    /** Writes the islands about the user from what they answered under About you. */
+    single { PersonalIslandBuilder(get(), get(), get(), get()) }
 
     /** Writes a coast's practice sheet with the AI provider; each platform draws the PDF (see [platformModule]). */
     factory { WorksheetGenerator(get(), get(), get(), get(), get()) }

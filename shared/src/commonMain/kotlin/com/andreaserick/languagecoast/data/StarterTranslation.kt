@@ -24,15 +24,16 @@ class StarterTranslator(private val translator: Translator) {
         targetLanguage: String,
         region: String?,
         sentences: List<String>,
+        wording: Wording = Wording.Unspecified,
         onBatch: suspend (done: Int) -> Unit = {}
     ): List<ProposedSentence> {
         val results = ArrayList<ProposedSentence>(sentences.size)
         var done = 0
         for (batch in sentences.chunked(BATCH_SIZE)) {
             val isModel = engine != TranslationEngine.OnDevice
-            val byModel = if (isModel) askModel(engine, topic, nativeLanguage, targetLanguage, region, batch) else emptyMap()
+            val byModel = if (isModel) askModel(engine, topic, nativeLanguage, targetLanguage, region, batch, wording) else emptyMap()
             val translated = batch.mapNotNull { sentence ->
-                byModel[sentence] ?: oneByOne(engine, topic, nativeLanguage, targetLanguage, region, sentence)
+                byModel[sentence] ?: oneByOne(engine, topic, nativeLanguage, targetLanguage, region, sentence, wording)
             }
             results += if (isModel) naturalCheck(engine, topic, nativeLanguage, targetLanguage, region, translated) else translated
             done += batch.size
@@ -48,9 +49,10 @@ class StarterTranslator(private val translator: Translator) {
         nativeLanguage: String,
         targetLanguage: String,
         region: String?,
-        batch: List<String>
+        batch: List<String>,
+        wording: Wording
     ): Map<String, ProposedSentence> {
-        val completion = translator.complete(engine, buildStarterTranslationPrompt(topic, nativeLanguage, targetLanguage, region, batch))
+        val completion = translator.complete(engine, buildStarterTranslationPrompt(topic, nativeLanguage, targetLanguage, region, batch, wording))
         val text = completion.text
         if (text == null) {
             logError(TAG, "Bulk translation failed for ${topic.category}: ${completion.errorMessage}")
@@ -72,7 +74,7 @@ class StarterTranslator(private val translator: Translator) {
      * makes that the translation: the first version moves to the card's alternatives and the reason becomes
      * its note, so the learner sees both and why. Entries the model doesn't flag are returned as they are.
      */
-    private suspend fun naturalCheck(
+    suspend fun naturalCheck(
         engine: TranslationEngine,
         topic: PhraseBank.Theme,
         nativeLanguage: String,
@@ -98,9 +100,11 @@ class StarterTranslator(private val translator: Translator) {
         nativeLanguage: String,
         targetLanguage: String,
         region: String?,
-        sentence: String
+        sentence: String,
+        wording: Wording
     ): ProposedSentence? {
-        val context = "A phrasebook entry from the topic \"${topic.category}\" for a learner; " + topicRules(topic.category)
+        val speaker = speakerRule(wording, targetLanguage).removePrefix("- ").let { if (it.isEmpty()) "" else " $it" }
+        val context = "A phrasebook entry from the topic \"${topic.category}\" for a learner; " + topicRules(topic.category) + speaker
         val target = translateOnce(engine, sentence, BANK_LANGUAGE, targetLanguage, region, topic.category, context) ?: return null
         val native = if (nativeLanguage == BANK_LANGUAGE) sentence
         else translateOnce(engine, sentence, BANK_LANGUAGE, nativeLanguage, null, topic.category, context) ?: return null
@@ -132,7 +136,7 @@ internal fun topicRules(category: String): String = when (category) {
     "Numbers" -> "write numbers as words, never digits; for ordinals and fractions give the usual spoken form."
     "Days & Months" -> "give the plain name as a calendar shows it, capitalized as the language does."
     "Signs" -> "give the wording actually printed on signs and doors in that language, not a sentence."
-    "Everyday Words", "Question Words", "Family & People", "Colours", "Food & Drink" ->
+    "Everyday Words", "Question Words", "Family & People", "Colours", "Food & Drink", "Clothes", "Body & Symptoms", "House & Furniture", "Places in Town" ->
         "give the dictionary form; for a noun include its article where the language has one, and the plural only if the English is plural."
     "Getting By" -> "these are said to a stranger, so use the polite form of address where the language has one."
     "Wishes" -> "give the set phrase people actually say on that occasion, not a literal translation."
@@ -148,7 +152,14 @@ fun languageIn(language: String, region: String?): String =
  * [region], if given), and into [nativeLanguage] as well when that isn't English. One line per sentence, numbered
  * as the input is.
  */
-fun buildStarterTranslationPrompt(topic: PhraseBank.Theme, nativeLanguage: String, targetLanguage: String, region: String?, sentences: List<String>): String {
+fun buildStarterTranslationPrompt(
+    topic: PhraseBank.Theme,
+    nativeLanguage: String,
+    targetLanguage: String,
+    region: String?,
+    sentences: List<String>,
+    wording: Wording = Wording.Unspecified
+): String {
     val bothSides = nativeLanguage != StarterTranslator.BANK_LANGUAGE
     val target = languageIn(targetLanguage, region)
     val numbered = sentences.mapIndexed { i, s -> "${i + 1}. $s" }.joinToString("\n")
@@ -159,6 +170,7 @@ fun buildStarterTranslationPrompt(topic: PhraseBank.Theme, nativeLanguage: Strin
     val regionRule = region?.trim()?.takeIf { it.isNotEmpty() }
         ?.let { "\n        - The learner will use this in $it: use the words, forms, spelling and register of $it, not of other places the language is spoken." }
         ?: ""
+    val speakerLine = speakerRule(wording, targetLanguage).let { if (it.isEmpty()) "" else "\n        $it" }
     return """
         You are writing the $targetLanguage side of a phrasebook for a learner whose native language is $nativeLanguage. Accuracy matters: the learner will memorize exactly what you write, so a wrong or unnatural entry does lasting damage.
 
@@ -167,7 +179,7 @@ fun buildStarterTranslationPrompt(topic: PhraseBank.Theme, nativeLanguage: Strin
 
         Rules for every entry:
         - Natural, everyday wording that a native speaker would really use, not word for word. Keep the meaning and the tone (a question stays a question, a polite request stays polite).
-        - Where the language distinguishes formal and informal address, use the form for a stranger, unless the entry is clearly said to a friend or family.$regionRule
+        - Where the language distinguishes formal and informal address, use the form for a stranger, unless the entry is clearly said to a friend or family.$regionRule$speakerLine
         - Names, cities and other filled-in words stay as they are, adapted only as grammar requires.
         - Use the punctuation and capitalization conventions of $targetLanguage.
         - Translate every entry on its own; do not merge, skip or reorder them, and add nothing.

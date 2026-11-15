@@ -38,6 +38,25 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun anAnswerAboutTheUserIsStoredOnItsOwn() = runTest {
+        val settings = repository()
+
+        settings.setPersonalAnswer("pets_which", "a cat called Milo")
+
+        assertEquals(mapOf("pets_which" to "a cat called Milo"), settings.personalAnswers.first())
+        assertEquals(mapOf("pets_which" to "a cat called Milo"), settings.backupSettings().personalAnswers)
+    }
+
+    @Test
+    fun anIslandWrittenAboutTheUserIsRememberedWithItsFingerprint() = runTest {
+        val settings = repository()
+
+        settings.markPersonalIslandBuilt(coastId = 3, islandId = "pets", fingerprint = "-12345")
+
+        assertEquals(mapOf("3:pets" to "-12345"), settings.personalIslandsBuilt.first())
+    }
+
+    @Test
     fun recordedSessionsAppearInStudyDays() = runTest {
         val settings = repository()
         assertTrue(settings.studyDays.first().isEmpty())

@@ -42,10 +42,15 @@ private val GUIDE = listOf(
         "Coasts and islands",
         listOfNotNull(
             "Each language you learn gets its own coast. Start one from My Coasts with \"New Coast\".",
-            "On a coast, \"Starter topics\" adds a whole topic (Greetings, Numbers, Phone Settings, ...) as an island in one tap, translated for you in the background. With an AI provider, a native-speaker check then rewrites anything people wouldn't really say; the first version stays as an alternative and the note says why. Blanks like your name, city or job are filled in from Settings › About you (or asked for if you left them empty); sentences with other blanks stay in the Starter sentences list on Today. \"Add all\" adds every remaining topic, but a few topics at a time is the better pace.",
+            "Every coast has a route through the levels A1, A2 and B1. The card at the top of a coast shows the level you are on, how far you are, and the next island to take; \"Route\" lists every island of every level. An island counts as you learn its cards, and a level is reached at 90%.",
+            "A starter topic on the route (Greetings, Numbers, Weather, ...) is added as an island in one tap, translated for you in the background. With an AI provider, a native-speaker check then rewrites anything people wouldn't really say; the first version stays as an alternative and the note says why. Blanks like your name, city or job are filled in from About you (or asked for if you left them empty); sentences with other blanks stay in the Starter sentences list on Today. \"Add all\" adds every remaining topic, but a few topics at a time is the better pace.",
+            "The islands about you are the topics no bank can hold: your family, your home, your work, your routine, your hobbies, your health, your past and your plans. Open About you from Settings (or tap such an island on the route), answer its questions in a few words, and your AI provider writes up to 25 sentences about it in both languages, using only what you told it. \"Look them over\" afterwards lists what it wrote; untick anything that isn't true. Change an answer later and the island offers to be written again; cards you have already studied stay. It needs an AI provider, cloud or local.",
+            "Under About you, say whether sentences about you are worded as a woman, as a man or neutrally: many languages say \"I'm tired\" differently for each.",
+            "At B1 your AI provider writes islands on what that level asks for (opinions with reasons, telling a story, complaints, what-ifs), and each island about you can be taken up a level: the same answers, with more to say.",
+            "\"Rehearse as a talk\" in an island's ⋮ menu joins the island's own sentences into about a minute of speech to read aloud, listen to, and then say without looking.",
             "On a coast, your cards are grouped into islands by topic, like Travel or Restaurant.",
             ("The PDF icon at the top of a coast makes a practice sheet: your AI provider writes new sentences to translate from the words on that coast's cards, each about one island's topic and with at most one new word where it needs it. Islands whose cards you are forgetting get more of the sentences. " +
-                "Pick the direction, the difficulty and how many sentences; the answers come on a page of their own. Download the PDF to print it or fill it in.")
+                "Pick which islands it is made from (all of them unless you say otherwise), the direction, the difficulty and how many sentences; the answers come on a page of their own. Download the PDF to print it or fill it in.")
                 .takeIf { fileTransferAvailable },
             "Set your native language here in Settings, so translations go the right way."
         )
@@ -54,7 +59,7 @@ private val GUIDE = listOf(
         "Creating cards",
         listOf(
             "On Today, open \"Add your own\", type what you want to say in your own language and tap \"Translate & Save\".",
-            "\"Starter sentences\" is a bank of about 650 sentences and words everyone needs, in 27 topics: greetings, getting by in the language, small talk, about me, restaurant, directions, airport, getting around, hotel, shopping, help and health, making plans, phone and internet, money, renting, paperwork, wishes, time, days and months, numbers (enough to build any number), everyday words, question words, family, colours, food and drink, signs, and the words your phone's Settings app uses once you switch it to the language. Tick what you'd say, fill in blanks like [city] or [name], and they become cards.",
+            "\"Starter sentences\" is a bank of about 900 sentences and words everyone needs, in 37 topics: greetings, getting by in the language, small talk, about me, restaurant, directions, airport, getting around, hotel, shopping, help and health, making plans, phone and internet, money, renting, paperwork, wishes, time, weather and seasons, feelings, describing people, appointments and calls, likes and opinions, at work, days and months, numbers (enough to build any number), everyday words, question words, family, colours, food and drink, clothes, body and symptoms, house and furniture, places in town, signs, and the words your phone's Settings app uses once you switch it to the language. Tick what you'd say, fill in blanks like [city] or [name], and they become cards.",
             "The card goes to the focus coast shown at the top of Today.",
             "Choose \"I write it\" to write in the language you're learning: the AI fills in your language and corrects slips. \"Manual\" lets you type both sides.",
             "\"Add many\" turns a pasted paragraph or a photo of a page into sentences to tick, one card each.",
@@ -78,7 +83,8 @@ private val GUIDE = listOf(
     GuideSection(
         "Studying",
         listOf(
-            "Today's session is the daily routine. Open a coast or an island from My Coasts to study just that. Spaced repetition decides when each card comes back.",
+            "Today's session is the daily routine: the cards that are due, then a few new ones. Open a coast or an island from My Coasts to study just that. Spaced repetition decides when each card comes back.",
+            "New cards don't pile up. An island you add or have written waits with its cards marked \"new\", and each day's session introduces a few of them: \"Learn it\" to practice a card at the end of the session, or \"I know this\" to send it days ahead. The pace sets how many: Steady is 3 a day, Fast 10, Sprint 20. Change it under the Start button on Today or in Settings. Opening an island studies all of it at once, if you'd rather.",
             "Flip: tap \"Show answer\", then grade yourself with Again, Hard, Good or Easy. " +
                 "You can also swipe left for Again and right for Good.",
             "Type: type the translation and tap \"Check answer\". Capitals and punctuation don't matter, accents do. A slip of a letter counts as Hard.",

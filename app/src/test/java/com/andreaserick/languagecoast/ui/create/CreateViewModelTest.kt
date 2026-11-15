@@ -50,7 +50,7 @@ class CreateViewModelTest {
 
     @Test
     fun planCapsTodaysReviewsAndNewSentences() = runTest {
-        flashcards.seed(islandId = 1, cardCount = DAILY_REVIEW_CAP + 3, coastId = 1)
+        flashcards.seed(islandId = 1, cardCount = DAILY_REVIEW_CAP + 3, coastId = 1, studied = true)
         flashcards.addSuggestions((1..5).map { SuggestedSentence(coastId = 1, nativeText = "n$it", targetText = "t$it", category = "C") })
 
         val plan = viewModel.uiState.plan!!
@@ -382,9 +382,10 @@ class CreateViewModelTest {
 
     @Test
     fun todaySummaryCountsDueCardsAndCoastsWithThem() = runTest {
-        flashcards.seed(islandId = 1, cardCount = 2, coastId = 1)
+        flashcards.seed(islandId = 1, cardCount = 2, coastId = 1, studied = true)
         flashcards.seedCoast(coastId = 2, language = "Icelandic")
-        flashcards.seed(islandId = 2, cardCount = 1, coastId = 2)
+        flashcards.seed(islandId = 2, cardCount = 1, coastId = 2, studied = true)
+        flashcards.seed(islandId = 3, cardCount = 40, coastId = 2) // New cards wait their turn; they aren't due.
         settings.streakCount.value = 4
         val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE, pool())
 

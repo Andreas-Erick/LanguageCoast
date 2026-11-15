@@ -1,6 +1,6 @@
 # Privacy Policy
 
-*Language Coast · Last updated November 2, 2026*
+*Language Coast · Last updated November 15, 2026*
 
 Language Coast is a flashcard app for learning languages, made by Andreas Erick. This policy explains what happens to your data when you use it on Android or iPhone.
 
@@ -10,6 +10,7 @@ Language Coast is a flashcard app for learning languages, made by Andreas Erick.
 
 - Your coasts, islands and cards, with their review history, your streak and the days you studied.
 - Your settings, such as your native language, your translation provider and reminder times.
+- What you choose to tell the app under "About you": your name, where you live and come from, your job, and your answers to its optional questions about your family, home, work, free time, health, past and plans.
 - The API keys you enter for cloud providers, and a Hugging Face token if you add one for gated local models.
 - On Android, any Local AI model you download.
 
@@ -25,6 +26,8 @@ All of this stays in the app's private storage on your phone. The developer neve
 - Groq ([Groq's privacy policy](https://groq.com/privacy-policy))
 - DeepSeek ([DeepSeek's privacy policy](https://www.deepseek.com/))
 - OpenRouter, which passes the request on to the model you chose ([OpenRouter's privacy policy](https://openrouter.ai/privacy))
+
+**Islands about you.** Everything under "About you" is optional. When you ask the app to write an island about you on a coast (for example "My Family"), it sends the answers you gave for that island, together with your native language, the language you're learning and that coast's goal and region, to the provider you picked, which writes the sentences. Answers to other islands' questions are not sent with it. This can include what you wrote about your health or your family, so leave out anything you would rather not share with that provider. With Local AI the sentences are written on your phone and nothing is sent.
 
 The key is your own, so the request is made under your account with that provider, and its terms decide how long it keeps the text and whether it may use it. The developer never sees these requests. If you don't add an API key, nothing is sent.
 

@@ -2,7 +2,7 @@ package com.andreaserick.languagecoast.data
 
 /**
  * The few things about the user that starter sentences ask for: the blanks `[name]`, `[city]` and so on
- * in the [PhraseBank]. Entered once in Settings ("About you") and filled in wherever a blank appears, so a
+ * in the [PhraseBank]. Entered once on the "About you" screen and filled in wherever a blank appears, so a
  * topic that only needs a name never asks. Blank fields are simply unknown.
  *
  * @property city Where the user lives, and [country] its country; [homeCountry] is where they are from

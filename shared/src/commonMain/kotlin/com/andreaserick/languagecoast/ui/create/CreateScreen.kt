@@ -77,6 +77,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.DailyPlan
+import com.andreaserick.languagecoast.data.Pace
+import com.andreaserick.languagecoast.data.daysToLearn
+import com.andreaserick.languagecoast.ui.components.PaceSheet
+import com.andreaserick.languagecoast.ui.components.roughDuration
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.RecentCard
@@ -125,6 +129,7 @@ fun CreateScreen(
     onStartDaily: (coastId: Int, language: String) -> Unit,
     onReviewCoast: (coastId: Int, coastName: String) -> Unit,
     onReviewAll: () -> Unit,
+    onAboutYou: () -> Unit,
     viewModel: CreateViewModel = koinViewModel()
 ) {
     CreateContent(
@@ -150,7 +155,10 @@ fun CreateScreen(
         onDismissGoalPrompt = viewModel::dismissGoalPrompt,
         onStartDaily = onStartDaily,
         onReviewCoast = onReviewCoast,
-        onReviewAll = onReviewAll
+        onReviewAll = onReviewAll,
+        onSetPace = viewModel::setPace,
+        onAboutYou = onAboutYou,
+        onDismissAboutYou = viewModel::dismissAboutYouInvite
     )
 }
 
@@ -183,9 +191,16 @@ private fun CreateContent(
     onDismissGoalPrompt: () -> Unit,
     onStartDaily: (coastId: Int, language: String) -> Unit,
     onReviewCoast: (coastId: Int, coastName: String) -> Unit,
-    onReviewAll: () -> Unit
+    onReviewAll: () -> Unit,
+    onSetPace: (Pace) -> Unit,
+    onAboutYou: () -> Unit,
+    onDismissAboutYou: () -> Unit
 ) {
     var showNewCoastDialog by remember { mutableStateOf(false) }
+    var showPace by remember { mutableStateOf(false) }
+    if (showPace) {
+        PaceSheet(pace = uiState.pace, waiting = uiState.plan?.newOnCoast ?: 0, onPick = onSetPace, onDismiss = { showPace = false })
+    }
     var showBatchSheet by remember { mutableStateOf(false) }
     // The form is folded away: the day starts with the session, and a sentence of your own is the exception.
     var composerOpen by rememberSaveable { mutableStateOf(false) }
@@ -287,8 +302,12 @@ private fun CreateContent(
                     onReviewCoast = { onReviewCoast(selectedCoast.coastId, selectedCoast.displayName) },
                     onReviewAll = onReviewAll,
                     onBrowseStarters = { showStarters = true },
-                    onAddOwn = { composerOpen = true }
+                    onAddOwn = { composerOpen = true },
+                    pace = uiState.pace,
+                    onChangePace = { showPace = true }
                 )
+
+                if (uiState.showAboutYouInvite) AboutYouInvite(onOpen = onAboutYou, onDismiss = onDismissAboutYou)
 
                 ComposerHeader(open = composerOpen, onToggle = { composerOpen = !composerOpen })
                 AnimatedVisibility(
@@ -383,7 +402,9 @@ private fun DailyCard(
     onReviewCoast: () -> Unit,
     onReviewAll: () -> Unit,
     onBrowseStarters: () -> Unit,
-    onAddOwn: () -> Unit
+    onAddOwn: () -> Unit,
+    pace: Pace,
+    onChangePace: () -> Unit
 ) {
     val language = Languages.byName(coast.language)
     ContentCard(padding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
@@ -445,6 +466,7 @@ private fun DailyCard(
                     Text(if (plan.isWelcomeBack) "Ease back in" else "Start · about ${plural(plan.minutes, "minute")}")
                 }
                 if (plan.leftOver > 0) LeftOverLine(leftOver = plan.leftOver, dueOnCoast = plan.dueOnCoast, onReviewAll = onReviewCoast)
+                WaitingLine(waiting = plan.newOnCoast, pace = pace, onChangePace = onChangePace)
             }
             isPreparing -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -520,10 +542,62 @@ private fun LeftOverLine(leftOver: Int, dueOnCoast: Int, onReviewAll: () -> Unit
     )
 }
 
-/** "8 cards to review · 3 new sentences", leaving out whichever is zero. */
+/**
+ * The pace, under the Start button: with new cards waiting on the coast, how long they take at this pace
+ * ("212 new cards are waiting: about 10 weeks at the steady pace. Go faster."); otherwise just the pace
+ * and the way to change it. The link is part of the sentence, as in [LeftOverLine].
+ */
+@Composable
+private fun WaitingLine(waiting: Int, pace: Pace, onChangePace: () -> Unit) {
+    val text = buildAnnotatedString {
+        if (waiting > 0) {
+            append("${plural(waiting, "new card")} ${if (waiting == 1) "is" else "are"} waiting: ${roughDuration(daysToLearn(waiting, pace))} at the ${pace.label.lowercase()} pace. ")
+        } else {
+            append("${pace.label} pace, up to ${pace.newPerDay} new a day. ")
+        }
+        withLink(
+            LinkAnnotation.Clickable(
+                tag = "pace",
+                styles = TextLinkStyles(style = SpanStyle(color = Sunlit, fontWeight = FontWeight.SemiBold)),
+                linkInteractionListener = { onChangePace() }
+            )
+        ) { append(if (pace == Pace.Sprint) "Change pace" else if (waiting > 0) "Go faster" else "Change pace") }
+        append(".")
+    }
+    Text(text = text, style = MaterialTheme.typography.bodySmall, color = TextSecondary, modifier = Modifier.padding(top = 8.dp))
+}
+
+/**
+ * An invitation, until the user answers a first question or waves it away: the app can only write islands
+ * about their life once it knows something about it.
+ */
+@Composable
+private fun AboutYouInvite(onOpen: () -> Unit, onDismiss: () -> Unit) {
+    ContentCard(padding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.Top) {
+            IconTile(size = 40.dp) { Text("🪪", fontSize = 20.sp) }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Make it about you", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Most of what you'll say is about your own life. Answer a few questions and your coast gets islands about your family, your work and your free time.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = onDismiss) { Text("Not now", style = MaterialTheme.typography.labelMedium, color = TextSecondary) }
+            TextButton(onClick = onOpen) { Text("Answer a few questions", style = MaterialTheme.typography.labelMedium, color = Sunlit) }
+        }
+    }
+}
+
+/** "8 cards to review · 5 new cards · 3 new sentences", leaving out whatever is zero. */
 private fun sessionSummary(plan: DailyPlan): String = listOfNotNull(
     plan.reviewCount.takeIf { it > 0 }?.let { "${plural(it, "card")} to review" },
-    plan.newCount.takeIf { it > 0 }?.let { plural(it, "new sentence") }
+    plan.newCardCount.takeIf { it > 0 }?.let { plural(it, "new card") },
+    plan.newSentenceCount.takeIf { it > 0 }?.let { plural(it, "new sentence") }
 ).joinToString(" · ")
 
 /** Why the user learns the coast's language, or an invitation to say; tapping opens the [GoalSheet]. */

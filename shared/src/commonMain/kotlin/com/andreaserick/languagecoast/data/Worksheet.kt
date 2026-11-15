@@ -37,12 +37,20 @@ enum class WorksheetDirection {
     ToNative
 }
 
-/** What the user picks for a practice sheet. */
+/**
+ * What the user picks for a practice sheet.
+ *
+ * @property islandIds The islands whose cards the sheet is made from, or null for every island of the coast.
+ */
 data class WorksheetOptions(
     val count: Int = WORKSHEET_DEFAULT_COUNT,
     val difficulty: WorksheetDifficulty = WorksheetDifficulty.Medium,
-    val direction: WorksheetDirection = WorksheetDirection.ToTarget
-)
+    val direction: WorksheetDirection = WorksheetDirection.ToTarget,
+    val islandIds: Set<Int>? = null
+) {
+    /** Whether the sheet may use the island with [islandId]. */
+    fun includes(islandId: Int): Boolean = islandIds == null || islandId in islandIds
+}
 
 /** Sentences on a practice sheet unless the user picks another number. */
 const val WORKSHEET_DEFAULT_COUNT = 10
@@ -524,10 +532,14 @@ class WorksheetGenerator(
     suspend fun generate(coastId: Int, options: WorksheetOptions, onProgress: (Int) -> Unit = {}): WorksheetResult {
         val coast = flashcards.observeCoast(coastId).first() ?: return WorksheetResult.Failed("This coast is gone.")
         // This coast's cards only, and of a card only what a sheet is made from: there can be tens of thousands.
-        val cards = flashcards.getWorksheetCards(coastId)
+        // Of those, the cards of the islands the user picked: the sheet's words and topics come from nowhere else.
+        val cards = flashcards.getWorksheetCards(coastId).filter { options.includes(it.islandId) }
         val cardCount = cards.size
         if (cardCount < WORKSHEET_MIN_CARDS) {
-            return WorksheetResult.Failed("A practice sheet needs at least $WORKSHEET_MIN_CARDS cards on the coast to make new sentences from.")
+            return WorksheetResult.Failed(
+                if (options.islandIds == null) "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards on the coast to make new sentences from."
+                else "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards to make new sentences from. Pick more islands."
+            )
         }
         val provider = settings.translationProvider.first()
         val engine = when (val choice = settings.currentEngine(provider)) {

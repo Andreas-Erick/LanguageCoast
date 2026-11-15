@@ -61,7 +61,15 @@ data class BackupSettings(
     /** Starter topics added whole to a coast, as "coastId:topic". */
     val starterTopicsAdded: List<String> = emptyList(),
     /** The user's name, city and so on, by placeholder (see [Profile.fillers]). */
-    val profile: Map<String, String> = emptyMap()
+    val profile: Map<String, String> = emptyMap(),
+    /** What the user answered about themselves, by question key (see [PersonalQuestion.key]). */
+    val personalAnswers: Map<String, String> = emptyMap(),
+    /** The islands about the user written on a coast, as "coastId:islandId" to the fingerprint of the facts used. */
+    val personalIslandsBuilt: Map<String, String> = emptyMap(),
+    /** How sentences about the user are worded (see [Wording.key]); null if they haven't said. */
+    val wording: String? = null,
+    /** How much new a daily session brings (see [Pace.key]); null means the default. */
+    val pace: String? = null
 )
 
 @Serializable
