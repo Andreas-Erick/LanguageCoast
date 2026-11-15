@@ -34,7 +34,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-actual val localAiAvailable = true
+/**
+ * LiteRT-LM ships its native library for 64-bit processors only. On a 32-bit phone, or where the app runs as
+ * a 32-bit process, there is no library to load, so Local AI is not offered at all.
+ */
+actual val localAiAvailable: Boolean = android.os.Process.is64Bit()
 
 /** Holds paths initialized by [AndroidLocalModelController] so [LocalAiTranslator] can locate downloaded models. */
 internal object LocalAiPaths {
@@ -116,7 +120,7 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
         }
     }
 
-    override fun installModel(modelId: String, accessToken: String?) {
+    override fun installModel(modelId: String, accessToken: String?, allowMetered: Boolean) {
         val model = LocalAiCatalog.byId(modelId) ?: return
         if (trackers[modelId]?.isActive == true) return
         if (model.gated && accessToken.isNullOrBlank()) {
@@ -128,14 +132,18 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
             return
         }
         // DownloadManager refuses to overwrite, so clear leftovers from an earlier attempt.
+        partFile(model).delete()
         File(modelsFolder, model.fileName).delete()
 
         val request = DownloadManager.Request(Uri.parse(model.downloadUrl))
             .setTitle("Language Coast · ${model.name}")
             .setDescription("Local AI model, ${model.sizeLabel}")
-            .setDestinationInExternalFilesDir(context, MODELS_DIR, model.fileName)
+            // Under another name until it is complete (see [partFile]).
+            .setDestinationInExternalFilesDir(context, MODELS_DIR, model.fileName + PART_SUFFIX)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            .setAllowedOverMetered(true)
+            // Without the user's word a download of this size only runs on Wi-Fi: DownloadManager waits while
+            // there is none and carries on when it is back.
+            .setAllowedOverMetered(allowMetered)
             .setAllowedOverRoaming(false)
         if (model.gated) request.addRequestHeader("Authorization", "Bearer ${accessToken!!.trim()}")
 
@@ -167,10 +175,15 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
                 }
                 when (snapshot.status) {
                     DownloadManager.STATUS_SUCCESSFUL -> {
+                        val part = partFile(model)
                         val file = File(modelsFolder, model.fileName)
-                        val status = if (file.exists() && file.length() > MIN_MODEL_BYTES) {
+                        // Only now does the file get the model's name. A name that is there without a part was
+                        // given by an earlier run, or by a version of the app that downloaded without parts.
+                        val complete = if (part.exists()) part.length() > MIN_MODEL_BYTES && part.renameTo(file) else file.length() > MIN_MODEL_BYTES
+                        val status = if (complete) {
                             ModelInstallStatus.Installed(file.absolutePath, (file.length() / MB).coerceAtLeast(1L))
                         } else {
+                            part.delete()
                             file.delete()
                             ModelInstallStatus.Failed("The downloaded file was incomplete. Please try again.")
                         }
@@ -209,13 +222,17 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
         401, 403 -> if (model.gated) {
             "Hugging Face refused the token. Accept the model's licence on huggingface.co and check the token."
         } else {
-            "Hugging Face refused the download (HTTP $reason)."
+            "Hugging Face refused the download. Try again later."
         }
-        404 -> "The model file is no longer on Hugging Face (HTTP 404)."
+        404 -> "The model file is no longer on Hugging Face."
         DownloadManager.ERROR_INSUFFICIENT_SPACE -> "Not enough free storage for ${model.sizeLabel}."
         DownloadManager.ERROR_HTTP_DATA_ERROR, DownloadManager.ERROR_CANNOT_RESUME -> "The connection dropped. Please try again."
         DownloadManager.ERROR_DEVICE_NOT_FOUND, DownloadManager.ERROR_FILE_ERROR -> "The download couldn't be saved to storage."
-        else -> "Download failed (error $reason). Please try again."
+        else -> {
+            // The number is DownloadManager's own or the server's status; it means nothing to the user.
+            logError(TAG, "Downloading ${model.fileName} failed with reason $reason")
+            "The download failed. Please try again."
+        }
     }
 
     override fun cancelInstall(modelId: String) {
@@ -223,9 +240,18 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
         val id = pending.getLong(modelId, -1L)
         if (id != -1L) downloads.remove(id)
         pending.edit().remove(modelId).apply()
-        LocalAiCatalog.byId(modelId)?.let { File(modelsFolder, it.fileName).delete() }
+        LocalAiCatalog.byId(modelId)?.let {
+            partFile(it).delete()
+            File(modelsFolder, it.fileName).delete()
+        }
         _installStates.update { it + (modelId to ModelInstallStatus.NotInstalled) }
     }
+
+    /**
+     * Where [model] is downloaded to. It only gets its own name once it is complete, so a download that is
+     * still running, waiting for Wi-Fi or cut short is never taken for an installed model and loaded half-written.
+     */
+    private fun partFile(model: LocalAiModel): File = File(modelsFolder, model.fileName + PART_SUFFIX)
 
     override fun deleteModel(modelId: String) {
         cancelInstall(modelId)
@@ -265,10 +291,12 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
 
     private companion object {
         const val MODELS_DIR = "local_models"
+        const val TAG = "LocalModelController"
+        const val PART_SUFFIX = ".part"
         const val MB = 1024L * 1024L
         /** A real `.litertlm` model is far larger than this; anything smaller is an error page. */
         const val MIN_MODEL_BYTES = 10L * MB
-        const val NEEDS_TOKEN = "This model is gated on Hugging Face. Add a Hugging Face token below to download it."
+        const val NEEDS_TOKEN = "This model needs a Hugging Face token. Add one below to download it."
     }
 }
 
@@ -386,8 +414,16 @@ actual class LocalAiTranslator actual constructor() : Translator {
     actual override suspend fun prepare(engine: TranslationEngine) {
         val localEngine = engine as? TranslationEngine.LocalAi ?: return
         val modelFile = LocalAiPaths.resolveModelFile(localEngine.modelId, localEngine.modelPath) ?: return
-        withContext(dispatcher) {
-            mutex.withLock { ensureEngineLocked(modelFile) }
+        try {
+            withContext(dispatcher) {
+                mutex.withLock { ensureEngineLocked(modelFile) }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Callers start this at launch without a guard of their own. Whatever stops the model from
+            // loading, the next translation says so in words; it must not take the app down here.
+            logError(TAG, "The local AI model couldn't be loaded ahead of time", e)
         }
     }
 
@@ -410,8 +446,7 @@ actual class LocalAiTranslator actual constructor() : Translator {
      * [modelId] picks the model-specific way of keeping the reply short.
      */
     private suspend fun generateLocked(prompt: String, modelFile: File, modelId: String): Completion {
-        val activeEngine = ensureEngineLocked(modelFile)
-            ?: return Completion.failure("Couldn't load the local AI model (${modelFile.name}). Ensure your phone has enough free RAM and try again.")
+        val activeEngine = ensureEngineLocked(modelFile) ?: return Completion.failure(NOT_LOADED_MESSAGE)
         // Qwen 3 also honours this soft switch in the message itself, in case the template ignores ThinkingConfig.
         val fullPrompt = if (LocalAiCatalog.byId(modelId)?.family == "Qwen 3") "$prompt /no_think" else prompt
         return try {
@@ -427,7 +462,7 @@ actual class LocalAiTranslator actual constructor() : Translator {
                 closeEngineLocked()
                 retryOnCpuLocked(prompt, modelFile)
             } else {
-                Completion.failure("Local AI couldn't finish translating: ${e.message ?: "try a lighter model in Settings."}")
+                Completion.failure(NO_ANSWER_MESSAGE)
             }
         }
     }
@@ -435,7 +470,7 @@ actual class LocalAiTranslator actual constructor() : Translator {
     private suspend fun retryOnCpuLocked(prompt: String, modelFile: File): Completion {
         val cacheDir = LocalAiPaths.cacheDir?.absolutePath ?: modelFile.parentFile?.absolutePath
         val cpuEngine = initializeEngineWithFallback(modelFile.absolutePath, cacheDir, preferGpu = false)
-            ?: return Completion.failure("Local AI couldn't initialize on CPU.")
+            ?: return Completion.failure(NOT_LOADED_MESSAGE)
         engine = cpuEngine
         loadedModelPath = modelFile.absolutePath
         return try {
@@ -444,7 +479,7 @@ actual class LocalAiTranslator actual constructor() : Translator {
             throw e
         } catch (e: Exception) {
             logError(TAG, "Local AI CPU fallback failed", e)
-            Completion.failure("Local AI error: ${e.message ?: "couldn't run model"}")
+            Completion.failure(NO_ANSWER_MESSAGE)
         }
     }
 
@@ -496,6 +531,11 @@ actual class LocalAiTranslator actual constructor() : Translator {
                 return Engine(config).also { it.initialize() }
             } catch (e: Exception) {
                 logError(TAG, "LiteRT-LM Engine init failed on backend $backend", e)
+            } catch (e: LinkageError) {
+                // The native library is missing or can't be loaded on this phone (an Error, not an Exception):
+                // no backend can work, and letting it through would stop the app at every start.
+                logError(TAG, "LiteRT-LM's native library couldn't be loaded", e)
+                return null
             }
         }
         return null
@@ -512,7 +552,9 @@ actual class LocalAiTranslator actual constructor() : Translator {
 
     private companion object {
         const val TAG = "LocalAiTranslator"
-        const val NO_MODEL_MESSAGE = "No local AI model is installed yet. Open Settings → Translation → Local AI to scan your phone and install a model."
+        const val NO_MODEL_MESSAGE = "No Local AI model is installed yet. Install one under Settings › Translation."
+        const val NOT_LOADED_MESSAGE = "The Local AI model couldn't be loaded. Close other apps to free memory and try again, or pick a lighter model in Settings."
+        const val NO_ANSWER_MESSAGE = "Local AI couldn't finish its answer. Try again, or pick a lighter model in Settings."
 
         /** Enough for a translation with alternatives and a note, or a 90-word explanation, with room to spare. */
         const val MAX_OUTPUT_TOKENS = 512
@@ -554,5 +596,5 @@ internal fun parseLocalModelResponse(rawReply: String, request: TranslationReque
             emoji = emojiForCategory(fallbackCategory)
         )
     }
-    return TranslationResult.failure("The local AI model returned an empty answer. Try again or pick another model.")
+    return TranslationResult.failure("The Local AI model returned an empty answer. Try again or pick another model.")
 }

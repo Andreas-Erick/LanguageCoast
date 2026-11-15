@@ -6,6 +6,8 @@ options:
     iOS: "16.0"
 settings:
   base:
+    # The version of a build made by hand or in CI. A release never uses it: the release workflow takes the
+    # version from the tag (see .github/workflows/ios-release.yml).
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
@@ -17,12 +19,21 @@ targets:
       path: iosApp/Info.plist
       properties:
         CFBundleDisplayName: Language Coast
+        # The name in crash logs and system lists; without it, it would be the target's name, iosApp.
+        CFBundleName: Language Coast
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        UILaunchScreen: {}
-        # The app is always dark, so the status bar uses light text.
+        LSRequiresIPhoneOS: true
+        # Portrait only, until landscape has been looked at on an iPhone.
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # The launch screen is the dark coast (LaunchBackground in Assets.xcassets), the theme the app starts
+        # in. iOS draws it before the app runs, so it cannot follow a theme picked in Settings.
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        # Light status bar text over the launch screen. Once the app runs, the status bar follows the app's
+        # theme (applyInterfaceStyle in shared/src/iosMain). That relies on the status bar being decided per
+        # view controller, which is the default, so UIViewControllerBasedStatusBarAppearance must stay unset.
         UIStatusBarStyle: UIStatusBarStyleLightContent
-        UIViewControllerBasedStatusBarAppearance: false
         # Lets Compose draw at the screen's full refresh rate (ProMotion).
         CADisableMinimumFrameDurationOnPhone: true
         ITSAppUsesNonExemptEncryption: false

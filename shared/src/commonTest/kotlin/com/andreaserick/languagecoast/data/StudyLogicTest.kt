@@ -71,6 +71,15 @@ class StudyLogicTest {
     }
 
     @Test
+    fun japaneseTextIsSplitAtItsOwnSentenceMarks() {
+        // No space follows the full-width marks, so a pasted paragraph would otherwise become a single card.
+        val text = "すみません、駅はどこですか？ありがとうございます。いい天気ですね！"
+        assertEquals(listOf("すみません、駅はどこですか？", "ありがとうございます。", "いい天気ですね！"), splitSentences(text))
+        // Western marks inside a line still need the space after them, so "3.5" and "e.g." stay whole.
+        assertEquals(listOf("It costs 3.50 euros."), splitSentences("It costs 3.50 euros."))
+    }
+
+    @Test
     fun oneLineOfASideWithSeveralIsEnoughToType() {
         assertEquals(listOf("Guten Morgen"), acceptedAnswers("Guten Morgen"))
         val side = "der Hund\npl. die Hunde"

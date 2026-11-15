@@ -58,7 +58,7 @@ fun reminderMessage(dueCount: Int, streak: Int, studiedToday: Boolean, teaser: R
     if (dueCount == 0) {
         val variants = listOf(
             "All caught up" to "Nothing is due today. Your islands are explored.",
-            "Smooth sailing" to "No cards waiting. Add a sentence you'd like to say?",
+            "Smooth sailing" to "No cards due. Add a sentence you'd like to say?",
             "Quiet coast today" to "Nothing to review. Come back tomorrow, or practice an island anyway."
         )
         val (title, text) = variants[seed % variants.size]
@@ -70,7 +70,7 @@ fun reminderMessage(dueCount: Int, streak: Int, studiedToday: Boolean, teaser: R
         return ReminderMessage(
             kind = ReminderKind.Milestone,
             title = "Day $next is today",
-            text = "Finish an island and your streak reaches $next days. $cards waiting.",
+            text = "Finish today's session and your streak reaches $next days. $cards due.",
             emoji = "🏆"
         )
     }
@@ -97,20 +97,20 @@ fun reminderMessage(dueCount: Int, streak: Int, studiedToday: Boolean, teaser: R
             )
         }
         ReminderKind.StreakAtRisk -> {
-            val titles = listOf("Your $streak-day streak ends tonight", "$streak days and counting", "Don't break the chain")
+            val titles = listOf("Keep your $streak-day streak going", "$streak days and counting", "Don't break the chain")
             ReminderMessage(
                 kind = kind,
                 title = titles[variant % titles.size],
-                text = "Finish one island today to keep it. $cards waiting.",
+                text = "Finish today's session to keep your streak. $cards due.",
                 emoji = "🔥"
             )
         }
         else -> {
-            val titles = listOf("$cards waiting", "Time for a quick review", "Your coasts miss you", "Five minutes is all it takes")
+            val titles = listOf("$cards due", "Time for a quick review", "Your coasts miss you", "Five minutes is all it takes")
             val texts = listOf(
                 "$cards due for review today.",
                 "Review $cards and they'll stick a little longer.",
-                "$cards due. Start with the busiest island."
+                "$cards due. Today's session is ready."
             )
             ReminderMessage(kind = ReminderKind.Due, title = titles[variant % titles.size], text = texts[variant % texts.size], emoji = "🌅")
         }
@@ -126,7 +126,7 @@ fun scheduledReminderMessage(dayIndex: Int): ReminderMessage {
         "Time to study" to "A few minutes on your coast keeps the words from drifting away.",
         "Your coasts miss you" to "Review today's cards before they're forgotten.",
         "Quick review?" to "Flip through what's due and keep your streak alive.",
-        "Five minutes is all it takes" to "Finish one island today.",
+        "Five minutes is all it takes" to "Finish today's session.",
         "Still remember yesterday's cards?" to "Find out: open Language Coast and review.",
         "Keep the chain going" to "Study today and your streak grows by one.",
         "Words fade, reviews fix that" to "Your due cards are waiting."

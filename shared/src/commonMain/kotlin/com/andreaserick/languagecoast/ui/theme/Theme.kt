@@ -11,9 +11,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-/** How the app is lit: with the phone, always dark, or always light. */
+/** How the app is lit: as the device is set (dark or light, or switching by itself), always dark, or always light. */
 enum class ThemeMode(val key: String, val label: String) {
-    System("system", "With the phone"),
+    System("system", "Automatic"),
     Dark("dark", "Dark"),
     Light("light", "Light");
 

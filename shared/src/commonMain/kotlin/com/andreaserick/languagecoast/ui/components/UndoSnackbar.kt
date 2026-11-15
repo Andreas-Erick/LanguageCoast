@@ -8,7 +8,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
-import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import kotlinx.coroutines.CoroutineScope
@@ -53,8 +53,8 @@ fun CoastSnackbar(data: SnackbarData) {
         shape = MaterialTheme.shapes.medium,
         containerColor = SurfaceSelected,
         contentColor = TextPrimary,
-        actionColor = Sunlit,
-        actionContentColor = Sunlit,
+        actionColor = SunlitText,
+        actionContentColor = SunlitText,
         dismissActionContentColor = TextPrimary
     )
 }

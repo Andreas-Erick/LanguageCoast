@@ -4,6 +4,10 @@
     <color name="white">#FFFFFFFF</color>
     <!-- Matches OceanGround in ui/theme/Color.kt: the launcher icon's background and the window behind the first frame. -->
     <color name="ocean_ground">#FF0C2536</color>
+    <!-- OceanGround of the light palette in ui/theme/Color.kt: the splash of the light theme. -->
+    <color name="daylight_ground">#FFDFDACD</color>
+    <!-- The splash of the theme that follows the phone: daylight here, the dark ocean in values-night. -->
+    <color name="system_ground">#FFDFDACD</color>
     <!-- Widget colours, matching NavGround, Sunlit, TextSecondary and WaveLineColor in ui/theme/Color.kt -->
     <color name="nav_ground">#FF0A1F2E</color>
     <color name="sunlit">#FFF3C969</color>

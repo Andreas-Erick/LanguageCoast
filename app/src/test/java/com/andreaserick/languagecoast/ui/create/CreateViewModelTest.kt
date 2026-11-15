@@ -1,7 +1,9 @@
 package com.andreaserick.languagecoast.ui.create
 
+import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.DAILY_NEW_SENTENCES
 import com.andreaserick.languagecoast.data.DAILY_REVIEW_CAP
+import com.andreaserick.languagecoast.data.EngineChoice
 import com.andreaserick.languagecoast.data.SentenceSuggester
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.StarterTranslator
@@ -10,6 +12,7 @@ import com.andreaserick.languagecoast.data.SuggestionPool
 import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationResult
+import com.andreaserick.languagecoast.data.currentEngine
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.FakeTranslator
@@ -21,6 +24,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -28,6 +32,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import kotlin.time.Clock
+import kotlin.time.Instant
+
+/** A clock a test moves by hand. */
+private class MovableClock(var instant: Instant) : Clock {
+    override fun now() = instant
+}
 
 class CreateViewModelTest {
 
@@ -180,12 +191,142 @@ class CreateViewModelTest {
 
     @Test
     fun aiSaveWithoutApiKeyShowsErrorAndDoesNotCallTranslator() = runTest {
+        // Without a key the form starts on Manual, so the user has to ask for a translation to get here.
+        viewModel.onInputModeChange(InputMode.Translate)
         viewModel.onNativeSentenceChange("Hello")
 
         viewModel.save()
 
-        assertEquals(SaveResult.Error("Please enter a Gemini API key in Settings first!"), viewModel.uiState.result)
+        val missing = settings.currentEngine() as EngineChoice.Missing
+        assertEquals(SaveResult.Error(missing.message), viewModel.uiState.result)
         assertNull(translator.lastRequest)
+    }
+
+    @Test
+    fun withoutAProviderThatCanTranslateTheFormStartsOnManual() = runTest {
+        // Gemini is picked and has no key yet.
+        assertFalse(viewModel.uiState.engineReady)
+        assertEquals(InputMode.Manual, viewModel.uiState.inputMode)
+
+        settings.apiKey.value = "key"
+
+        assertTrue(viewModel.uiState.engineReady)
+        assertEquals(InputMode.Translate, viewModel.uiState.inputMode)
+    }
+
+    @Test
+    fun aModeTheUserPickedStaysWhenTheProviderBecomesReady() = runTest {
+        viewModel.onInputModeChange(InputMode.Manual)
+
+        settings.apiKey.value = "key"
+
+        assertTrue(viewModel.uiState.engineReady)
+        assertEquals(InputMode.Manual, viewModel.uiState.inputMode)
+    }
+
+    @Test
+    fun aTranslationTypedByHandKeepsTheFormOnManualWhenTheProviderBecomesReady() = runTest {
+        // The form is on Manual because no provider can translate; the switch was never touched.
+        viewModel.onNativeSentenceChange("Hello")
+        viewModel.onTargetSentenceChange("Hola")
+
+        settings.apiKey.value = "key"
+
+        assertTrue(viewModel.uiState.engineReady)
+        assertEquals(InputMode.Manual, viewModel.uiState.inputMode)
+        assertEquals("Hola", viewModel.uiState.targetSentence)
+    }
+
+    @Test
+    fun aKeyWithoutPermissionIsNotReadyAndSaysWhoIsWaiting() = runTest {
+        settings.aiSharingAllowed.value = emptySet()
+        settings.apiKey.value = "key"
+
+        assertFalse(viewModel.uiState.engineReady)
+        assertEquals(TranslationProvider.Gemini, viewModel.uiState.awaitingPermission)
+
+        settings.allowAiSharing(TranslationProvider.Gemini)
+
+        assertTrue(viewModel.uiState.engineReady)
+        assertNull(viewModel.uiState.awaitingPermission)
+    }
+
+    @Test
+    fun aCorrectedKeyForgetsThatTheOneBeforeWasRefused() = runTest {
+        val refusal = "Gemini didn't accept the API key. Check your key in Settings."
+        settings.apiKey.value = "mistyped"
+        translator.completion = Completion.failure(refusal)
+        val suggestionPool = pool()
+        val viewModel = CreateViewModel(flashcards, settings, translator, TEST_CLOCK, TEST_TIME_ZONE, suggestionPool)
+        // The top-up runs here, in the test, and the provider turns the key down.
+        suggestionPool.topUp(1)
+        assertEquals(refusal, viewModel.uiState.suggestionError)
+
+        // The provider is as ready as it was; only the key is another one.
+        settings.apiKey.value = "corrected"
+
+        assertTrue(viewModel.uiState.engineReady)
+        assertNull(viewModel.uiState.suggestionError)
+    }
+
+    @Test
+    fun starterSentencesWithoutAProviderStopAtOnceWithTheReason() = runTest {
+        viewModel.addStarterSentences(listOf(StarterSentence("Hello, how are you?", "Greetings"), StarterSentence("Thank you.", "Greetings")))
+
+        val batch = viewModel.uiState.batch!!
+        assertTrue(batch.isDone)
+        assertEquals(2, batch.failed)
+        assertEquals((settings.currentEngine() as EngineChoice.Missing).message, batch.lastError)
+        assertEquals(0, translator.requests)
+        assertTrue(flashcards.cards.value.isEmpty())
+    }
+
+    @Test
+    fun aBatchKeepsTheReasonItsSentencesFailed() = runTest {
+        settings.apiKey.value = "key"
+        translator.result = TranslationResult.failure("Gemini didn't accept the API key.")
+
+        viewModel.addStarterSentences(listOf(StarterSentence("Hello, how are you?", "Greetings"), StarterSentence("Thank you.", "Greetings")))
+
+        val batch = viewModel.uiState.batch!!
+        assertTrue(batch.isDone)
+        assertEquals(2, batch.failed)
+        assertEquals("Gemini didn't accept the API key.", batch.lastError)
+        assertTrue(flashcards.cards.value.isEmpty())
+    }
+
+    @Test
+    fun comingBackOnANewDayBringsTheDayAndTheDueCountsUpToDate() = runTest {
+        val clock = MovableClock(TEST_CLOCK.now())
+        // One card, studied, that falls due as the next day begins; and a session done today.
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1, studied = true)
+        val nextMorning = Instant.parse("2026-10-10T00:00:00Z")
+        flashcards.cards.value = flashcards.cards.value.map { it.copy(due = nextMorning.toEpochMilliseconds()) }
+        settings.lastStudyDate.value = LocalDate(2026, 10, 9)
+        val viewModel = CreateViewModel(flashcards, settings, translator, clock, TEST_TIME_ZONE, pool())
+
+        assertTrue(viewModel.uiState.doneToday)
+        assertEquals(0, viewModel.uiState.dueCount)
+
+        clock.instant = Instant.parse("2026-10-10T07:00:00Z")
+        viewModel.onResume()
+
+        assertEquals(LocalDate(2026, 10, 10), viewModel.uiState.today)
+        assertFalse(viewModel.uiState.doneToday)
+        assertEquals(1, viewModel.uiState.dueCount)
+    }
+
+    @Test
+    fun typingSuggestsTheIslandWhoseCardsShareTheMostWords() = runTest {
+        flashcards.addFlashcard(coastId = 1, nativeText = "Where is the train station?", targetText = "¿Dónde está la estación de tren?", category = "Travel")
+        flashcards.addFlashcard(coastId = 1, nativeText = "A table for two, please.", targetText = "Una mesa para dos, por favor.", category = "Restaurant")
+
+        viewModel.onNativeSentenceChange("Which train goes to the station?")
+        assertEquals("Travel", viewModel.uiState.suggestedIsland)
+
+        // An island the user typed themselves wins over the guess.
+        viewModel.onCategoryChange("Plans")
+        assertNull(viewModel.uiState.suggestedIsland)
     }
 
     @Test
@@ -230,7 +371,7 @@ class CreateViewModelTest {
 
         viewModel.save()
 
-        assertEquals(SaveResult.Error("Start a coast first!"), viewModel.uiState.result)
+        assertEquals(SaveResult.Error("Start a coast first."), viewModel.uiState.result)
         assertTrue(flashcards.cards.value.isEmpty())
     }
 
@@ -305,7 +446,7 @@ class CreateViewModelTest {
 
         viewModel.save()
 
-        assertEquals(SaveResult.Error("AI Translation Failed."), viewModel.uiState.result)
+        assertEquals(SaveResult.Error("The translation didn't work. Try again."), viewModel.uiState.result)
         assertTrue(flashcards.cards.value.isEmpty())
     }
 
@@ -345,6 +486,21 @@ class CreateViewModelTest {
     }
 
     @Test
+    fun aTranslationTheUserReplacedIsNoLongerCreditedToTheOnDeviceTranslator() = runTest {
+        settings.translationProvider.value = TranslationProvider.OnDevice
+        viewModel.onNativeSentenceChange("Hello")
+        viewModel.save()
+        assertTrue((viewModel.uiState.result as SaveResult.Saved).onDevice)
+
+        viewModel.updateSavedTranslation("Buenas")
+
+        val result = viewModel.uiState.result as SaveResult.Saved
+        assertEquals("Buenas", result.targetText)
+        assertFalse(result.onDevice)
+        assertEquals("Buenas", flashcards.cards.value.single().targetText)
+    }
+
+    @Test
     fun openRouterUsesItsKeyAndFallsBackToTheAutoModel() = runTest {
         settings.translationProvider.value = TranslationProvider.OpenRouter
         settings.openRouterKey.value = "sk-or-key"
@@ -360,11 +516,15 @@ class CreateViewModelTest {
     fun openRouterWithoutKeyShowsError() = runTest {
         settings.translationProvider.value = TranslationProvider.OpenRouter
         settings.apiKey.value = "a Gemini key doesn't count"
+        // Without a key for the picked provider the form starts on Manual, so the user has to ask for a translation.
+        viewModel.onInputModeChange(InputMode.Translate)
         viewModel.onNativeSentenceChange("Hello")
 
         viewModel.save()
 
-        assertEquals(SaveResult.Error("Please enter an OpenRouter API key in Settings first!"), viewModel.uiState.result)
+        val missing = settings.currentEngine() as EngineChoice.Missing
+        assertTrue(missing.message.contains("OpenRouter"))
+        assertEquals(SaveResult.Error(missing.message), viewModel.uiState.result)
         assertNull(translator.lastRequest)
     }
 

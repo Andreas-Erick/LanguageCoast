@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.Color
 /**
  * The "Language Coast" palette: deep water, a few lighter layers of it for surfaces, and one bright
  * sunlit accent. The accent marks what to do next (the main action, due counts, the active tab), so
- * everything else stays in the ocean tones. The light palette keeps the same roles on sand and daylight.
+ * everything else stays in the ocean tones. The light palette keeps the same roles on warm sand, with nothing in it as bright as white.
  *
  * The tokens below read the palette the theme has chosen (see [LanguageCoastTheme]); reading one in
  * composition recomposes when the theme changes, so screens use them like constants.
@@ -22,11 +22,13 @@ class CoastPalette(
     val surfaceRaised: Color,
     val surfaceSelected: Color,
     val sunlit: Color,
+    val sunlitText: Color,
     val onSunlit: Color,
     val textPrimary: Color,
     val textSecondary: Color,
     val coralText: Color,
     val seafoam: Color,
+    val onSeafoam: Color,
     val surfBlue: Color,
     val waveLine: Color,
     val streakToday: Color,
@@ -44,11 +46,13 @@ val DarkPalette = CoastPalette(
     surfaceRaised = Color(0xFF1F4560),
     surfaceSelected = Color(0xFF24506E),
     sunlit = Color(0xFFF3C969),
+    sunlitText = Color(0xFFF3C969),
     onSunlit = Color(0xFF0C2536),
     textPrimary = Color(0xFFF5F2EA),
     textSecondary = Color(0xFFA9BDCB),
     coralText = Color(0xFFF5A28C),
     seafoam = Color(0xFF7FD1AE),
+    onSeafoam = Color(0xFF0C2536),
     surfBlue = Color(0xFF6FB3D9),
     waveLine = Color(0xFF2C5C7C),
     streakToday = Color(0xFF4A7898),
@@ -56,25 +60,32 @@ val DarkPalette = CoastPalette(
     isDark = true
 )
 
-/** Daylight: pale sand and sea mist, with deeper versions of the same accents so text keeps its contrast. */
+/**
+ * Daylight: warm sand under a hazy sky, with deeper versions of the same accents so text keeps its contrast.
+ * Nothing here is white: the lightest surface, a card, is a soft paper tone, and the ground behind it is a
+ * step darker, so a whole screen of it is easy on the eyes in a bright room or a dark one. Selected controls
+ * keep a sea-mist blue. Every text colour is above 4.5:1 on every surface, [surfaceSelected] included.
+ */
 val LightPalette = CoastPalette(
-    oceanGround = Color(0xFFEDF2F5),
-    oceanSurface = Color(0xFFF9FBFC),
+    oceanGround = Color(0xFFDFDACD),
+    oceanSurface = Color(0xFFE9E4D8),
     cardEdge = Color(0x14000000),
-    navGround = Color(0xFFFFFFFF),
-    surfaceCard = Color(0xFFFFFFFF),
-    surfaceRaised = Color(0xFFE2EAF0),
-    surfaceSelected = Color(0xFFCCDCE7),
+    navGround = Color(0xFFE6E1D5),
+    surfaceCard = Color(0xFFF2EEE4),
+    surfaceRaised = Color(0xFFE3DDCF),
+    surfaceSelected = Color(0xFFC8D5DB),
     sunlit = Color(0xFFE0A93A),
+    sunlitText = Color(0xFF754700),
     onSunlit = Color(0xFF1A2733),
     textPrimary = Color(0xFF16293A),
-    textSecondary = Color(0xFF4E6477),
-    coralText = Color(0xFFB8402F),
-    seafoam = Color(0xFF1F7A55),
-    surfBlue = Color(0xFF2C7FB8),
-    waveLine = Color(0xFFB7CAD8),
+    textSecondary = Color(0xFF43566A),
+    coralText = Color(0xFFA33423),
+    seafoam = Color(0xFF155E41),
+    onSeafoam = Color(0xFFFFFFFF),
+    surfBlue = Color(0xFF256F9F),
+    waveLine = Color(0xFFB5BFC2),
     streakToday = Color(0xFF9DB8CC),
-    chipContainer = Color.Black.copy(alpha = 0.05f),
+    chipContainer = Color.Black.copy(alpha = 0.06f),
     isDark = false
 )
 
@@ -103,8 +114,19 @@ val SurfaceRaised: Color get() = palette.surfaceRaised
 /** The selected part of a switch, secondary buttons and borders. Also the top layer: it works on any surface. */
 val SurfaceSelected: Color get() = palette.surfaceSelected
 
-/** The one accent. [OnSunlit] text on it has over 10:1 contrast, as does this as text on [OceanGround]. */
+/**
+ * The one accent, as a fill: buttons, pills, progress bars, borders, switches and the cursor. [OnSunlit]
+ * text on it is 10.0:1 in the dark palette and 7.2:1 in the light one. As text or an icon, use [SunlitText]:
+ * this colour on a light surface is under 2:1.
+ */
 val Sunlit: Color get() = palette.sunlit
+
+/**
+ * The accent as a text or icon colour: links, "due" labels, the selected tab. The same as [Sunlit] in the
+ * dark palette (10.0:1 on [OceanGround], 8.3:1 on [SurfaceCard], 6.4:1 on [SurfaceRaised], 5.5:1 on
+ * [SurfaceSelected]); a deep amber in the light one (5.7:1, 6.8:1, 5.8:1 and 5.3:1 on the same surfaces).
+ */
+val SunlitText: Color get() = palette.sunlitText
 
 /** Text and icons on a [Sunlit] surface. */
 val OnSunlit: Color get() = palette.onSunlit
@@ -115,11 +137,17 @@ val TextPrimary: Color get() = palette.textPrimary
 /** Supporting text and quiet icons; above 4.5:1 on every surface except [SurfaceSelected]. */
 val TextSecondary: Color get() = palette.textSecondary
 
-/** "Again", errors and destructive actions, as text or icon on any surface (above 4.5:1). */
+/** "Again", errors and destructive actions, as text or icon (above 4.5:1 on every surface except [SurfaceSelected]). */
 val CoralText: Color get() = palette.coralText
 
-/** Success: installed, active, a correct answer. */
+/**
+ * Success: installed, active, a correct answer. As text it is above 4.5:1 on every surface in both palettes
+ * (the lowest is 4.75:1, on [SurfaceSelected]).
+ */
 val Seafoam: Color get() = palette.seafoam
+
+/** Text and icons on a [Seafoam] fill: 8.7:1 in the dark palette, 7.75:1 in the light one. */
+val OnSeafoam: Color get() = palette.onSeafoam
 
 /** Progress that isn't a call to action, such as islands explored this week. */
 val SurfBlue: Color get() = palette.surfBlue

@@ -3,9 +3,11 @@ package com.andreaserick.languagecoast.di
 import androidx.room.Room
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import com.andreaserick.languagecoast.data.AndroidLocalModelController
+import com.andreaserick.languagecoast.data.AndroidSettingsSnapshot
 import com.andreaserick.languagecoast.data.AndroidWorksheetPrinter
 import com.andreaserick.languagecoast.data.AppDatabase
 import com.andreaserick.languagecoast.data.LocalModelController
+import com.andreaserick.languagecoast.data.SETTINGS_FILE_PATH
 import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.buildAppDatabase
 import com.andreaserick.languagecoast.data.createSettingsDataStore
@@ -25,8 +27,14 @@ actual val platformModule = module {
         buildAppDatabase(builder, settings = get())
     }
 
-    /** The file earlier versions created with `preferencesDataStoreFile("settings")`, so settings carry over. */
-    single { createSettingsDataStore(androidContext().filesDir.resolve("datastore/settings.preferences_pb").absolutePath) }
+    /**
+     * The file earlier versions created with `preferencesDataStoreFile("settings")`, so settings carry over.
+     * A file that can no longer be read is replaced by an empty one rather than stopping the app at every start.
+     */
+    single { createSettingsDataStore(androidContext().filesDir.resolve(SETTINGS_FILE_PATH).absolutePath) }
+
+    /** The copy of the settings that travels with the phone's own backup, which leaves the settings file out. */
+    singleOf(::AndroidSettingsSnapshot)
 
     /** Text is read aloud with Android's text-to-speech engine. */
     singleOf(::AndroidSpeaker) { bind<Speaker>() }

@@ -232,12 +232,15 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
 
         newPage()
         place(sheetHeader(), gapAfter = 20f)
-        // Ten one-line sentences, the usual sheet, fit on the first page of either paper size with these gaps.
-        sheet.sentences.forEachIndexed { index, sentence -> place(exercise(index + 1, sheet.question(sentence)), gapAfter = 15f) }
+        // Ten one-line sentences without word help, the usual sheet, fit on the first page of either paper size with
+        // these gaps, and their answers, each with its card, on the next.
+        sheet.sentences.forEachIndexed { index, sentence -> place(exercise(index + 1, sheet.question(sentence), sheet.wordHelp(sentence)), gapAfter = 13f) }
 
         newPage()
         place(answerHeader(), gapAfter = 18f)
-        sheet.sentences.forEachIndexed { index, sentence -> place(answer(index + 1, sheet.answer(sentence), sheet.question(sentence)), gapAfter = 11f) }
+        sheet.sentences.forEachIndexed { index, sentence ->
+            place(answer(index + 1, sheet.answer(sentence), sheet.question(sentence), sheet.cardLine(sentence)), gapAfter = 9f)
+        }
 
         return pages.mapIndexed { index, blocks ->
             { canvas: Canvas ->
@@ -258,8 +261,10 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         )
         val chipWidths = chips.map { chipText.measureText(it) + 2 * CHIP_PADDING }
         val chipsWidth = chipWidths.sum() + CHIP_GAP * (chips.size - 1)
+        // What to do, then what the sheet practises: the islands whose cards need it most.
         val help = wrap(
-            "Write each sentence in ${sheet.toLanguage} on the lines under it. The answers are on the last page.",
+            listOfNotNull("Write each sentence in ${sheet.toLanguage} on the lines under it. The answers are at the end.", sheet.focusLine)
+                .joinToString(" "),
             instruction, contentWidth, lineSpacing = 1.25f
         )
         // The settings sit at the end of the title's line; with long language names they go under it instead.
@@ -286,9 +291,11 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         val title = wrap("Answer key", heading, contentWidth)
         val cards = if (sheet.cardCount == 1) "1 card" else "${sheet.cardCount} cards"
         val islands = if (sheet.islandCount == 1) "1 island" else "${sheet.islandCount} islands"
+        // A model that leaves out a line's number leaves that answer without its card.
+        val check = if (sheet.sentences.all { it.card != null }) "check your card, shown under each answer." else "check your cards."
         val note = wrap(
             "Written by ${sheet.providerLabel} from the $cards on the $islands of your ${sheet.coastName}. " +
-                "Another wording can be right too, and AI can make mistakes: when in doubt, check the card.",
+                "Another wording can be right too, and AI can make mistakes: when in doubt, $check",
             instruction, contentWidth, lineSpacing = 1.25f
         )
         val titleTop = BANNER_HEIGHT + 18f
@@ -324,16 +331,19 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
 
     /**
      * A numbered sentence with lines under it to write the translation on: more lines for a longer sentence.
-     * A sentence written right to left has its number at the right, where it starts.
+     * A sentence written right to left has its number at the right, where it starts. [help], the words the
+     * learner hasn't met, goes in small print between the sentence and the lines.
      */
-    private fun exercise(index: Int, question: String): Block {
+    private fun exercise(index: Int, question: String, help: String?): Block {
         val text = wrap(question, sentenceText, contentWidth - numberColumn)
+        val helpText = help?.let { wrap("Word help: $it", answerQuestion, contentWidth - numberColumn) }
+        val helpHeight = helpText?.let { it.height + HELP_GAP } ?: 0f
         val lineCount = when {
             question.length <= 60 -> 1
             question.length <= 130 -> 2
             else -> 3
         }
-        val firstLine = text.height + 22f
+        val firstLine = text.height + helpHeight + 22f
         val line = stroke(WRITING_LINE, 0.7f)
         val mirrored = text.isRightToLeft
         return Block(firstLine + (lineCount - 1) * WRITING_LINE_GAP) { canvas, top ->
@@ -345,6 +355,7 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
             val digits = if (index < 100) number else smallNumber
             canvas.drawText("$index", badge, middle - (digits.ascent() + digits.descent()) / 2, digits)
             canvas.drawLayout(text, textLeft, top)
+            helpText?.let { canvas.drawLayout(it, textLeft, top + text.height + HELP_GAP) }
             repeat(lineCount) { i ->
                 val y = top + firstLine + i * WRITING_LINE_GAP
                 canvas.drawLine(textLeft, y, textLeft + contentWidth - numberColumn, y, line)
@@ -352,16 +363,23 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         }
     }
 
-    /** An answer with the sentence it belongs to in small print under it, on the side the answer starts from. */
-    private fun answer(index: Int, answer: String, question: String): Block {
+    /**
+     * An answer with the sentence it belongs to in small print under it, on the side the answer starts from,
+     * and under that [card], the learner's own card the sentence was built from: what they can check the
+     * answer against, and what to study if they missed it.
+     */
+    private fun answer(index: Int, answer: String, question: String, card: String?): Block {
         val width = contentWidth - answerIndent
         val text = wrap(answer, answerText, width)
         val sameSide = wrap(question, answerQuestion, width).isRightToLeft == text.isRightToLeft
         val asked = wrap(question, answerQuestion, width, alignment = if (sameSide) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_OPPOSITE)
-        return Block(text.height + 2f + asked.height) { canvas, top ->
+        val cardText = card?.let { wrap(it, answerQuestion, width) }
+        val cardTop = text.height + 2f + asked.height + 1f
+        return Block(if (cardText == null) text.height + 2f + asked.height else cardTop + cardText.height) { canvas, top ->
             canvas.drawText("$index", left + answerIndent - 10f, top + text.getLineBaseline(0), answerNumber)
             canvas.drawLayout(text, left + answerIndent, top)
             canvas.drawLayout(asked, left + answerIndent, top + text.height + 2f)
+            cardText?.let { canvas.drawLayout(it, left + answerIndent, top + cardTop) }
         }
     }
 
@@ -412,6 +430,9 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
     private companion object {
         /** The height of the band at the top of both parts, down to its wave line. */
         const val BANNER_HEIGHT = 46f
+
+        /** Between a sentence and the word help under it. */
+        const val HELP_GAP = 3f
         const val CHIP_HEIGHT = 17f
         const val CHIP_PADDING = 8f
         const val CHIP_GAP = 6f

@@ -12,10 +12,20 @@ package com.andreaserick.languagecoast.data
 class StarterTranslator(private val translator: Translator) {
 
     /**
+     * Why the last [translate] left sentences out, in words for the user (the provider's own reason: a key
+     * it didn't accept, a limit, no connection), or null if it left none out or gave no reason.
+     */
+    var lastError: String? = null
+        private set
+
+    /**
      * [sentences] (English, blanks already filled) translated into [targetLanguage] as spoken in [region]
      * (null for no preference), and into [nativeLanguage] too when that isn't English, so the card's
-     * front is in the user's language. Sentences that couldn't be translated are left out. [onBatch] is
-     * told how many were done after each batch.
+     * front is in the user's language. Sentences that couldn't be translated are left out, and [lastError]
+     * says why if the provider did. [onBatch] is told how many were done after each batch.
+     *
+     * A provider that fails [GIVE_UP_AFTER] requests in a row is not asked for the rest: it is down, out of
+     * quota or, on the device, without its language pack, and the rest would only fail the same way.
      */
     suspend fun translate(
         engine: TranslationEngine,
@@ -27,13 +37,35 @@ class StarterTranslator(private val translator: Translator) {
         wording: Wording = Wording.Unspecified,
         onBatch: suspend (done: Int) -> Unit = {}
     ): List<ProposedSentence> {
+        lastError = null
         val results = ArrayList<ProposedSentence>(sentences.size)
+        val isModel = engine != TranslationEngine.OnDevice
         var done = 0
+        var failedInARow = 0
         for (batch in sentences.chunked(BATCH_SIZE)) {
-            val isModel = engine != TranslationEngine.OnDevice
-            val byModel = if (isModel) askModel(engine, topic, nativeLanguage, targetLanguage, region, batch, wording) else emptyMap()
-            val translated = batch.mapNotNull { sentence ->
-                byModel[sentence] ?: oneByOne(engine, topic, nativeLanguage, targetLanguage, region, sentence, wording)
+            if (failedInARow >= GIVE_UP_AFTER) break
+            val translated = ArrayList<ProposedSentence>(batch.size)
+            if (isModel) {
+                val byModel = askModel(engine, topic, nativeLanguage, targetLanguage, region, batch, wording)
+                failedInARow = if (byModel == null) failedInARow + 1 else 0
+                // Only lines an answered batch left out are asked for again, one by one. After a request that
+                // failed, that would be up to thirty more requests to a provider that is turning them away.
+                if (byModel != null) {
+                    batch.mapNotNullTo(translated) { sentence ->
+                        byModel[sentence] ?: oneByOne(engine, topic, nativeLanguage, targetLanguage, region, sentence, wording)
+                    }
+                }
+            } else {
+                for (sentence in batch) {
+                    if (failedInARow >= GIVE_UP_AFTER) break
+                    val proposed = oneByOne(engine, topic, nativeLanguage, targetLanguage, region, sentence, wording)
+                    if (proposed == null) {
+                        failedInARow++
+                    } else {
+                        failedInARow = 0
+                        translated += proposed
+                    }
+                }
             }
             results += if (isModel) naturalCheck(engine, topic, nativeLanguage, targetLanguage, region, translated) else translated
             done += batch.size
@@ -42,7 +74,10 @@ class StarterTranslator(private val translator: Translator) {
         return results
     }
 
-    /** The batch through one prompt; sentences whose line is missing or unusable are left out of the map. */
+    /**
+     * The batch through one prompt; sentences whose line is missing or unusable are left out of the map.
+     * Null when the request itself failed (see [lastError]), which is not the same as an answer with lines missing.
+     */
     private suspend fun askModel(
         engine: TranslationEngine,
         topic: PhraseBank.Theme,
@@ -51,12 +86,14 @@ class StarterTranslator(private val translator: Translator) {
         region: String?,
         batch: List<String>,
         wording: Wording
-    ): Map<String, ProposedSentence> {
-        val completion = translator.complete(engine, buildStarterTranslationPrompt(topic, nativeLanguage, targetLanguage, region, batch, wording))
+    ): Map<String, ProposedSentence>? {
+        // A topic is many requests in a row; a per-minute limit is waited out instead of ending the batch.
+        val completion = translator.completeWaiting(engine, buildStarterTranslationPrompt(topic, nativeLanguage, targetLanguage, region, batch, wording))
         val text = completion.text
         if (text == null) {
             logError(TAG, "Bulk translation failed for ${topic.category}: ${completion.errorMessage}")
-            return emptyMap()
+            completion.errorMessage?.let { lastError = it }
+            return null
         }
         val bothSides = nativeLanguage != BANK_LANGUAGE
         return parseStarterTranslations(text, batch.size, bothSides).mapNotNull { (index, sides) ->
@@ -118,6 +155,7 @@ class StarterTranslator(private val translator: Translator) {
                 context = context, targetRegion = region
             )
         )
+        if (!result.isSuccess) result.errorMessage?.let { lastError = it }
         return result.translatedText.takeIf { result.isSuccess }
     }
 
@@ -125,6 +163,8 @@ class StarterTranslator(private val translator: Translator) {
         private const val TAG = "StarterTranslator"
         /** Sentences per prompt: enough for consistency, few enough that a small local model keeps the format. */
         const val BATCH_SIZE = 15
+        /** After this many failed requests in a row, the rest of a [translate] call isn't sent. */
+        const val GIVE_UP_AFTER = 2
         /** The bank's sentences are written in English. */
         const val BANK_LANGUAGE = "English"
     }

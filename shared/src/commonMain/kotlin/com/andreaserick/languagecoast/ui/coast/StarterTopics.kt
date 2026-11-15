@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -25,10 +26,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.ImportProgress
@@ -47,6 +54,7 @@ import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
 /**
@@ -62,9 +70,11 @@ data class StarterTopicOption(
 )
 
 /**
- * Confirms adding [options] (one topic, or all that are left) to the coast: what it will do, the person's
+ * Confirms adding [options] (one topic, or several) to the coast: what it will do, the person's
  * blanks the topics use (started from [profile], the values from Settings, and only asked for when missing),
  * how long it will take with [provider], and the button.
+ *
+ * @param problem Why [provider] can't translate right now (no key yet, or not allowed to be sent text), or null when it can.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,11 +82,18 @@ internal fun StarterTopicSheet(
     options: List<StarterTopicOption>,
     coastLanguage: String,
     provider: TranslationProvider,
+    problem: String?,
     profile: Map<String, String>,
     onAdd: (fillers: Map<String, String>) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val fillers = remember { mutableStateMapOf<String, String>().apply { putAll(profile) } }
+    // What is typed into the blanks is kept through a rotation, as blank and value in turn.
+    val fillers = rememberSaveable(
+        saver = listSaver<SnapshotStateMap<String, String>, String>(
+            save = { typed -> typed.flatMap { listOf(it.key, it.value) } },
+            restore = { saved -> mutableStateMapOf<String, String>().apply { saved.chunked(2).forEach { put(it[0], it[1]) } } }
+        )
+    ) { mutableStateMapOf<String, String>().apply { putAll(profile) } }
     val blanks = PROFILE_PLACEHOLDERS.filter { blank -> options.any { blank in it.profileBlanks } }
     val missing = blanks.filter { profile[it].isNullOrBlank() }
     val language = mapOf(PhraseBank.LANGUAGE_PLACEHOLDER to coastLanguage)
@@ -96,8 +113,9 @@ internal fun StarterTopicSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
             Text(
-                text = if (single != null) "Add ${single.theme.emoji} ${single.theme.category}" else "Add all starter topics",
-                style = MaterialTheme.typography.titleLarge
+                text = if (single != null) "Add ${single.theme.emoji} ${single.theme.category}" else "Add ${options.size} starter topics",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() }
             )
             Text(
                 text = if (single != null) {
@@ -136,14 +154,19 @@ internal fun StarterTopicSheet(
                     color = TextSecondary
                 )
             }
-            Text(
-                text = "About ${importEstimate(count, provider)}. It runs in the background; you can leave this screen.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary
-            )
+            if (problem != null) {
+                // Said here, before the button, so that nothing is started that can't be finished.
+                Text(problem, style = MaterialTheme.typography.bodyMedium, color = CoralText)
+            } else {
+                Text(
+                    text = "About ${importEstimate(count, provider)}. You can leave this screen while it runs, but keep the app open.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
             CoastButton(
                 onClick = { onAdd(fillers.filterValues { it.isNotBlank() }) },
-                enabled = count > 0,
+                enabled = count > 0 && problem == null,
                 modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
             ) {
                 Text("Add ${plural(count, "card")}")
@@ -170,36 +193,78 @@ internal fun importEstimate(count: Int, provider: TranslationProvider): String {
 }
 
 /**
- * How adding starter topics is going, at the top of the coast: the topic's tile, a bar while it runs, and
- * once it is done what was added and one button to clear it.
+ * How adding starter topics is going, at the top of the coast: the topic's tile, a bar and a way to stop
+ * while it runs, and once it is done what was added and one button to clear it. A run that added nothing
+ * gets no tick and no "added": it says that nothing came of it, and why.
  */
 @Composable
-internal fun ImportProgressCard(progress: ImportProgress, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ImportProgressCard(progress: ImportProgress, onStop: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     val theme = PhraseBank.theme(progress.topic)
     val several = progress.topicCount > 1
-    ContentCard(modifier = modifier, padding = PaddingValues(start = 16.dp, top = 14.dp, end = 8.dp, bottom = if (progress.isFinished) 6.dp else 14.dp)) {
+    // Stopped by the user; a run that ended without a reason before its last sentence was, too.
+    val stoppedEarly = progress.isFinished && progress.error == null && (progress.stopped || progress.done < progress.total)
+    val nothingAdded = progress.isFinished && progress.error == null && progress.added == 0
+    ContentCard(modifier = modifier, padding = PaddingValues(start = 16.dp, top = 14.dp, end = 8.dp, bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
             IconTile {
                 when {
                     progress.error != null -> Icon(Icons.Default.Error, contentDescription = null, tint = CoralText)
+                    // Sentences that all failed are a failure, and a run that added nothing didn't succeed at anything: no tick for either.
+                    nothingAdded && progress.failed > 0 -> Icon(Icons.Default.Error, contentDescription = null, tint = CoralText)
+                    nothingAdded -> Icon(Icons.Default.Close, contentDescription = null, tint = TextSecondary)
                     progress.isFinished -> Icon(Icons.Default.Check, contentDescription = null, tint = Seafoam)
                     else -> Text(theme?.emoji ?: "📚", fontSize = 22.sp)
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+                    // A screen reader says how it ended when that arrives; the steps before it would only interrupt.
+                    .then(if (progress.isFinished) Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite } else Modifier)
+            ) {
                 when {
                     progress.error != null -> {
                         Text("Couldn't finish", style = MaterialTheme.typography.titleMedium)
                         Text(progress.error, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
                     }
-                    progress.isFinished -> {
+                    nothingAdded -> {
                         Text(
-                            text = if (several) "${plural(progress.topicCount, "topic")} added" else "${theme?.emoji?.let { "$it " } ?: ""}${progress.topic} added",
+                            text = when {
+                                progress.failed > 0 -> "Nothing could be translated"
+                                stoppedEarly -> "Stopped"
+                                else -> "Nothing to add"
+                            },
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (several) "${plural(progress.added, "card")}, each topic on its own island." else "${plural(progress.added, "card")} on the ${progress.topic} island, ready for today's session.",
+                            text = when {
+                                progress.failed > 0 ->
+                                    "${plural(progress.failed, "sentence")} couldn't be translated. Check your connection and Settings › Translation, then add the ${if (several) "topics" else "topic"} again."
+                                stoppedEarly -> "Nothing was added yet."
+                                else -> "Every sentence of ${if (several) "these topics" else "this topic"} is on your coast already."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    progress.isFinished -> {
+                        Text(
+                            text = when {
+                                stoppedEarly -> "Stopped"
+                                several -> "${plural(progress.topicCount, "topic")} added"
+                                else -> "${theme?.emoji?.let { "$it " } ?: ""}${progress.topic} added"
+                            },
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = when {
+                                stoppedEarly -> "${plural(progress.added, "card")} added before you stopped. Add the ${if (several) "topics" else "topic"} again for the rest."
+                                several -> "${plural(progress.added, "card")}, each topic on its own island."
+                                else -> "${plural(progress.added, "card")} on the ${progress.topic} island, ready for today's session."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 2.dp)
@@ -226,7 +291,9 @@ internal fun ImportProgressCard(progress: ImportProgress, onDismiss: () -> Unit,
                             modifier = Modifier.fillMaxWidth().height(6.dp)
                         )
                         Text(
-                            text = if (several) "${progress.done} of ${progress.total} translated, ${plural(progress.topicCount, "topic")} in all" else "${progress.done} of ${progress.total} translated",
+                            // The run only goes on while the app is on screen.
+                            text = (if (several) "${progress.done} of ${progress.total} translated, ${plural(progress.topicCount, "topic")} in all."
+                            else "${progress.done} of ${progress.total} translated.") + " Keep the app open until it is done.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 6.dp)
@@ -235,10 +302,12 @@ internal fun ImportProgressCard(progress: ImportProgress, onDismiss: () -> Unit,
                 }
             }
         }
-        if (progress.isFinished) {
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            if (!progress.isFinished) {
+                TextButton(onClick = onStop) { Text("Stop", style = MaterialTheme.typography.labelMedium, color = TextSecondary) }
+            } else {
                 TextButton(onClick = onDismiss) {
-                    Text(if (progress.error != null) "OK" else "Done", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                    Text(if (progress.error != null || nothingAdded) "OK" else "Done", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                 }
             }
         }

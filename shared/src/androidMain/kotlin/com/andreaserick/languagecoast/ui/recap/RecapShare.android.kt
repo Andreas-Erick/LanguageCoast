@@ -4,22 +4,48 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
-
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
+import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/** Draws the recap as a 1080×1350 card in the app's colours and opens the share sheet with it. */
+/**
+ * Draws the recap as a 1080×1350 card in the app's colours and opens the share sheet with it. Drawing and
+ * compressing the picture takes a few hundred milliseconds and writing it can fail (a full disk), so both
+ * happen off the main thread, and a failure is said in a message instead of ending the app.
+ */
 @Composable
 actual fun rememberRecapSharer(): ((RecapShare) -> Unit)? {
     val context = LocalContext.current
-    return { recap -> shareRecap(context, recap) }
+    val scope = rememberCoroutineScope()
+    val messenger = LocalUndoMessenger.current
+    return remember(context, scope, messenger) {
+        // One picture at a time: a second tap while the first is still being drawn does nothing.
+        var drawing: Job? = null
+        val share: (RecapShare) -> Unit = { recap ->
+            if (drawing?.isActive != true) {
+                drawing = scope.launch {
+                    val picture = withContext(Dispatchers.IO) { runCatching { drawRecap(context, recap) }.getOrNull() }
+                    if (picture == null) messenger.showMessage("The picture couldn't be made. Check that your device has storage left.")
+                    else openShareSheet(context, recap, picture)
+                }
+            }
+        }
+        share
+    }
 }
 
 private const val WIDTH = 1080
@@ -31,7 +57,8 @@ private const val SUNLIT = 0xFFF3C969.toInt()
 private const val TEXT_PRIMARY = 0xFFF5F2EA.toInt()
 private const val TEXT_SECONDARY = 0xFFA9BDCB.toInt()
 
-private fun shareRecap(context: Context, recap: RecapShare) {
+/** Draws [recap] and saves it as a PNG in the cache folder other apps are let into. Throws if the picture can't be made or written. */
+private fun drawRecap(context: Context, recap: RecapShare): Uri {
     val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     canvas.drawRect(0f, 0f, WIDTH.toFloat(), HEIGHT.toFloat(), Paint().apply {
@@ -77,11 +104,17 @@ private fun shareRecap(context: Context, recap: RecapShare) {
 
     val folder = File(context.cacheDir, "shared").apply { mkdirs() }
     val file = File(folder, "language-coast-${recap.title.lowercase().replace(' ', '-')}.png")
-    file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val written = file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    bitmap.recycle()
+    check(written) { "The recap picture couldn't be compressed" }
+    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
+/** Hands the saved [picture] of [recap] to the app the user picks. */
+private fun openShareSheet(context: Context, recap: RecapShare, picture: Uri) {
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "image/png"
-        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_STREAM, picture)
         putExtra(Intent.EXTRA_TEXT, "${recap.title} on Language Coast: ${recap.headline}")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
@@ -106,6 +139,3 @@ private fun drawWrapped(canvas: Canvas, text: String, x: Float, y: Float, width:
     }
     if (line.isNotEmpty()) canvas.drawText(line, x, currentY, paint)
 }
-
-
-

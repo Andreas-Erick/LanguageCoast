@@ -22,9 +22,11 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -56,14 +58,20 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -75,6 +83,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.Pace
@@ -87,6 +96,7 @@ import com.andreaserick.languagecoast.data.RecentCard
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.emojiForCategory
 import com.andreaserick.languagecoast.data.islandEmoji
+import com.andreaserick.languagecoast.data.onDeviceTranslationAvailable
 import com.andreaserick.languagecoast.resources.Res
 import com.andreaserick.languagecoast.resources.logo_mark
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
@@ -96,21 +106,23 @@ import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.FeedbackKind
 import com.andreaserick.languagecoast.ui.components.IconTile
+import com.andreaserick.languagecoast.ui.components.KeepScreenOn
 import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.components.LocalFeedback
-import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.Pill
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
 import com.andreaserick.languagecoast.ui.components.coastChipBorder
 import com.andreaserick.languagecoast.ui.components.coastChipColors
+import com.andreaserick.languagecoast.ui.components.inLanguage
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import com.andreaserick.languagecoast.data.RouteLevel
@@ -134,6 +146,11 @@ fun CreateScreen(
     onAboutYou: () -> Unit,
     viewModel: CreateViewModel = koinViewModel()
 ) {
+    // The app can sit in the background over midnight: the day and the due counts are taken again on the way back.
+    LifecycleResumeEffect(Unit) {
+        viewModel.onResume()
+        onPauseOrDispose {}
+    }
     CreateContent(
         uiState = viewModel.uiState,
         onNativeSentenceChange = viewModel::onNativeSentenceChange,
@@ -160,9 +177,19 @@ fun CreateScreen(
         onReviewAll = onReviewAll,
         onSetPace = viewModel::setPace,
         onAboutYou = onAboutYou,
-        onDismissAboutYou = viewModel::dismissAboutYouInvite
+        onDismissAboutYou = viewModel::dismissAboutYouInvite,
+        onRetrySuggestions = viewModel::retrySuggestions
     )
 }
+
+/** Pasted text longer than this isn't kept across a rotation: saved state has a size limit, and going over it crashes the app. */
+private const val MAX_SAVED_PASTE_LENGTH = 20_000
+
+/** Keeps the text pasted into "Add many cards" across a rotation, unless it is very long (see [MAX_SAVED_PASTE_LENGTH]). */
+private val PastedTextSaver = Saver<String, String>(
+    save = { text -> if (text.length <= MAX_SAVED_PASTE_LENGTH) text else "" },
+    restore = { it }
+)
 
 /**
  * The home screen's content: onboarding until there is a coast, otherwise today's session on the focus
@@ -196,22 +223,45 @@ private fun CreateContent(
     onReviewAll: () -> Unit,
     onSetPace: (Pace) -> Unit,
     onAboutYou: () -> Unit,
-    onDismissAboutYou: () -> Unit
+    onDismissAboutYou: () -> Unit,
+    onRetrySuggestions: () -> Unit
 ) {
-    var showNewCoastDialog by remember { mutableStateOf(false) }
-    var showPace by remember { mutableStateOf(false) }
+    // Open sheets and dialogs are saved, so turning or unfolding the phone doesn't close them.
+    var showNewCoastDialog by rememberSaveable { mutableStateOf(false) }
+    var showPace by rememberSaveable { mutableStateOf(false) }
     if (showPace) {
         PaceSheet(pace = uiState.pace, waiting = uiState.plan?.newOnCoast ?: 0, onPick = onSetPace, onDismiss = { showPace = false })
     }
-    var showBatchSheet by remember { mutableStateOf(false) }
+    var showBatchSheet by rememberSaveable { mutableStateOf(false) }
     // The form is folded away: the day starts with the session, and a sentence of your own is the exception.
     var composerOpen by rememberSaveable { mutableStateOf(false) }
 
+    // The photo reader lives here, not in the sheet: the form's link says whether photos can be read at all,
+    // and a picked photo finds its way back even when the screen was rebuilt while the picker was open.
+    var batchText by rememberSaveable(stateSaver = PastedTextSaver) { mutableStateOf("") }
+    // Not saved: a read cut off by a rotation must not leave the sheet "reading" for good.
+    var readingPhoto by remember { mutableStateOf(false) }
+    var photoError by remember { mutableStateOf<String?>(null) }
+    val photoReader = rememberPhotoTextReader(
+        onText = {
+            batchText = it
+            photoError = null
+        },
+        onError = { photoError = it },
+        onReading = { readingPhoto = it }
+    )
+    // The language a batch is written in. The reader only knows Latin letters, so photos are offered for those languages only.
+    val batchLanguage = if (uiState.inputMode == InputMode.WriteInTarget) uiState.selectedCoast?.language.orEmpty() else uiState.nativeLanguage
+    val readPhoto = photoReader?.takeIf { Languages.isLatinScript(batchLanguage) }
+
     uiState.goalPrompt?.let { coast ->
-        GoalSheet(coast = coast, onSave = { goal, region -> onSetGoal(coast, goal, region) }, onDismiss = onDismissGoalPrompt)
+        // Keyed by the coast, so a goal typed for one coast is never restored into the sheet of another.
+        key(coast.coastId) {
+            GoalSheet(coast = coast, onSave = { goal, region -> onSetGoal(coast, goal, region) }, onDismiss = onDismissGoalPrompt)
+        }
     }
 
-    var showStarters by remember { mutableStateOf(false) }
+    var showStarters by rememberSaveable { mutableStateOf(false) }
     val starterCoast = uiState.selectedCoast
     if (showStarters && starterCoast != null) {
         StarterSentencesSheet(
@@ -229,7 +279,7 @@ private fun CreateContent(
 
     if (showNewCoastDialog) {
         LanguagePickerDialog(
-            title = "New Coast",
+            title = "New coast",
             subtitle = "Which language do you want to study?",
             languages = uiState.availableLanguages,
             onPick = { language ->
@@ -244,18 +294,25 @@ private fun CreateContent(
     if (showBatchSheet || batch != null) {
         BatchSheet(
             batch = batch,
-            coastLanguage = uiState.selectedCoast?.language.orEmpty(),
-            nativeLanguage = uiState.nativeLanguage,
-            inputMode = uiState.inputMode,
+            writing = batchLanguage,
+            text = batchText,
+            onTextChange = { batchText = it },
+            readPhoto = readPhoto,
+            readingPhoto = readingPhoto,
+            photoError = photoError,
             onStartBatch = onStartBatch,
             onToggle = onToggleBatchSentence,
             onSave = onSaveBatch,
             onDismiss = {
                 showBatchSheet = false
+                batchText = ""
+                photoError = null
                 onDismissBatch()
             }
         )
     }
+    // A long batch takes minutes and stops when the phone sleeps.
+    if (batch?.isSaving == true) KeepScreenOn()
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(
@@ -307,10 +364,18 @@ private fun CreateContent(
                     onAddOwn = { composerOpen = true },
                     pace = uiState.pace,
                     onChangePace = { showPace = true },
-                    level = uiState.level
+                    level = uiState.level,
+                    provider = uiState.translationProvider,
+                    engineReady = uiState.engineReady,
+                    awaitingPermission = uiState.awaitingPermission,
+                    suggestionError = uiState.suggestionError,
+                    onRetrySuggestions = onRetrySuggestions
                 )
 
-                if (uiState.showAboutYouInvite) AboutYouInvite(onOpen = onAboutYou, onDismiss = onDismissAboutYou)
+                // The islands it leads to are written by an AI model, so it is only offered where one can write them.
+                if (uiState.showAboutYouInvite && uiState.engineReady && uiState.translationProvider != TranslationProvider.OnDevice) {
+                    AboutYouInvite(onOpen = onAboutYou, onDismiss = onDismissAboutYou)
+                }
 
                 ComposerHeader(open = composerOpen, onToggle = { composerOpen = !composerOpen })
                 AnimatedVisibility(
@@ -327,7 +392,8 @@ private fun CreateContent(
                         onInputModeChange = onInputModeChange,
                         onSave = onSave,
                         onAddMany = { showBatchSheet = true },
-                        onBrowseStarters = { showStarters = true }
+                        onBrowseStarters = { showStarters = true },
+                        photoOffered = readPhoto != null
                     )
                 }
 
@@ -350,13 +416,16 @@ private fun CreateContent(
                     modifier = Modifier.bringIntoViewRequester(resultRequester)
                 ) {
                     when (val result = uiState.result) {
-                        is SaveResult.Saved -> SavedCard(result, onUndo = onUndo, onEditTranslation = onEditSavedTranslation)
+                        // Keyed by the card, so what was typed into one card's preview is never restored into the next one's.
+                        is SaveResult.Saved -> key(result.added.card.cardId) {
+                            SavedCard(result, language = selectedCoast.language, onUndo = onUndo, onEditTranslation = onEditSavedTranslation)
+                        }
                         is SaveResult.Error -> ErrorCard(result.message, fallback = uiState.fallbackProvider, onRetry = onRetryWithFallback)
                         null -> Unit
                     }
                 }
 
-                if (uiState.recentCards.isNotEmpty()) RecentCards(uiState.recentCards)
+                if (uiState.recentCards.isNotEmpty()) RecentCards(uiState.recentCards, language = selectedCoast.language)
             }
         }
     }
@@ -371,7 +440,7 @@ private fun StreakBadge(streak: Int) {
     Text(
         text = plural(streak, "day"),
         style = MaterialTheme.typography.labelMedium,
-        color = Sunlit,
+        color = SunlitText,
         maxLines = 1,
         modifier = Modifier
             .padding(start = 8.dp, end = 12.dp)
@@ -389,6 +458,11 @@ private fun StreakBadge(streak: Int) {
  * @param coastHasCards Whether the coast has any cards, which tells an empty day from an empty coast.
  * @param isPreparing Whether new sentences for the coast are being made right now.
  * @param dueEverywhere Due cards on every coast together, offered as a link when other coasts have some.
+ * @param provider The provider picked in Settings.
+ * @param engineReady Whether [provider] can translate right now. If not, the card says what it still needs
+ *     and where to give it, and starter sentences aren't offered: they would only fail to translate.
+ * @param awaitingPermission [provider], while all it lacks is the permission to be sent text.
+ * @param suggestionError Why no new sentences could be prepared, when the last attempt failed.
  */
 @Composable
 private fun DailyCard(
@@ -408,7 +482,12 @@ private fun DailyCard(
     onAddOwn: () -> Unit,
     pace: Pace,
     onChangePace: () -> Unit,
-    level: RouteLevel?
+    level: RouteLevel?,
+    provider: TranslationProvider,
+    engineReady: Boolean,
+    awaitingPermission: TranslationProvider?,
+    suggestionError: String?,
+    onRetrySuggestions: () -> Unit
 ) {
     val language = Languages.byName(coast.language)
     ContentCard(padding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
@@ -469,7 +548,7 @@ private fun DailyCard(
                                 plan.newCount.takeIf { it > 0 }?.let { "$it new" }
                             ).joinToString(" · "),
                             style = MaterialTheme.typography.labelMedium,
-                            color = Sunlit
+                            color = SunlitText
                         )
                     }
                 }
@@ -496,7 +575,13 @@ private fun DailyCard(
                     CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = if (coastHasCards) "Nothing due. Preparing new sentences…" else "Preparing your first sentences…",
+                        text = when {
+                            coastHasCards -> "Nothing due. Preparing new sentences…"
+                            // The first translation on the phone fetches a language pack, on whatever network there is; better said than not.
+                            provider == TranslationProvider.OnDevice ->
+                                "Preparing your first sentences… On-device translation first downloads about 30 MB per language."
+                            else -> "Preparing your first sentences…"
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
                     )
@@ -505,30 +590,49 @@ private fun DailyCard(
             coastHasCards -> {
                 Text("All caught up", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = "Nothing due today and no new sentences ready. Add one of your own, or come back tomorrow.",
+                    text = if (engineReady) "Nothing due today and no new sentences ready. Add one of your own, or come back tomorrow."
+                    else "Nothing due today. " + setUpText(provider, awaitingPermission),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
+                if (engineReady && suggestionError != null) SuggestionProblem(suggestionError, onRetry = onRetrySuggestions)
                 TextButton(onClick = onReviewCoast, contentPadding = PaddingValues(horizontal = 0.dp)) {
-                    Text("Practice anyway", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                    Text("Practice anyway", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                 }
+            }
+            !engineReady -> {
+                Text("Set up translation", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = setUpText(provider, awaitingPermission),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
             }
             else -> {
                 Text("Nothing here yet", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = "Start with the sentences everyone needs in ${coast.language}, or add one of your own. An AI provider in Settings can suggest sentences for your goal too.",
+                    text = "Start with the sentences everyone needs in ${coast.language}, or add one of your own." +
+                        if (provider == TranslationProvider.OnDevice) " An AI provider in Settings can suggest sentences for your goal too." else "",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
+                if (suggestionError != null) SuggestionProblem(suggestionError, onRetry = onRetrySuggestions)
             }
         }
         if (plan != null && plan.isEmpty && !doneToday) {
             Spacer(modifier = Modifier.height(8.dp))
-            CoastSecondaryButton(onClick = onBrowseStarters, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
-                Text("Browse starter sentences")
-            }
-            TextButton(onClick = onAddOwn, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text("Or add your own", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            if (engineReady) {
+                CoastSecondaryButton(onClick = onBrowseStarters, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                    Text("Browse starter sentences")
+                }
+                TextButton(onClick = onAddOwn, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text("Or add your own", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                }
+            } else {
+                // Starter sentences need translating, so until a provider is ready the way in is a card typed by hand.
+                CoastSecondaryButton(onClick = onAddOwn, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                    Text("Type a card yourself")
+                }
             }
         }
         if (plan != null && dueEverywhere > plan.dueOnCoast) {
@@ -536,6 +640,39 @@ private fun DailyCard(
                 Text("${plural(dueEverywhere, "card")} due across all coasts", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
             }
         }
+    }
+}
+
+/**
+ * What translation still needs before it works, where to give it, and what can be done meanwhile. There is
+ * no way from this screen into Settings, so the place is named.
+ */
+private fun setUpText(provider: TranslationProvider, awaitingPermission: TranslationProvider?): String {
+    val needs = when {
+        awaitingPermission != null ->
+            "Language Coast needs your permission before it sends text to ${awaitingPermission.label}. You can give it under Settings › Translation."
+        // Only where the phone can translate by itself is that a way out worth naming.
+        onDeviceTranslationAvailable ->
+            "${provider.label} needs a key before it can translate. Add one under Settings › Translation, or pick ${TranslationProvider.OnDevice.label} there."
+        else ->
+            "Translation runs through an AI provider with your own key. Gemini offers a free one. Add a key under Settings › Translation."
+    }
+    return "$needs Until then you can type both sides of a card yourself."
+}
+
+/** Why no new sentences could be prepared, with a way to have it tried again. */
+@Composable
+private fun SuggestionProblem(reason: String, onRetry: () -> Unit) {
+    Text(
+        text = reason,
+        style = MaterialTheme.typography.bodySmall,
+        color = CoralText,
+        modifier = Modifier
+            .padding(top = 6.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite }
+    )
+    TextButton(onClick = onRetry, contentPadding = PaddingValues(horizontal = 0.dp)) {
+        Text("Try again", style = MaterialTheme.typography.labelMedium, color = SunlitText)
     }
 }
 
@@ -551,7 +688,7 @@ private fun LeftOverLine(leftOver: Int, dueOnCoast: Int, onReviewAll: () -> Unit
         withLink(
             LinkAnnotation.Clickable(
                 tag = "review-all",
-                styles = TextLinkStyles(style = SpanStyle(color = Sunlit, fontWeight = FontWeight.SemiBold)),
+                styles = TextLinkStyles(style = SpanStyle(color = SunlitText, fontWeight = FontWeight.SemiBold)),
                 linkInteractionListener = { onReviewAll() }
             )
         ) { append("review all $dueOnCoast") }
@@ -581,7 +718,7 @@ private fun WaitingLine(waiting: Int, pace: Pace, onChangePace: () -> Unit) {
         withLink(
             LinkAnnotation.Clickable(
                 tag = "pace",
-                styles = TextLinkStyles(style = SpanStyle(color = Sunlit, fontWeight = FontWeight.SemiBold)),
+                styles = TextLinkStyles(style = SpanStyle(color = SunlitText, fontWeight = FontWeight.SemiBold)),
                 linkInteractionListener = { onChangePace() }
             )
         ) { append(if (pace == Pace.Sprint) "Change pace" else if (waiting > 0) "Go faster" else "Change pace") }
@@ -611,7 +748,7 @@ private fun AboutYouInvite(onOpen: () -> Unit, onDismiss: () -> Unit) {
         }
         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
             TextButton(onClick = onDismiss) { Text("Not now", style = MaterialTheme.typography.labelMedium, color = TextSecondary) }
-            TextButton(onClick = onOpen) { Text("Answer a few questions", style = MaterialTheme.typography.labelMedium, color = Sunlit) }
+            TextButton(onClick = onOpen) { Text("Answer a few questions", style = MaterialTheme.typography.labelMedium, color = SunlitText) }
         }
     }
 }
@@ -629,16 +766,16 @@ private fun GoalLine(goal: String?, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clickable(onClick = onClick)
-            .semantics(mergeDescendants = true) { contentDescription = goal?.let { "Goal: $it. Tap to change" } ?: "Set a goal" }
+            .clickable(onClickLabel = if (goal == null) null else "change the goal", role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = goal?.let { "Goal: $it" } ?: "Set a goal" }
             .padding(top = 2.dp)
     ) {
-        Icon(Icons.Default.Flag, contentDescription = null, tint = Sunlit, modifier = Modifier.size(14.dp))
+        Icon(Icons.Default.Flag, contentDescription = null, tint = SunlitText, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = goal ?: "Why are you learning it? Tap to say",
             style = MaterialTheme.typography.bodySmall,
-            color = if (goal == null) Sunlit else TextSecondary,
+            color = if (goal == null) SunlitText else TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -655,8 +792,9 @@ private val GOAL_EXAMPLES = listOf("A trip to ", "Talking with ", "Work", "A sho
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Unit, onDismiss: () -> Unit) {
-    var text by remember(coast.coastId) { mutableStateOf(coast.goal.orEmpty()) }
-    var region by remember(coast.coastId) { mutableStateOf(coast.region.orEmpty()) }
+    // Saved, so what was typed survives turning the phone.
+    var text by rememberSaveable(coast.coastId) { mutableStateOf(coast.goal.orEmpty()) }
+    var region by rememberSaveable(coast.coastId) { mutableStateOf(coast.region.orEmpty()) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -665,7 +803,7 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text("Why ${coast.language}?", style = MaterialTheme.typography.titleLarge)
+            Text("Why ${coast.language}?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
             Text(
                 text = "A trip, a person, a job, a show you love. Each day's new sentences are picked for it, so the more specific the better.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -675,7 +813,7 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
                 value = text,
                 onValueChange = { text = it },
                 label = { Text("Your reason") },
-                placeholder = { Text("e.g., A trip to Lisbon in March") },
+                placeholder = { Text("e.g. A trip to Lisbon in March") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2
             )
@@ -698,7 +836,7 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
                 value = region,
                 onValueChange = { region = it },
                 label = { Text("Where will you use it? (optional)") },
-                placeholder = { Text("e.g., Mexico, Brazil, Switzerland") },
+                placeholder = { Text("e.g. Mexico, Brazil, Switzerland") },
                 supportingText = { Text("Translations use that place's words, forms and register.", color = TextSecondary) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -719,15 +857,16 @@ private fun ComposerHeader(open: Boolean, onToggle: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
+            .clickable(onClickLabel = if (open) "hide the form" else "show the form", role = Role.Button, onClick = onToggle)
             .padding(top = 4.dp)
     ) {
         // The chevron sits on the title's line, not centred on title and subtitle together, so it reads with the title.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Add your own", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text("Add your own", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+            // What a tap does is said by the row's click label, so the chevron itself stays silent.
             Icon(
                 imageVector = if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (open) "Hide the form" else "Show the form",
+                contentDescription = null,
                 tint = TextSecondary
             )
         }
@@ -751,9 +890,13 @@ private fun NewCardForm(
     onInputModeChange: (InputMode) -> Unit,
     onSave: () -> Unit,
     onAddMany: () -> Unit,
-    onBrowseStarters: () -> Unit
+    onBrowseStarters: () -> Unit,
+    photoOffered: Boolean
 ) {
     val mode = uiState.inputMode
+    // The picked provider can't translate yet (no key, or no permission), and this mode needs it to.
+    val needsSetUp = mode != InputMode.Manual && !uiState.engineReady
+    val awaitingPermission = uiState.awaitingPermission
     Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
         if (uiState.isSameLanguage) {
             Text(
@@ -771,12 +914,15 @@ private fun NewCardForm(
         )
 
         Text(
-            text = when (mode) {
-                InputMode.Translate -> "${uiState.translationProvider.label} · ${uiState.nativeLanguage} → ${selectedCoast.language}"
-                InputMode.WriteInTarget -> "Write in ${selectedCoast.language}. ${uiState.translationProvider.label} fills in the ${uiState.nativeLanguage} and corrects slips."
-                InputMode.Manual -> "You type both sides."
+            text = when {
+                needsSetUp && awaitingPermission != null ->
+                    "Allow Language Coast to send text to ${awaitingPermission.label} under Settings › Translation first, or switch to Manual."
+                needsSetUp -> "${uiState.translationProvider.label} isn't set up yet. Add its key under Settings › Translation, or switch to Manual."
+                mode == InputMode.Translate -> "${uiState.translationProvider.label} · ${uiState.nativeLanguage} → ${selectedCoast.language}"
+                mode == InputMode.WriteInTarget -> "Write in ${selectedCoast.language}. ${uiState.translationProvider.label} fills in the ${uiState.nativeLanguage} and corrects slips."
+                else -> "You type both sides."
             },
-            color = TextSecondary,
+            color = if (needsSetUp) CoralText else TextSecondary,
             style = MaterialTheme.typography.bodySmall
         )
 
@@ -784,13 +930,16 @@ private fun NewCardForm(
             value = uiState.nativeSentence,
             onValueChange = onNativeSentenceChange,
             label = { Text(if (mode == InputMode.WriteInTarget) "Write it in ${selectedCoast.language}" else "What do you want to say?") },
-            placeholder = { Text(if (mode == InputMode.WriteInTarget) "e.g., Wo ist der Bahnhof?" else "e.g., Where is the train station?") },
+            placeholder = { Text(if (mode == InputMode.WriteInTarget) "e.g. Wo ist der Bahnhof?" else "e.g. Where is the train station?") },
             // Only a hint: the user may want a second card, e.g. on another island.
             supportingText = uiState.duplicate?.let { duplicate ->
                 {
                     Text(
-                        "Already on ${duplicate.emoji} ${duplicate.islandName}: ${duplicate.card.targetText}",
-                        color = Sunlit
+                        text = buildAnnotatedString {
+                            append("Already on ${duplicate.emoji} ${duplicate.islandName}: ")
+                            append(inLanguage(duplicate.card.targetText, selectedCoast.language))
+                        },
+                        color = SunlitText
                     )
                 }
             },
@@ -802,7 +951,7 @@ private fun NewCardForm(
             CoastTextField(
                 value = uiState.targetSentence,
                 onValueChange = onTargetSentenceChange,
-                label = { Text("${selectedCoast.language} Translation") },
+                label = { Text("${selectedCoast.language} translation") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2
             )
@@ -813,7 +962,7 @@ private fun NewCardForm(
             onValueChange = onCategoryChange,
             // Manual cards fall back to DEFAULT_MANUAL_CATEGORY; the AI picks one otherwise.
             label = { Text("Island (optional)") },
-            placeholder = { Text("e.g., Travel") },
+            placeholder = { Text("e.g. Travel") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -824,13 +973,13 @@ private fun NewCardForm(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .clickable { onCategoryChange(suggested) }
-                    .semantics(mergeDescendants = true) { contentDescription = "Looks like $suggested. Tap to use it." }
+                    .clickable(onClickLabel = "use this island", role = Role.Button) { onCategoryChange(suggested) }
+                    .semantics(mergeDescendants = true) { contentDescription = "Looks like $suggested" }
                     .padding(vertical = 2.dp)
             ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Sunlit, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = SunlitText, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Looks like $emoji $suggested", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                Text("Looks like $emoji $suggested", style = MaterialTheme.typography.labelMedium, color = SunlitText)
             }
         }
 
@@ -868,7 +1017,9 @@ private fun NewCardForm(
                 CircularProgressIndicator(
                     color = TextPrimary,
                     strokeWidth = 2.5.dp,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier
+                        .size(22.dp)
+                        .semantics { contentDescription = "Saving" }
                 )
                 // A local model can take a while; the clock shows it is still at it.
                 if (mode != InputMode.Manual && uiState.translationProvider == TranslationProvider.LocalAi) {
@@ -882,23 +1033,24 @@ private fun NewCardForm(
             } else {
                 Text(
                     when (mode) {
-                        InputMode.Translate -> "Translate & Save"
-                        InputMode.WriteInTarget -> "Check & Save"
-                        InputMode.Manual -> "Save Flashcard"
+                        InputMode.Translate -> "Translate and save"
+                        InputMode.WriteInTarget -> "Check and save"
+                        InputMode.Manual -> "Save card"
                     }
                 )
             }
         }
 
-        if (mode != InputMode.Manual) {
+        // Both ways in need a provider that can translate, so they aren't offered while there is none.
+        if (mode != InputMode.Manual && uiState.engineReady) {
             Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                 TextButton(onClick = onBrowseStarters, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Sunlit, modifier = Modifier.padding(end = 6.dp).size(18.dp))
-                    Text("Starter sentences", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = SunlitText, modifier = Modifier.padding(end = 6.dp).size(18.dp))
+                    Text("Starter sentences", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                 }
                 TextButton(onClick = onAddMany, contentPadding = PaddingValues(horizontal = 8.dp)) {
                     Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = TextSecondary, modifier = Modifier.padding(end = 6.dp).size(18.dp))
-                    Text("From text or a photo", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                    Text(if (photoOffered) "From text or a photo" else "From text", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
                 }
             }
         }
@@ -915,8 +1067,8 @@ private fun CoastPicker(coasts: List<Coast>, selected: Coast, onSelected: (Coast
             contentPadding = PaddingValues(start = 12.dp, end = 4.dp),
             modifier = Modifier.semantics { contentDescription = "${selected.displayName} is the focus. Change coast" }
         ) {
-            Text("Change", color = Sunlit, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Sunlit)
+            Text("Change", color = SunlitText, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = SunlitText)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             coasts.forEach { coast ->
@@ -936,11 +1088,11 @@ private fun CoastPicker(coasts: List<Coast>, selected: Coast, onSelected: (Coast
     }
 }
 
-/** The last few cards added to the selected coast, so the user sees their coast growing. */
+/** The last few cards added to the selected coast (whose [language] their translations are in), so the user sees their coast growing. */
 @Composable
-private fun RecentCards(cards: List<RecentCard>) {
+private fun RecentCards(cards: List<RecentCard>, language: String) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Recently added", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))
+        Text("Recently added", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp).semantics { heading() })
         ContentCard {
             cards.forEachIndexed { index, recent ->
                 if (index > 0) HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 10.dp))
@@ -949,7 +1101,7 @@ private fun RecentCards(cards: List<RecentCard>) {
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            recent.card.targetText,
+                            inLanguage(recent.card.targetText, language),
                             style = MaterialTheme.typography.titleSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -963,7 +1115,8 @@ private fun RecentCards(cards: List<RecentCard>) {
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Pill(text = recent.islandName, container = SurfaceRaised, content = TextSecondary)
+                    // Capped, so a long island name is cut and not the card's own text.
+                    Pill(text = recent.islandName, modifier = Modifier.widthIn(max = 120.dp), container = SurfaceRaised, content = TextSecondary)
                 }
             }
         }
@@ -971,8 +1124,9 @@ private fun RecentCards(cards: List<RecentCard>) {
 }
 
 /**
- * The first two steps of onboarding, shown until the user has a coast: the language they speak,
- * then the one they want to learn. The third step is their first sentence, hinted on the form.
+ * The two steps of onboarding, shown until the user has a coast: the language they speak, then the one
+ * they want to learn, with what a coast and an island are. Starting the coast then asks why they learn it
+ * (see [GoalSheet]).
  */
 @Composable
 private fun Onboarding(
@@ -981,13 +1135,13 @@ private fun Onboarding(
     onNativeLanguage: (String) -> Unit,
     onStartCoast: () -> Unit
 ) {
-    var step by remember { mutableStateOf(1) }
-    var showNativePicker by remember { mutableStateOf(false) }
+    var step by rememberSaveable { mutableStateOf(1) }
+    var showNativePicker by rememberSaveable { mutableStateOf(false) }
     val native = Languages.byName(nativeLanguage)
 
     if (showNativePicker) {
         LanguagePickerDialog(
-            title = "Your language",
+            title = "Native language",
             subtitle = "The language you think in.",
             languages = Languages.ALL,
             selected = nativeLanguage,
@@ -1012,10 +1166,16 @@ private fun Onboarding(
             contentDescription = "Language Coast",
             modifier = Modifier.size(150.dp)
         )
-        Text("Step $step of 3", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+        Text("Step $step of 2", style = MaterialTheme.typography.labelMedium, color = SunlitText)
         Spacer(modifier = Modifier.height(6.dp))
         if (step == 1) {
-            Text("Which language do you speak?", style = MaterialTheme.typography.headlineMedium, color = TextPrimary, textAlign = TextAlign.Center)
+            Text(
+                "Which language do you speak?",
+                style = MaterialTheme.typography.headlineMedium,
+                color = TextPrimary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() }
+            )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 "Cards are explained and translated into it.",
@@ -1023,7 +1183,7 @@ private fun Onboarding(
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
-            ContentCard(onClick = { showNativePicker = true }) {
+            ContentCard(onClick = { showNativePicker = true }, onClickLabel = "change your language") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconTile { Text(native?.flag ?: "🌍", fontSize = 24.sp) }
                     Spacer(modifier = Modifier.width(12.dp))
@@ -1033,7 +1193,7 @@ private fun Onboarding(
                             Text(it, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         }
                     }
-                    Text("Change", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                    Text("Change", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
@@ -1041,10 +1201,17 @@ private fun Onboarding(
                 Text("Continue")
             }
         } else {
-            Text("Which language do you want to learn?", style = MaterialTheme.typography.headlineMedium, color = TextPrimary, textAlign = TextAlign.Center)
+            Text(
+                "Which language do you want to learn?",
+                style = MaterialTheme.typography.headlineMedium,
+                color = TextPrimary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() }
+            )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Each language is a coast. You can start more coasts later; one at a time is the point.",
+                "Each language is a coast. Its cards are grouped on islands, one for each topic. " +
+                    "Next you'll be asked why you're learning it, so that new sentences fit.",
                 color = TextSecondary,
                 textAlign = TextAlign.Center
             )
@@ -1055,7 +1222,7 @@ private fun Onboarding(
                 modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                Text("Start a Coast")
+                Text("Start a coast")
             }
             Spacer(modifier = Modifier.height(10.dp))
             CoastSecondaryButton(onClick = { step = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
@@ -1068,13 +1235,17 @@ private fun Onboarding(
 /**
  * Shows the card that was just saved, so a bad translation can be spotted and undone or fixed right
  * away: the pencil turns the translation into a field. A sentence written in the coast's language
- * shows what was corrected.
+ * shows what was corrected. [language] is the coast's, which the translation is in.
  */
 @Composable
-private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit, onEditTranslation: (String) -> Unit) {
-    var editing by remember(result.added.card.cardId) { mutableStateOf(false) }
-    var draft by remember(result.added.card.cardId) { mutableStateOf(result.targetText) }
-    ContentCard(padding = PaddingValues(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 14.dp)) {
+private fun SavedCard(result: SaveResult.Saved, language: String, onUndo: () -> Unit, onEditTranslation: (String) -> Unit) {
+    var editing by rememberSaveable(result.added.card.cardId) { mutableStateOf(false) }
+    var draft by rememberSaveable(result.added.card.cardId) { mutableStateOf(result.targetText) }
+    ContentCard(
+        // Read out when it appears: the button the user was on has become a spinner and says nothing of the result.
+        modifier = Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        padding = PaddingValues(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 14.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Check, contentDescription = null, tint = Seafoam, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
@@ -1089,7 +1260,7 @@ private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit, onEditTransl
                 }
             }
             TextButton(onClick = onUndo) {
-                Text("Undo", color = Sunlit, style = MaterialTheme.typography.labelMedium)
+                Text("Undo", color = SunlitText, style = MaterialTheme.typography.labelMedium)
             }
         }
         if (editing) {
@@ -1108,11 +1279,11 @@ private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit, onEditTransl
                 TextButton(onClick = {
                     onEditTranslation(draft)
                     editing = false
-                }, enabled = draft.isNotBlank()) { Text("Save", color = Sunlit, style = MaterialTheme.typography.labelMedium) }
+                }, enabled = draft.isNotBlank()) { Text("Save", color = SunlitText, style = MaterialTheme.typography.labelMedium) }
             }
         } else {
             Text(
-                text = result.targetText,
+                text = inLanguage(result.targetText, language),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(end = 12.dp, top = 2.dp)
             )
@@ -1123,6 +1294,15 @@ private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit, onEditTransl
             color = TextSecondary,
             modifier = Modifier.padding(end = 12.dp)
         )
+        if (result.onDevice) {
+            // The on-device translator's terms ask for its name next to what it translated.
+            Text(
+                text = "Translated by Google Translate, on your phone",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(end = 12.dp, top = 6.dp)
+            )
+        }
         result.corrected?.let { written ->
             HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(top = 10.dp, bottom = 8.dp, end = 12.dp))
             Text("You wrote: $written", style = MaterialTheme.typography.bodyMedium, color = CoralText, modifier = Modifier.padding(end = 12.dp))
@@ -1134,7 +1314,8 @@ private fun SavedCard(result: SaveResult.Saved, onUndo: () -> Unit, onEditTransl
 /** Shows why a card couldn't be saved, and offers a cloud provider when the local model keeps failing. */
 @Composable
 private fun ErrorCard(message: String, fallback: TranslationProvider?, onRetry: () -> Unit) {
-    ContentCard {
+    // Read out at once when it appears, like the result of a save.
+    ContentCard(modifier = Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Assertive }) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Error, contentDescription = null, tint = CoralText)
             Spacer(modifier = Modifier.width(12.dp))
@@ -1142,7 +1323,7 @@ private fun ErrorCard(message: String, fallback: TranslationProvider?, onRetry: 
         }
         if (fallback != null) {
             Spacer(modifier = Modifier.height(10.dp))
-            CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().height(44.dp)) {
+            CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
                 Text("Try with ${fallback.label}", style = MaterialTheme.typography.labelMedium)
             }
         }
@@ -1152,23 +1333,28 @@ private fun ErrorCard(message: String, fallback: TranslationProvider?, onRetry: 
 /**
  * A sheet that turns a paragraph (pasted, or read from a photo) into sentences to tick, then saves a
  * card for each ticked one with the provider picked in Settings.
+ *
+ * @param writing The language the paragraph is written in.
+ * @param text The paragraph so far. It is kept by the caller, which is also where a photo's text arrives.
+ * @param readPhoto Opens the photo picker; null where photos can't be read, or not in the [writing] language.
+ * @param readingPhoto Whether a picked photo is being read right now.
+ * @param photoError Why the last photo gave no text. Shown here in the sheet: a snackbar would sit behind it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BatchSheet(
     batch: BatchState?,
-    coastLanguage: String,
-    nativeLanguage: String,
-    inputMode: InputMode,
+    writing: String,
+    text: String,
+    onTextChange: (String) -> Unit,
+    readPhoto: (() -> Unit)?,
+    readingPhoto: Boolean,
+    photoError: String?,
     onStartBatch: (String) -> Unit,
     onToggle: (Int) -> Unit,
     onSave: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    var text by remember { mutableStateOf("") }
-    val undoMessenger = LocalUndoMessenger.current
-    val readPhoto = rememberPhotoTextReader(onText = { text = it }, onError = { undoMessenger.showMessage(it) })
-    val writing = if (inputMode == InputMode.WriteInTarget) coastLanguage else nativeLanguage
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1177,25 +1363,45 @@ private fun BatchSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text("Add many cards", style = MaterialTheme.typography.titleLarge)
+            Text("Add many cards", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
             when {
                 batch == null -> {
                     Text(
-                        "Paste a paragraph in $writing, or read one from a photo of a page or a sign. Each sentence becomes a card.",
+                        text = if (readPhoto != null) "Paste a paragraph in $writing, or read one from a photo of a page or a sign. Each sentence becomes a card."
+                        else "Paste a paragraph in $writing. Each sentence becomes a card.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
                     )
                     CoastTextField(
                         value = text,
-                        onValueChange = { text = it },
+                        onValueChange = onTextChange,
                         label = { Text("Paste text here") },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 4
                     )
                     if (readPhoto != null) {
-                        CoastSecondaryButton(onClick = readPhoto, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                        CoastSecondaryButton(onClick = readPhoto, enabled = !readingPhoto, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
                             Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                             Text("Read from a photo")
+                        }
+                        if (readingPhoto) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "Reading the photo…",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextSecondary,
+                                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                                )
+                            }
+                        } else if (photoError != null) {
+                            Text(
+                                text = photoError,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = CoralText,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                            )
                         }
                     }
                     CoastButton(
@@ -1217,16 +1423,19 @@ private fun BatchSheet(
                     }
                     ContentCard(padding = PaddingValues(vertical = 4.dp, horizontal = 4.dp)) {
                         batch.sentences.forEachIndexed { index, sentence ->
+                            // The row is the tick box: one stop for a screen reader, which hears the sentence and whether it is ticked.
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable(enabled = batch.saved == null) { onToggle(index) }
+                                    .toggleable(value = sentence.checked, enabled = batch.saved == null, role = Role.Checkbox) { onToggle(index) }
                                     .padding(end = 12.dp)
                             ) {
                                 Checkbox(
                                     checked = sentence.checked,
-                                    onCheckedChange = { onToggle(index) },
+                                    onCheckedChange = null,
+                                    // Without a handler of its own the box is small; the padding keeps the row as tall as before.
+                                    modifier = Modifier.padding(12.dp),
                                     enabled = batch.saved == null,
                                     colors = CheckboxDefaults.colors(checkedColor = Sunlit, checkmarkColor = OnSunlit, uncheckedColor = TextSecondary)
                                 )
@@ -1239,8 +1448,14 @@ private fun BatchSheet(
                             val saved = (batch.saved ?: 0) - batch.failed
                             Text(
                                 text = if (batch.failed == 0) "${plural(saved, "card")} added." else "${plural(saved, "card")} added, ${batch.failed} couldn't be translated.",
-                                style = MaterialTheme.typography.titleMedium
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
                             )
+                            // The reason, so the user knows whether it is the key, the connection or the language.
+                            val reason = batch.lastError
+                            if (batch.failed > 0 && reason != null) {
+                                Text(reason, style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                            }
                             CoastButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) { Text("Done") }
                         }
                         batch.isSaving -> {

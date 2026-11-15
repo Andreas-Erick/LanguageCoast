@@ -93,6 +93,21 @@ class AnkiPackageReaderTest {
     }
 
     @Test
+    fun aZipWithFileNamesInAnotherCodePageIsNotAPackage() {
+        // Older Windows tools wrote names in the PC's own code page. "Ü" in Latin-1 is a byte that is not UTF-8,
+        // which the zip reader refuses with an exception of its own kind.
+        val bytes = ByteArrayOutputStream()
+        ZipOutputStream(bytes, Charsets.ISO_8859_1).use { archive ->
+            archive.putNextEntry(ZipEntry("Übung.txt"))
+            archive.write("Hallo".toByteArray())
+            archive.closeEntry()
+        }
+
+        assertEquals(AnkiPackageContent.NotAPackage, readAnkiPackage(ByteArrayInputStream(bytes.toByteArray()), workFolder))
+        assertFalse(workFolder.exists())
+    }
+
+    @Test
     fun aFileNamedToClimbOutOfTheWorkFolderIsNotUnpacked() {
         val content = readAnkiPackage(ByteArrayInputStream(zipOf("../collection.anki2", "media")), workFolder)
 

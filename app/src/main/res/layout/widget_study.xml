@@ -3,6 +3,8 @@
     The home-screen widget (see StudyWidgetProvider), styled like the app: the logo and title over the
     header wave, the streak and the cards due on raised tiles, and a nudge below.
     The numbers shrink to fit their tile, so a 1000 day streak still shows on a narrow widget.
+    The texts here are what a new widget shows until its first numbers arrive, so they claim nothing.
+    widget_study_preview is the same layout with sample numbers, for the widget picker: keep the two in step.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -77,14 +79,16 @@
                 android:fontFamily="@font/nunito"
                 android:fontVariationSettings="'wght' 800"
                 android:maxLines="1"
-                android:text="@string/widget_preview_streak"
+                android:text="@string/widget_no_number"
                 android:textColor="@color/text_primary"
                 android:textSize="26sp" />
 
             <TextView
                 android:id="@+id/widget_streak_label"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:gravity="center"
                 android:maxLines="1"
                 android:text="@string/widget_streak_label"
                 android:textColor="@color/text_secondary"
@@ -117,16 +121,17 @@
                 android:fontFamily="@font/nunito"
                 android:fontVariationSettings="'wght' 800"
                 android:maxLines="1"
-                android:text="@string/widget_preview_due"
+                android:text="@string/widget_no_number"
                 android:textColor="@color/text_primary"
                 android:textSize="26sp" />
 
             <TextView
                 android:id="@+id/widget_due_label"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:gravity="center"
                 android:maxLines="1"
-                android:text="@string/widget_preview_due_label"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
         </LinearLayout>
@@ -140,7 +145,6 @@
         android:ellipsize="end"
         android:gravity="center"
         android:maxLines="1"
-        android:text="@string/widget_preview_footer"
         android:textColor="@color/text_secondary"
         android:textSize="12sp" />
 </LinearLayout>

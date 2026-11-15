@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Person
@@ -36,15 +37,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andreaserick.languagecoast.data.PERSONAL_ISLAND_SENTENCES
 import com.andreaserick.languagecoast.data.PersonalIsland
 import com.andreaserick.languagecoast.data.PersonalIslands
 import com.andreaserick.languagecoast.data.Profile
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Wording
+import com.andreaserick.languagecoast.data.localAiAvailable
 import com.andreaserick.languagecoast.data.profileExample
 import com.andreaserick.languagecoast.data.profilePreview
 import com.andreaserick.languagecoast.data.profileShortLabel
@@ -56,11 +61,12 @@ import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.Pill
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
-import com.andreaserick.languagecoast.ui.theme.OnSunlit
+import com.andreaserick.languagecoast.ui.settings.FREE_GEMINI_KEY_WARNING
+import com.andreaserick.languagecoast.ui.theme.OnSeafoam
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
-import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import org.koin.compose.viewmodel.koinViewModel
@@ -102,7 +108,7 @@ fun AboutYouScreen(
             contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            item(key = "intro") { Introduction(uiState.provider) }
+            item(key = "intro") { Introduction(uiState.provider, uiState.engineProblem) }
             item(key = "basics") {
                 BasicsCard(profile = uiState.profile, wording = uiState.wording, onChange = viewModel::setProfileField, onWording = viewModel::setWording)
             }
@@ -119,24 +125,52 @@ fun AboutYouScreen(
     }
 }
 
-/** What the questions are for, and where the answers go. */
+/**
+ * What the questions are for, and where the answers go. When the provider picked in Settings can't write
+ * islands (on-device translation never can; a cloud provider can't before it is set up, see [engineProblem]),
+ * a card says so before the user starts answering.
+ */
 @Composable
-private fun Introduction(provider: TranslationProvider) {
+private fun Introduction(provider: TranslationProvider, engineProblem: String?) {
     val where = when {
         provider.isCloud -> "When you have an island written, the answers for that island are sent to ${provider.label}, your AI provider."
-        provider == TranslationProvider.LocalAi -> "Your AI model runs on this phone, so they never leave it."
-        else -> "An island is written by an AI provider, which you pick under Settings › Translation; the answers for that island are sent to it then."
+        provider == TranslationProvider.LocalAi -> "Your AI model runs on this device, so they are not sent to an AI provider. A backup of your phone includes them."
+        else -> "If you pick a cloud provider, the answers for an island are sent to it when you have that island written."
+    }
+    // On-device translation only exists where Local AI may too, so both can be named here.
+    val cannotWrite = when {
+        provider == TranslationProvider.OnDevice ->
+            "Islands about you are written by an AI model, and on-device translation can't write them. " +
+                (if (localAiAvailable) "Set up Local AI, which is free and runs on this device, or a cloud provider" else "Set up a cloud provider") +
+                " under Settings › Translation. The basics below still fill in your starter sentences."
+        else -> engineProblem
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
-            "Most of what you say in a new language is about you. Answer in a few words, in any language, and on each coast your AI provider writes about 25 sentences per topic: your family, your work, your weekends, in your words.",
+            "Most of what you say in a new language is about you. Answer in a few words, in any language, and on each coast your AI provider writes up to $PERSONAL_ISLAND_SENTENCES sentences for each island: your family, your work, your weekends, in your words.",
             style = MaterialTheme.typography.bodyMedium
         )
+        if (cannotWrite != null) {
+            ContentCard(modifier = Modifier.padding(vertical = 6.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    IconTile { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = TextSecondary) }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Before islands can be written", style = MaterialTheme.typography.titleSmall)
+                        Text(cannotWrite, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
+            }
+        }
         Text(
-            "Everything is optional. Your answers are stored on this phone. $where",
+            "Everything is optional. Your answers are stored on this device. $where",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary
         )
+        if (provider == TranslationProvider.Gemini) {
+            // Google's terms for keys that cost nothing allow this; the paid ones, and all keys in those countries, don't.
+            Text(FREE_GEMINI_KEY_WARNING, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        }
     }
 }
 
@@ -154,7 +188,7 @@ private fun BasicsCard(
             IconTile { Icon(Icons.Default.Person, contentDescription = null, tint = TextSecondary) }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("The basics", style = MaterialTheme.typography.titleMedium)
+                Text("The basics", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                 Text("These fill the blanks in starter sentences, like [name] and [city].", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
         }
@@ -194,7 +228,7 @@ private fun BasicsCard(
             }
         }
         Text(
-            text = "Many languages say \"I'm tired\" or \"I'm a nurse\" differently for a woman and a man. Pick one and your sentences come out right; tap it again to clear it.",
+            text = "Many languages say \"I'm tired\" or \"I'm a nurse\" differently for a woman and a man. Pick one and your sentences come out right; pick it again to clear it.",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
             modifier = Modifier.padding(top = 4.dp)
@@ -208,7 +242,7 @@ private fun BasicsCard(
                     .background(SurfaceRaised, MaterialTheme.shapes.small)
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                Text("How your sentences will read", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                Text("How your sentences will read", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                 Text(preview, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
             }
         }
@@ -246,7 +280,7 @@ private fun IslandQuestionsCard(
             // Always there, so the first answer doesn't push the text beside it onto another line.
             when (answered) {
                 0 -> Pill("0/${island.questions.size}", container = SurfaceRaised, content = TextSecondary)
-                island.questions.size -> Pill("$answered/${island.questions.size}", container = Seafoam, content = OnSunlit)
+                island.questions.size -> Pill("$answered/${island.questions.size}", container = Seafoam, content = OnSeafoam)
                 else -> Pill("$answered/${island.questions.size}", container = SurfaceSelected, content = TextPrimary)
             }
             Icon(

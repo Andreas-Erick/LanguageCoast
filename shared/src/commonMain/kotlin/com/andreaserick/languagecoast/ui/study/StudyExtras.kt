@@ -54,8 +54,12 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -77,12 +81,14 @@ import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.FeedbackKind
 import com.andreaserick.languagecoast.ui.components.LocalFeedback
-import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
+import com.andreaserick.languagecoast.ui.components.ReportAnswerLink
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
+import com.andreaserick.languagecoast.ui.components.inLanguage
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
@@ -92,6 +98,8 @@ import kotlinx.coroutines.launch
  * The switch between "Flip", "Type" and "Fill gap", next to which way cards are studied ("English → German").
  * Tapping the direction swaps it: from the native language trains recall, from the coast's language
  * trains recognition. Fill gap always blanks a word of the translation, so it has no direction.
+ *
+ * @param showFillGap Whether Fill gap is offered; it isn't for a language that doesn't separate its words.
  */
 @Composable
 internal fun StudyModeRow(
@@ -100,9 +108,12 @@ internal fun StudyModeRow(
     nativeLanguage: String,
     targetLanguage: String,
     isReversed: Boolean,
-    onReversedChange: (Boolean) -> Unit
+    onReversedChange: (Boolean) -> Unit,
+    showFillGap: Boolean = true
 ) {
     val (from, to) = if (isReversed) targetLanguage to nativeLanguage else nativeLanguage to targetLanguage
+    // In the order of StudyMode, so an option's place is its mode.
+    val options = if (showFillGap) listOf("Flip", "Type", "Fill gap") else listOf("Flip", "Type")
     Column(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier
@@ -110,8 +121,8 @@ internal fun StudyModeRow(
             .padding(start = ScreenMargin, end = ScreenMargin, top = 8.dp)
     ) {
         SegmentedSwitch(
-            options = listOf("Flip", "Type", "Fill gap"),
-            selectedIndex = mode.ordinal,
+            options = options,
+            selectedIndex = mode.ordinal.coerceAtMost(options.lastIndex),
             onSelect = { onModeChange(StudyMode.entries[it]) },
             modifier = Modifier.fillMaxWidth()
         )
@@ -132,7 +143,14 @@ internal fun StudyModeRow(
                     .align(Alignment.CenterHorizontally)
                     .semantics { contentDescription = "Studying $from to $to. Tap to swap." }
             ) {
-                Text("$from → $to", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                Text(
+                    text = "$from → $to",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // Long language names give way to the icon instead of pushing it out.
+                    modifier = Modifier.weight(1f, fill = false)
+                )
                 Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(18.dp))
             }
         }
@@ -150,11 +168,16 @@ fun ClozeStudyView(
     cloze: Cloze,
     intervals: Map<Grade, Int>,
     onGrade: (Grade) -> Unit,
-    onSpeak: (() -> Unit)? = null
+    onSpeak: (() -> Unit)? = null,
+    nativeLang: String = "",
+    targetLang: String = ""
 ) {
-    var userInput by remember(currentCard.cardId) { mutableStateOf("") }
-    var match by remember(currentCard.cardId) { mutableStateOf<AnswerMatch?>(null) }
+    // Keyed on the card, not its ID: graded Again with one card left, the same card comes back and starts empty.
+    // The typed word is kept when the screen is rotated or resized; the verdict is one tap on Check away.
+    var userInput by rememberSaveable(currentCard) { mutableStateOf("") }
+    var match by remember(currentCard) { mutableStateOf<AnswerMatch?>(null) }
     val feedback = LocalFeedback.current
+    val focusManager = LocalFocusManager.current
     val result = remember { BringIntoViewRequester() }
     LaunchedEffect(match) {
         if (match != null) result.bringIntoView()
@@ -164,6 +187,8 @@ fun ClozeStudyView(
         if (userInput.isBlank()) return
         val outcome = checkAnswer(userInput, listOf(cloze.word))
         match = outcome
+        // The keyboard has done its part; the verdict and the grade buttons need the room.
+        focusManager.clearFocus()
         feedback.play(if (outcome == AnswerMatch.Wrong) FeedbackKind.Failure else FeedbackKind.Success)
     }
 
@@ -173,17 +198,22 @@ fun ClozeStudyView(
                 Text("Fill the gap", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.weight(1f))
                 if (match != null && onSpeak != null) {
                     IconButton(onClick = onSpeak) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = Sunlit)
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = SunlitText)
                     }
                 }
             }
             Text(
-                text = if (match == null) cloze.display else cloze.before + cloze.word + cloze.after,
+                text = inLanguage(if (match == null) cloze.display else cloze.before + cloze.word + cloze.after, targetLang),
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.padding(end = 12.dp)
             )
             Spacer(modifier = Modifier.height(10.dp))
-            Text(currentCard.nativeText, style = MaterialTheme.typography.titleMedium, color = TextSecondary, modifier = Modifier.padding(end = 12.dp))
+            Text(
+                text = inLanguage(currentCard.nativeText, nativeLang),
+                style = MaterialTheme.typography.titleMedium,
+                color = TextSecondary,
+                modifier = Modifier.padding(end = 12.dp)
+            )
         }
 
         CoastTextField(
@@ -192,7 +222,7 @@ fun ClozeStudyView(
                 userInput = it
                 match = null
             },
-            label = { Text("The missing word...") },
+            label = { Text("The missing word…") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { check() }),
@@ -208,7 +238,7 @@ fun ClozeStudyView(
                 Text("Check")
             }
             else -> Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().bringIntoViewRequester(result)) {
-                AnswerVerdict(outcome = outcome, expected = cloze.word)
+                AnswerVerdict(outcome = outcome, expected = cloze.word, language = targetLang)
                 when (outcome) {
                     AnswerMatch.Exact -> GradeButtons(intervals = intervals, onGrade = onGrade)
                     is AnswerMatch.Almost -> HardContinue(onGrade = onGrade)
@@ -219,25 +249,42 @@ fun ClozeStudyView(
     }
 }
 
-/** "Perfect!", "Almost!" or "Not quite", with the expected answer when the typed one wasn't it. */
+/**
+ * Marks a result that turns up by itself (a verdict, an AI answer, an error), so a screen reader reads it out
+ * when it arrives instead of leaving the user to go and look for it. The block is read as one piece; buttons
+ * in it stay stops of their own.
+ */
+internal fun Modifier.announceResult(): Modifier = semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+
+/**
+ * "Perfect", "Almost" or "Not quite", with the expected answer when the typed one wasn't it.
+ *
+ * @param language The language the answer is in (its English name).
+ */
 @Composable
-internal fun AnswerVerdict(outcome: AnswerMatch, expected: String, alsoCorrect: List<String> = emptyList(), onSpeak: (() -> Unit)? = null) {
-    ContentCard {
+internal fun AnswerVerdict(
+    outcome: AnswerMatch,
+    expected: String,
+    alsoCorrect: List<String> = emptyList(),
+    onSpeak: (() -> Unit)? = null,
+    language: String = ""
+) {
+    ContentCard(modifier = Modifier.announceResult()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 if (outcome == AnswerMatch.Wrong) Icons.Default.Cancel else Icons.Default.CheckCircle,
                 contentDescription = null,
                 tint = when (outcome) {
                     AnswerMatch.Exact -> Seafoam
-                    is AnswerMatch.Almost -> Sunlit
+                    is AnswerMatch.Almost -> SunlitText
                     AnswerMatch.Wrong -> CoralText
                 }
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = when (outcome) {
-                    AnswerMatch.Exact -> "Perfect!"
-                    is AnswerMatch.Almost -> "Almost!"
+                    AnswerMatch.Exact -> "Perfect"
+                    is AnswerMatch.Almost -> "Almost"
                     AnswerMatch.Wrong -> "Not quite"
                 },
                 style = MaterialTheme.typography.titleLarge,
@@ -246,15 +293,18 @@ internal fun AnswerVerdict(outcome: AnswerMatch, expected: String, alsoCorrect: 
         }
         if (outcome is AnswerMatch.Almost) {
             Text("You typed", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 12.dp))
-            Text(outcome.typed, style = MaterialTheme.typography.titleMedium, color = TextSecondary)
+            Text(inLanguage(outcome.typed, language), style = MaterialTheme.typography.titleMedium, color = TextSecondary)
         }
         if (outcome != AnswerMatch.Exact) {
             Text("Correct answer", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 12.dp))
-            Text(expected, style = MaterialTheme.typography.titleLarge)
+            Text(inLanguage(expected, language), style = MaterialTheme.typography.titleLarge)
         }
         if (alsoCorrect.isNotEmpty()) {
             Text(
-                text = "Also correct: ${alsoCorrect.joinToString(" · ")}",
+                text = buildAnnotatedString {
+                    append("Also correct: ")
+                    append(inLanguage(alsoCorrect.joinToString(" · "), language))
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 modifier = Modifier.padding(top = 8.dp)
@@ -263,7 +313,7 @@ internal fun AnswerVerdict(outcome: AnswerMatch, expected: String, alsoCorrect: 
         if (onSpeak != null) {
             TextButton(
                 onClick = onSpeak,
-                colors = ButtonDefaults.textButtonColors(contentColor = Sunlit),
+                colors = ButtonDefaults.textButtonColors(contentColor = SunlitText),
                 contentPadding = PaddingValues(horizontal = 0.dp),
                 modifier = Modifier.padding(top = 4.dp)
             ) {
@@ -312,7 +362,8 @@ internal fun AgainContinue(onGrade: (Grade) -> Unit) {
 @Composable
 internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
-    val undoMessenger = LocalUndoMessenger.current
+    // Said in the sheet itself: a snackbar would come up behind it.
+    var linkError by remember(dictionaryUrl) { mutableStateOf<String?>(null) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -320,17 +371,29 @@ internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onD
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text(explanation.word, style = MaterialTheme.typography.headlineMedium)
-            Text(explanation.sentence, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
+            Text(
+                text = inLanguage(explanation.word, explanation.targetLanguage),
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.semantics { heading() }
+            )
+            Text(
+                text = inLanguage(explanation.sentence, explanation.targetLanguage),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 2.dp)
+            )
             Spacer(modifier = Modifier.height(16.dp))
-            when {
-                explanation.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text("Asking ${explanation.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            // One block from "Asking…" to the answer, so the answer is read out when it arrives.
+            Column(modifier = Modifier.fillMaxWidth().announceResult()) {
+                when {
+                    explanation.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Asking ${explanation.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    }
+                    explanation.text != null -> Text(explanation.text, style = MaterialTheme.typography.bodyLarge)
+                    else -> Text(explanation.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
                 }
-                explanation.text != null -> Text(explanation.text, style = MaterialTheme.typography.bodyLarge)
-                else -> Text(explanation.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
             }
             if (explanation.text != null) {
                 Text(
@@ -339,19 +402,30 @@ internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onD
                     color = TextSecondary,
                     modifier = Modifier.padding(top = 10.dp)
                 )
+                ReportAnswerLink(
+                    details = {
+                        "Provider: ${explanation.providerLabel}\n" +
+                            "Word: ${explanation.word}\n" +
+                            "Sentence: ${explanation.sentence}\n\n" +
+                            "Answer:\n${explanation.text.orEmpty()}"
+                    }
+                )
             }
             if (dictionaryUrl != null) {
                 Spacer(modifier = Modifier.height(12.dp))
                 TextButton(
                     onClick = {
-                        runCatching { uriHandler.openUri(dictionaryUrl) }
-                            .onFailure { undoMessenger.showMessage("No browser found to open dict.cc") }
+                        val opened = runCatching { uriHandler.openUri(dictionaryUrl) }.isSuccess
+                        linkError = if (opened) null else "No browser was found to open dict.cc."
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = TextPrimary),
                     contentPadding = PaddingValues(horizontal = 0.dp)
                 ) {
                     Text("Look up on dict.cc", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
                     Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(16.dp))
+                }
+                linkError?.let { message ->
+                    Text(message, style = MaterialTheme.typography.bodyMedium, color = CoralText, modifier = Modifier.announceResult())
                 }
             }
         }
@@ -382,59 +456,72 @@ internal fun CardCheckSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text(check.targetText, style = MaterialTheme.typography.headlineMedium)
+            Text(
+                text = inLanguage(check.targetText, check.targetLanguage),
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.semantics { heading() }
+            )
             Text(check.nativeText, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
             Spacer(modifier = Modifier.height(16.dp))
             // What the translation says, for the user to hold against what the card is meant to say.
             check.readsAs?.let { reading ->
-                Text("Word for word, it says", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
-                Text(reading, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 2.dp, bottom = 16.dp))
+                Column(modifier = Modifier.fillMaxWidth().announceResult()) {
+                    Text("Word for word, it says", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                    Text(reading, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 2.dp, bottom = 16.dp))
+                }
             }
-            when (val verdict = check.verdict) {
-                null -> if (check.isLoading) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text("Asking ${check.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            // One block from "Asking…" to the verdict, so the verdict is read out when it arrives.
+            Column(modifier = Modifier.fillMaxWidth().announceResult()) {
+                when (val verdict = check.verdict) {
+                    null -> if (check.isLoading) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Asking ${check.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                        }
+                    } else {
+                        Text(check.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
                     }
-                } else {
-                    Text(check.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
-                }
-                CardVerdict.Fine -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Seafoam)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Nothing found", style = MaterialTheme.typography.titleLarge)
+                    CardVerdict.Fine -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Seafoam)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Nothing found", style = MaterialTheme.typography.titleLarge)
+                        }
+                        Text(
+                            // The reading is the user's own check on the verdict, which a small model gets wrong.
+                            text = if (check.readsAs == null) "${check.providerLabel} found nothing wrong with it."
+                            else "${check.providerLabel} found nothing wrong with it. If the reading above isn't what you meant, edit the card.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
-                    Text(
-                        // The reading is the user's own check on the verdict, which a small model gets wrong.
-                        text = if (check.readsAs == null) "${check.providerLabel} found nothing wrong with it."
-                        else "${check.providerLabel} found nothing wrong with it. If the reading above isn't what you meant, edit the card.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-                is CardVerdict.Better -> {
-                    Text(
-                        text = if (verdict.currentIsWrong) "It should be" else "People would rather say",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextSecondary
-                    )
-                    Text(verdict.better, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 2.dp))
-                    if (verdict.reason.isNotBlank()) {
-                        Text(verdict.reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 10.dp))
+                    is CardVerdict.Better -> {
+                        Text(
+                            text = if (verdict.currentIsWrong) "It should be" else "People would rather say",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TextSecondary
+                        )
+                        Text(
+                            text = inLanguage(verdict.better, check.targetLanguage),
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                        if (verdict.reason.isNotBlank()) {
+                            Text(verdict.reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 10.dp))
+                        }
+                        Spacer(modifier = Modifier.height(18.dp))
+                        CoastButton(onClick = onApply, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                            Text("Use this")
+                        }
+                        Text(
+                            text = if (verdict.currentIsWrong) "It replaces the card's translation." else "The card's translation stays as an alternative.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        )
                     }
-                    Spacer(modifier = Modifier.height(18.dp))
-                    CoastButton(onClick = onApply, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
-                        Text("Use this")
-                    }
-                    Text(
-                        text = if (verdict.currentIsWrong) "It replaces the card's translation." else "The card's translation stays as an alternative.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                    )
                 }
             }
             if (check.verdict != null) {
@@ -483,7 +570,7 @@ private fun AlternativeQuestion(check: CardCheck, accentSave: Boolean, onAsk: (S
     }
 
     HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(top = 20.dp, bottom = 16.dp))
-    Text("Correct as well?", style = MaterialTheme.typography.titleMedium)
+    Text("Correct as well?", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
     Text(
         text = "Type another way to say it in ${check.targetLanguage}, and ${check.providerLabel} says whether it works too.",
         style = MaterialTheme.typography.bodyMedium,
@@ -508,7 +595,8 @@ private fun AlternativeQuestion(check: CardCheck, accentSave: Boolean, onAsk: (S
     }
 
     if (asked == null) return
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp).bringIntoViewRequester(answer)) {
+    // One block from "Asking…" to the answer, so the answer is read out when it arrives.
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp).bringIntoViewRequester(answer).announceResult()) {
         val verdict = asked.verdict
         when {
             asked.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -519,20 +607,24 @@ private fun AlternativeQuestion(check: CardCheck, accentSave: Boolean, onAsk: (S
             verdict == null -> Text(asked.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
             verdict == AlternativeVerdict.OnTheCard -> Text("The card has that one already.", style = MaterialTheme.typography.bodyLarge)
             verdict is AlternativeVerdict.Correct -> {
-                AlternativeHeadline(correct = true, providerLabel = check.providerLabel, asked = asked.text)
+                AlternativeHeadline(correct = true, providerLabel = check.providerLabel, asked = asked.text, language = check.targetLanguage)
                 verdict.note?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
                 }
                 SaveAlternative(label = "Save as an alternative", saved = asked.saved != null, accent = accentSave, onSave = onSave)
             }
             verdict is AlternativeVerdict.Incorrect -> {
-                AlternativeHeadline(correct = false, providerLabel = check.providerLabel, asked = asked.text)
+                AlternativeHeadline(correct = false, providerLabel = check.providerLabel, asked = asked.text, language = check.targetLanguage)
                 if (verdict.reason.isNotBlank()) {
                     Text(verdict.reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
                 }
                 verdict.corrected?.let { corrected ->
                     Text("It would be right as", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 14.dp))
-                    Text(corrected, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 2.dp))
+                    Text(
+                        text = inLanguage(corrected, check.targetLanguage),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
                     SaveAlternative(label = "Save the corrected one", saved = asked.saved != null, accent = accentSave, onSave = onSave)
                 }
             }
@@ -553,7 +645,7 @@ private fun AlternativeQuestion(check: CardCheck, accentSave: Boolean, onAsk: (S
  * else by now). Worded as the provider's finding, not as a fact: a small model agrees with almost anything.
  */
 @Composable
-private fun AlternativeHeadline(correct: Boolean, providerLabel: String, asked: String) {
+private fun AlternativeHeadline(correct: Boolean, providerLabel: String, asked: String, language: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             if (correct) Icons.Default.CheckCircle else Icons.Default.Cancel,
@@ -567,7 +659,12 @@ private fun AlternativeHeadline(correct: Boolean, providerLabel: String, asked: 
             modifier = Modifier.weight(1f)
         )
     }
-    Text(asked, style = MaterialTheme.typography.titleMedium, color = TextSecondary, modifier = Modifier.padding(top = 6.dp))
+    Text(
+        text = inLanguage(asked, language),
+        style = MaterialTheme.typography.titleMedium,
+        color = TextSecondary,
+        modifier = Modifier.padding(top = 6.dp)
+    )
 }
 
 /**
@@ -644,9 +741,14 @@ private fun CardQuestionContent(questions: CardQuestions, onAsk: (String) -> Uni
             .verticalScroll(rememberScrollState())
             .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
     ) {
-        Text("Ask about this card", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
         Text(
-            text = questions.targetText,
+            text = "Ask about this card",
+            style = MaterialTheme.typography.labelMedium,
+            color = TextSecondary,
+            modifier = Modifier.semantics { heading() }
+        )
+        Text(
+            text = inLanguage(questions.targetText, questions.targetLanguage),
             style = MaterialTheme.typography.headlineSmall,
             maxLines = 4,
             overflow = TextOverflow.Ellipsis,
@@ -668,7 +770,13 @@ private fun CardQuestionContent(questions: CardQuestions, onAsk: (String) -> Uni
 
         questions.asked.forEachIndexed { index, asked ->
             HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(top = 16.dp, bottom = 14.dp))
-            Column(modifier = if (index == questions.asked.lastIndex) Modifier.fillMaxWidth().bringIntoViewRequester(latest) else Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (index == questions.asked.lastIndex) Modifier.bringIntoViewRequester(latest) else Modifier)
+                    // One block per question, from "Asking…" to the answer, so the answer is read out when it arrives.
+                    .announceResult()
+            ) {
                 Text(asked.question, style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
                 when {
@@ -689,6 +797,7 @@ private fun CardQuestionContent(questions: CardQuestions, onAsk: (String) -> Uni
                 color = TextSecondary,
                 modifier = Modifier.padding(top = 10.dp)
             )
+            ReportAnswerLink(details = { reportDetails(questions) })
         }
 
         if (questions.asked.isEmpty()) {
@@ -724,13 +833,22 @@ private fun CardQuestionContent(questions: CardQuestions, onAsk: (String) -> Uni
     }
 }
 
+/** What a report about the answers in [questions] tells the developer: the provider, the card, and each question with its answer. */
+internal fun reportDetails(questions: CardQuestions): String = buildString {
+    append("Provider: ${questions.providerLabel}\n")
+    append("Card: ${questions.targetText} / ${questions.nativeText}\n")
+    questions.asked.forEach { asked ->
+        if (asked.answer != null) append("\nQuestion: ${asked.question}\nAnswer: ${asked.answer}\n")
+    }
+}
+
 /** The headline of the session-complete screen for [scope]. */
 internal fun completionTitle(scope: StudyScope): String = when (scope) {
-    StudyScope.Island -> "Island explored!"
-    StudyScope.Coast -> "Coast explored!"
-    StudyScope.Today -> "Today's review done!"
-    StudyScope.Leaky -> "Leaks plugged!"
-    StudyScope.Daily -> "Done for today!"
+    StudyScope.Island -> "Island explored"
+    StudyScope.Coast -> "Coast explored"
+    StudyScope.Today -> "Today's review done"
+    StudyScope.Leaky -> "Leaks plugged"
+    StudyScope.Daily -> "Done for today"
 }
 
 /** What the "all caught up" screen says for [scope] when nothing is due. */

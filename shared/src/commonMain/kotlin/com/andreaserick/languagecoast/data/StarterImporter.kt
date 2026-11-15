@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
  * @property done Sentences translated so far, over every topic of this run; [total] is all of them.
  * @property added Cards saved so far.
  * @property failed Sentences that couldn't be translated.
- * @property error Why the run stopped early, worded for the user, if it did.
+ * @property error Why the run stopped early or added nothing, worded for the user, if it did.
+ * @property stopped Whether the user stopped the run.
  */
 data class ImportProgress(
     val coastId: Int,
@@ -29,14 +30,15 @@ data class ImportProgress(
     val isFinished: Boolean = false,
     val error: String? = null,
     /** How many topics this run adds. */
-    val topicCount: Int = 1
+    val topicCount: Int = 1,
+    val stopped: Boolean = false
 )
 
 /**
  * Adds whole starter topics ([PhraseBank]) to a coast as islands: every sentence of the topic, with the
  * person's name, city, country and job filled in, translated in bulk by [StarterTranslator] and saved
  * on an island named after the topic. Runs in the background and reports through [progress], so the
- * user can leave the screen. One run at a time.
+ * user can leave the screen. One run at a time; [stop] ends it and keeps the topics already added.
  */
 class StarterImporter(
     private val flashcards: FlashcardRepository,
@@ -56,6 +58,11 @@ class StarterImporter(
     fun start(coastId: Int, topics: List<String>, fillers: Map<String, String>) {
         if (isRunning) return
         job = scope.launch { run(coastId, topics, fillers) }
+    }
+
+    /** Stops the run. The topics added so far stay; the one being translated is dropped. */
+    fun stop() {
+        job?.cancel()
     }
 
     /** Clears a finished run from [progress]. */
@@ -105,22 +112,38 @@ class StarterImporter(
                 }
                 for (sentence in translated) {
                     flashcards.addFlashcard(coastId, sentence.nativeText, sentence.targetText, theme.category, theme.emoji, sentence.alternatives, sentence.note)
+                    // Counted card by card, so a run stopped while saving says how many it added.
+                    progress = progress.copy(added = progress.added + 1)
                 }
-                progress = progress.copy(done = doneBefore + sentences.size, added = progress.added + translated.size, failed = progress.failed + (sentences.size - translated.size))
+                progress = progress.copy(done = doneBefore + sentences.size, failed = progress.failed + (sentences.size - translated.size))
                 _progress.value = progress
                 // A topic counts as added even if a few lines failed; the sheet still lets the user add those one by one.
                 if (translated.isNotEmpty() || sentences.isEmpty()) settings.markStarterTopicAdded(coastId, theme.category)
+                // A whole topic that came back empty means the provider can't translate right now (a key it
+                // doesn't accept, a limit, no connection, a language it doesn't cover). The next topic would
+                // fail the same way, so the run ends here and says why.
+                if (translated.isEmpty() && sentences.isNotEmpty()) {
+                    val reason = starterTranslator.lastError ?: NOTHING_TRANSLATED
+                    val soFar = if (progress.added == 0) "" else " ${cards(progress.added)} added; try again for the rest."
+                    _progress.value = progress.copy(isFinished = true, error = reason + soFar)
+                    return
+                }
             }
             _progress.value = progress.copy(isFinished = true)
         } catch (e: CancellationException) {
+            _progress.value = progress.copy(isFinished = true, stopped = true)
             throw e
         } catch (e: Exception) {
             logError(TAG, "Adding starter topics to coast $coastId failed", e)
-            _progress.value = progress.copy(isFinished = true, error = "Something went wrong while translating. ${progress.added} cards were added; try again for the rest.")
+            _progress.value = progress.copy(isFinished = true, error = "Something went wrong while translating. ${cards(progress.added)} added; try again for the rest.")
         }
     }
 
+    /** "1 card was" or "12 cards were", for the messages above. */
+    private fun cards(count: Int): String = if (count == 1) "1 card was" else "$count cards were"
+
     private companion object {
         const val TAG = "StarterImporter"
+        const val NOTHING_TRANSLATED = "Nothing could be translated. Check your connection and the provider in Settings, then try again."
     }
 }

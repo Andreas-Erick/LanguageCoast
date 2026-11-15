@@ -15,7 +15,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.isDue
-import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
 /**
@@ -24,6 +24,8 @@ import com.andreaserick.languagecoast.ui.theme.TextSecondary
  *
  * @param now The time the due label is worked out at (epoch millis).
  * @param place Where the card is (e.g. "German · ✈️ Travel"), shown before the due label; null to leave it out.
+ * @param language The English name of the language the translation is in (the coast's). With it the translation
+ *     is marked as that language, so a screen reader reads it in the right voice; null leaves it unmarked.
  */
 @Composable
 fun CardListRow(
@@ -32,17 +34,23 @@ fun CardListRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
-    place: String? = null
+    place: String? = null,
+    language: String? = null
 ) {
     val due = isDue(card, now)
     ContentCard(
         onClick = onEdit,
+        onClickLabel = "edit card",
         modifier = modifier,
         padding = PaddingValues(start = 16.dp, top = 12.dp, bottom = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f).padding(top = 4.dp)) {
-                Text(card.targetText, style = MaterialTheme.typography.titleMedium)
+                if (language != null) {
+                    Text(inLanguage(card.targetText, language), style = MaterialTheme.typography.titleMedium)
+                } else {
+                    Text(card.targetText, style = MaterialTheme.typography.titleMedium)
+                }
                 Text(card.nativeText, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                 if (card.alternatives.isNotEmpty()) {
                     Text(
@@ -61,7 +69,7 @@ fun CardListRow(
                     Text(
                         dueLabel(card, now),
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (due) Sunlit else TextSecondary,
+                        color = if (due) SunlitText else TextSecondary,
                         maxLines = 1
                     )
                 }

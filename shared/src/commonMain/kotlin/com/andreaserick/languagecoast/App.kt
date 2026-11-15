@@ -7,9 +7,14 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Sailing
 import androidx.compose.material.icons.filled.Tune
@@ -30,21 +35,32 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
+import com.andreaserick.languagecoast.data.PersonalIslandBuilder
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.StarterImporter
 import com.andreaserick.languagecoast.navigation.RecapScreenRoute
 import com.andreaserick.languagecoast.ui.recap.RecapScreen
 import com.andreaserick.languagecoast.ui.theme.ThemeMode
 import com.andreaserick.languagecoast.ui.components.LocalFeedback
+import com.andreaserick.languagecoast.ui.components.LocalHapticsEnabled
 import com.andreaserick.languagecoast.ui.components.rememberFeedback
 import org.koin.compose.koinInject
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -64,6 +80,7 @@ import com.andreaserick.languagecoast.navigation.StudyScreenRoute
 import com.andreaserick.languagecoast.ui.about.AboutYouScreen
 import com.andreaserick.languagecoast.ui.coast.CoastScreen
 import com.andreaserick.languagecoast.ui.components.CoastSnackbar
+import com.andreaserick.languagecoast.ui.components.KeepScreenOn
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.OceanBackground
 import com.andreaserick.languagecoast.ui.components.UndoMessenger
@@ -71,12 +88,13 @@ import com.andreaserick.languagecoast.ui.create.CreateScreen
 import com.andreaserick.languagecoast.ui.island.IslandScreen
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastScreen
 import com.andreaserick.languagecoast.ui.search.SearchScreen
+import com.andreaserick.languagecoast.ui.settings.AiSharingPrompt
 import com.andreaserick.languagecoast.ui.settings.SettingsScreen
 import com.andreaserick.languagecoast.ui.study.StudyScreen
 import com.andreaserick.languagecoast.ui.theme.LanguageCoastTheme
 import com.andreaserick.languagecoast.ui.theme.CardEdge
 import com.andreaserick.languagecoast.ui.theme.NavGround
-import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
@@ -113,14 +131,41 @@ private val topLevelDestinations = listOf(
 
 private const val TRANSITION_MILLIS = 300
 
+/**
+ * The widest the screens get. On a tablet, an unfolded phone or a desktop window they stay a column of this
+ * width in the middle; the background, the bottom bar and snackbars still span the window.
+ */
+private val MaxContentWidth = 640.dp
+
+/** Stands in for the phone's haptics while Vibration is off in Settings, so that nothing on a screen buzzes. */
+private object NoHaptics : HapticFeedback {
+    override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {}
+}
+
 /** The whole app: bottom navigation and the screens, in the app's theme. Each platform shows it in its own window. */
 @Composable
 fun LanguageCoastApp() {
     val settings = koinInject<SettingsRepository>()
     val themeMode by settings.themeMode.collectAsState(initial = SettingsDefaults.THEME_MODE)
     LanguageCoastTheme(mode = ThemeMode.fromKey(themeMode)) {
-        AppContent()
+        // The interface is English only, so it is laid out left to right on every phone. Without this, a phone
+        // set to Arabic or Hebrew mirrors the screens and puts the words of a card in reverse order.
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            AppContent()
+        }
     }
+}
+
+/**
+ * Keeps the screen on while islands are being written or starter topics added. Both take minutes, run only
+ * while the app is in front, and would be cut short by the screen timing out. It sits at the root of the
+ * app, so it also holds after the user has left the coast's screen.
+ */
+@Composable
+private fun KeepScreenOnWhileWriting() {
+    val building by koinInject<PersonalIslandBuilder>().progress.collectAsState()
+    val importing by koinInject<StarterImporter>().progress.collectAsState()
+    if (building?.isFinished == false || importing?.isFinished == false) KeepScreenOn()
 }
 
 @Composable
@@ -133,9 +178,19 @@ private fun AppContent() {
     val hapticsEnabled by settings.hapticsEnabled.collectAsState(initial = true)
     val soundsEnabled by settings.soundsEnabled.collectAsState(initial = true)
     val feedback = rememberFeedback(hapticsEnabled, soundsEnabled)
+    val systemHaptics = LocalHapticFeedback.current
+    val focusManager = LocalFocusManager.current
 
-    CompositionLocalProvider(LocalUndoMessenger provides undoMessenger, LocalFeedback provides feedback) {
-        OceanBackground {
+    CompositionLocalProvider(
+        LocalUndoMessenger provides undoMessenger,
+        LocalFeedback provides feedback,
+        LocalHapticsEnabled provides hapticsEnabled,
+        // Silences the buzzes of the screens. Sheets and dialogs get the phone's haptics again, so controls there read LocalHapticsEnabled.
+        LocalHapticFeedback provides (if (hapticsEnabled) systemHaptics else NoHaptics)
+    ) {
+        // A tap on anything that doesn't handle taps itself leaves the text field and so closes the keyboard.
+        // An iPhone has no back gesture or key for that, and Return in a field of several lines adds a line.
+        OceanBackground(modifier = Modifier.pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus() }) }) {
             Scaffold(
                 containerColor = Color.Transparent,
                 // Can't be worked out from a transparent container, and would default to black.
@@ -184,9 +239,9 @@ private fun AppContent() {
                                             }
                                         },
                                         colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = Sunlit,
+                                            selectedIconColor = SunlitText,
                                             indicatorColor = Color.Transparent,
-                                            selectedTextColor = Sunlit,
+                                            selectedTextColor = SunlitText,
                                             unselectedIconColor = TextSecondary,
                                             unselectedTextColor = TextSecondary
                                         )
@@ -197,98 +252,111 @@ private fun AppContent() {
                     }
                 }
             ) { innerPadding ->
-                NavHost(
-                    navController = navController,
-                    startDestination = CreateScreenRoute,
-                    // Consumed, so a screen that pads for the keyboard only adds what the bottom bar does not already cover.
-                    modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
-                    // Tabs cross-fade; screens opened from a list slide in from the side.
-                    enterTransition = { fadeIn(tween(TRANSITION_MILLIS)) },
-                    exitTransition = { fadeOut(tween(TRANSITION_MILLIS)) }
+                Box(
+                    contentAlignment = Alignment.TopCenter,
+                    // The window is not resized for the keyboard, so every screen is padded for it here. The bar's
+                    // padding is consumed first, so the keyboard only adds what the bottom bar does not already cover.
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding)
+                        .imePadding()
                 ) {
-                    composable<CreateScreenRoute> {
-                        CreateScreen(
-                            onStartDaily = { id, language -> navController.navigate(StudyScreenRoute.daily(id, language)) },
-                            onReviewCoast = { id, name -> navController.navigate(StudyScreenRoute.coast(id, name)) },
-                            onReviewAll = { navController.navigate(StudyScreenRoute.Today) },
-                            onAboutYou = { navController.navigate(AboutYouScreenRoute()) }
-                        )
-                    }
-                    composable<MyCoastScreenRoute> {
-                        MyCoastScreen(
-                            onCoastClick = { id, name ->
-                                navController.navigate(CoastScreenRoute(coastId = id, coastName = name))
-                            },
-                            onSearchClick = { navController.navigate(SearchScreenRoute) },
-                            onLeakyClick = { navController.navigate(StudyScreenRoute.Leaky) },
-                            onRecapClick = { navController.navigate(RecapScreenRoute) }
-                        )
-                    }
-                    composable<RecapScreenRoute>(
-                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                    NavHost(
+                        navController = navController,
+                        startDestination = CreateScreenRoute,
+                        modifier = Modifier.widthIn(max = MaxContentWidth).fillMaxSize(),
+                        // Tabs cross-fade; screens opened from a list slide in from the side.
+                        enterTransition = { fadeIn(tween(TRANSITION_MILLIS)) },
+                        exitTransition = { fadeOut(tween(TRANSITION_MILLIS)) }
                     ) {
-                        RecapScreen(onNavigateBack = { navController.popBackStack() })
-                    }
-                    composable<SearchScreenRoute>(
-                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
-                    ) {
-                        SearchScreen(onNavigateBack = { navController.popBackStack() })
-                    }
-                    composable<CoastScreenRoute>(
-                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
-                    ) {
-                        // CoastViewModel reads the route arguments from its SavedStateHandle.
-                        CoastScreen(
-                            onIslandClick = { id, name ->
-                                navController.navigate(StudyScreenRoute.island(id, name))
-                            },
-                            onReviewCoast = { id, name ->
-                                navController.navigate(StudyScreenRoute.coast(id, name))
-                            },
-                            onShowCards = { id, name ->
-                                navController.navigate(IslandScreenRoute(islandId = id, islandName = name))
-                            },
-                            onAboutYou = { islandId -> navController.navigate(AboutYouScreenRoute(islandId)) },
-                            onNavigateBack = { navController.popBackStack() }
-                        )
-                    }
-                    composable<AboutYouScreenRoute>(
-                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
-                    ) { entry ->
-                        AboutYouScreen(
-                            openAt = entry.toRoute<AboutYouScreenRoute>().islandId,
-                            onNavigateBack = { navController.popBackStack() }
-                        )
-                    }
-                    composable<IslandScreenRoute>(
-                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
-                    ) {
-                        // IslandViewModel reads the route arguments from its SavedStateHandle.
-                        IslandScreen(onNavigateBack = { navController.popBackStack() })
-                    }
-                    composable<SettingsScreenRoute> {
-                        SettingsScreen(onAboutYou = { navController.navigate(AboutYouScreenRoute()) })
-                    }
-                    composable<StudyScreenRoute>(
-                        enterTransition = { slideIntoContainer(SlideDirection.Up, tween(TRANSITION_MILLIS)) + fadeIn() },
-                        popExitTransition = { slideOutOfContainer(SlideDirection.Down, tween(TRANSITION_MILLIS)) + fadeOut() }
-                    ) { entry ->
-                        val route = entry.toRoute<StudyScreenRoute>()
-                        // StudyViewModel reads the route arguments from its SavedStateHandle.
-                        StudyScreen(
-                            onNavigateBack = { navController.popBackStack() },
-                            onShowCards = if (route.scope == StudyScreenRoute.SCOPE_ISLAND) {
-                                { navController.navigate(IslandScreenRoute(islandId = route.islandId, islandName = route.islandName)) }
-                            } else null
-                        )
+                        composable<CreateScreenRoute> {
+                            CreateScreen(
+                                onStartDaily = { id, language -> navController.navigate(StudyScreenRoute.daily(id, language)) },
+                                onReviewCoast = { id, name -> navController.navigate(StudyScreenRoute.coast(id, name)) },
+                                onReviewAll = { navController.navigate(StudyScreenRoute.Today) },
+                                onAboutYou = { navController.navigate(AboutYouScreenRoute()) }
+                            )
+                        }
+                        composable<MyCoastScreenRoute> {
+                            MyCoastScreen(
+                                onCoastClick = { id, name ->
+                                    navController.navigate(CoastScreenRoute(coastId = id, coastName = name))
+                                },
+                                onSearchClick = { navController.navigate(SearchScreenRoute) },
+                                onLeakyClick = { navController.navigate(StudyScreenRoute.Leaky) },
+                                onRecapClick = { navController.navigate(RecapScreenRoute) }
+                            )
+                        }
+                        composable<RecapScreenRoute>(
+                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
+                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                        ) {
+                            RecapScreen(onNavigateBack = { navController.popBackStack() })
+                        }
+                        composable<SearchScreenRoute>(
+                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
+                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                        ) {
+                            SearchScreen(onNavigateBack = { navController.popBackStack() })
+                        }
+                        composable<CoastScreenRoute>(
+                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
+                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                        ) {
+                            // CoastViewModel reads the route arguments from its SavedStateHandle.
+                            CoastScreen(
+                                onIslandClick = { id, name ->
+                                    navController.navigate(StudyScreenRoute.island(id, name))
+                                },
+                                onReviewCoast = { id, name ->
+                                    navController.navigate(StudyScreenRoute.coast(id, name))
+                                },
+                                onShowCards = { id, name ->
+                                    navController.navigate(IslandScreenRoute(islandId = id, islandName = name))
+                                },
+                                onAboutYou = { islandId -> navController.navigate(AboutYouScreenRoute(islandId)) },
+                                onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable<AboutYouScreenRoute>(
+                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
+                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                        ) { entry ->
+                            AboutYouScreen(
+                                openAt = entry.toRoute<AboutYouScreenRoute>().islandId,
+                                onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable<IslandScreenRoute>(
+                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
+                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
+                        ) {
+                            // IslandViewModel reads the route arguments from its SavedStateHandle.
+                            IslandScreen(onNavigateBack = { navController.popBackStack() })
+                        }
+                        composable<SettingsScreenRoute> {
+                            SettingsScreen(onAboutYou = { navController.navigate(AboutYouScreenRoute()) })
+                        }
+                        composable<StudyScreenRoute>(
+                            enterTransition = { slideIntoContainer(SlideDirection.Up, tween(TRANSITION_MILLIS)) + fadeIn() },
+                            popExitTransition = { slideOutOfContainer(SlideDirection.Down, tween(TRANSITION_MILLIS)) + fadeOut() }
+                        ) { entry ->
+                            val route = entry.toRoute<StudyScreenRoute>()
+                            // StudyViewModel reads the route arguments from its SavedStateHandle.
+                            StudyScreen(
+                                onNavigateBack = { navController.popBackStack() },
+                                onShowCards = if (route.scope == StudyScreenRoute.SCOPE_ISLAND) {
+                                    { navController.navigate(IslandScreenRoute(islandId = route.islandId, islandName = route.islandName)) }
+                                } else null
+                            )
+                        }
                     }
                 }
             }
         }
+        // Dialogs and effects that belong to no screen. They are inside the providers above, so they get the app's feedback and undo.
+        AiSharingPrompt()
+        KeepScreenOnWhileWriting()
     }
 }

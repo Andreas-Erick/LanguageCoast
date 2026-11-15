@@ -44,9 +44,9 @@ fun widgetContent(dueCount: Int, streak: Int, studiedToday: Boolean): WidgetCont
         else -> "cards due"
     },
     footer = when {
-        studiedToday -> "Studied today. Nice work!"
+        studiedToday -> "Studied today. Nice work."
         streak > 0 -> "Study today to keep your streak"
-        dueCount > 0 -> "Finish an island to start a streak"
+        dueCount > 0 -> "Study today to start a streak"
         else -> "Add cards to start studying"
     }
 )
@@ -84,12 +84,12 @@ class StudyWidgetProvider : AppWidgetProvider(), KoinComponent {
         }
     }
 
-    /** The widget's views filled with [content]; tapping anywhere opens the app. */
+    /** The widget's views filled with [content]; tapping anywhere opens the app where it was left. */
     private fun remoteViews(context: Context, content: WidgetContent): RemoteViews {
         val openApp = PendingIntent.getActivity(
             context,
             0,
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            MainActivity.resumeIntent(context),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return RemoteViews(context.packageName, R.layout.widget_study).apply {

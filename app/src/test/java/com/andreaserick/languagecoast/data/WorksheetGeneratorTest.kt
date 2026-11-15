@@ -46,6 +46,16 @@ class WorksheetGeneratorTest {
 
     private fun lines(vararg pairs: Pair<String, String>) = Completion(pairs.joinToString("\n") { "${it.first} || ${it.second}" })
 
+    /** The cards [prompt] asks for a sentence from, one per numbered line, each as "Island: card". */
+    private fun anchors(prompt: String): List<String> =
+        prompt.substringAfter("numbered line below").substringAfter("\n\n").substringBefore("\n\nWhat matters").lines().map { it.substringAfter(". ") }
+
+    /** Every card of the German coast as a numbered line names it: "Travel: Wo ist der Bahnhof?". */
+    private fun coastCards(): Set<String> {
+        val names = flashcards.islands.value.filter { it.coastId == 1 }.associate { it.islandId to it.name }
+        return flashcards.cards.value.filter { it.islandId in names }.mapTo(HashSet()) { "${names.getValue(it.islandId)}: ${it.targetText}" }
+    }
+
     @Test
     fun theSheetIsWrittenFromThatCoastsCardsOnly() = runTest {
         translator.completion = lines(
@@ -70,10 +80,162 @@ class WorksheetGeneratorTest {
         assertTrue("[Travel]" in prompt && "[Food]" in prompt)
         assertTrue("Der Zug ist spät. = The train is late." in prompt)
         assertFalse("Buenos días" in prompt)
-        assertTrue("Level: easy" in prompt)
-        assertTrue("a native speaker from Austria" in prompt)
-        // It asks for a few more than the sheet needs, to have a choice.
-        assertTrue("Write 5 new German sentences" in prompt)
+        assertTrue("3. It is short and simple: 3 to 7 words in one clause. " in prompt)
+        assertTrue(prompt.startsWith("You are a native German speaker from Austria"))
+        // It asks for a few more than the sheet needs, to have a choice: a sentence from each of five cards.
+        assertEquals(5, anchors(prompt).size)
+        // The sentences are read in the coast's language here, so no hint is asked for; the words that are on no card are.
+        assertFalse("hint" in prompt)
+        assertTrue(
+            prompt.endsWith(
+                "[number] || [German sentence] || [English translation] || " +
+                    "[the German words that are not on the flashcards, each with its English meaning, as \"word = meaning; word = meaning\", or - if there are none]"
+            )
+        )
+    }
+
+    @Test
+    fun everySentenceIsBuiltFromOneOfTheCoastsCards() = runTest {
+        translator.completion = Completion("")
+
+        generator.generate(1, WorksheetOptions(count = 3))
+
+        // Five sentences, each from another card, of both islands and of this coast only.
+        val anchors = anchors(translator.prompts.first())
+        assertEquals(5, anchors.size)
+        assertEquals(5, anchors.distinct().size)
+        assertTrue(anchors.toString(), anchors.all { it in coastCards() })
+        assertEquals(setOf("Food", "Travel"), anchors.mapTo(HashSet()) { it.substringBefore(": ") })
+        assertTrue("Write one new German sentence for each numbered line below" in translator.prompts.first())
+    }
+
+    @Test
+    fun sentencesComeBackTiedToTheirCardsAndIslands() = runTest {
+        // The model answers the numbered lines last to first: the number, not the place, says which card a sentence is from.
+        translator.completionFor = { prompt ->
+            val answers = anchors(prompt).mapIndexed { index, anchor ->
+                val card = anchor.substringAfter(": ")
+                val translation = prompt.lines().first { it.startsWith("$card = ") }.substringAfter(" = ")
+                "${index + 1} || Heute: $card || Today: $translation"
+            }
+            Completion(answers.reversed().joinToString("\n"))
+        }
+
+        val sheet = (generator.generate(1, WorksheetOptions(count = 3)) as WorksheetResult.Ready).worksheet
+
+        assertEquals(3, sheet.sentences.size)
+        sheet.sentences.forEach { sentence ->
+            val card = checkNotNull(sentence.card) { "${sentence.targetText} came back without its card" }
+            assertEquals("Heute: ${card.targetText}", sentence.targetText)
+            // The card is the learner's own, with both its sides, and the sentence practises its island.
+            val own = flashcards.cards.value.single { it.targetText == card.targetText }
+            assertEquals(own.nativeText, card.nativeText)
+            assertEquals(flashcards.islands.value.single { it.islandId == own.islandId }.name, sentence.island)
+            assertEquals("Your card: ${own.targetText} = ${own.nativeText}", sheet.cardLine(sentence))
+        }
+        // The first page can say what the sheet practises.
+        assertTrue(sheet.focusLine.orEmpty(), sheet.focusLine.orEmpty().startsWith("Built from your cards on "))
+    }
+
+    @Test
+    fun wordsOfASentenceThatAreOnNoCardBecomeItsWordHelp() = runTest {
+        translator.completion = Completion(
+            """
+            1 || Der Bahnhof liegt am Strand. || The station is by the beach. || liegen = to lie; der Bahnhof = the station; morgen = tomorrow
+            2 || Kommen Sie zum Bahnhof? || Are you coming to the station? (formal) || kommen = to come
+            3 || Das Brot ist spät. || The bread is late. || -
+            """.trimIndent()
+        )
+
+        val sheet = (generator.generate(1, WorksheetOptions(count = 3)) as WorksheetResult.Ready).worksheet
+
+        val (first, second, third) = sheet.sentences
+        // Left out: a word the coast has, and a word that isn't in the sentence.
+        assertEquals(listOf(WordHelp("liegen", "to lie")), first.newWords)
+        assertEquals("liegen = to lie", sheet.wordHelp(first))
+        assertEquals(listOf(WordHelp("kommen", "to come")), second.newWords)
+        assertEquals(emptyList<WordHelp>(), third.newWords)
+        // The hint is kept apart from the translation, and shown with it where the sentence is the one to translate.
+        assertEquals("Are you coming to the station?" to "formal", second.nativeText to second.hint)
+        assertEquals("Are you coming to the station? (formal)", sheet.question(second))
+        assertTrue(sheet.sentences.all { it.card != null })
+    }
+
+    @Test
+    fun ofAnIslandTheCardsThatNeedPracticeAreBuiltFromBeforeFreshOnes() = runTest {
+        // One card of each island was studied long ago and forgotten more than once; nobody has studied the others.
+        flashcards.cards.value = flashcards.cards.value.map { if (it.cardId == 2 || it.cardId == 5) studied(it, daysAgo = 100, lapses = 4) else it }
+        translator.completion = Completion("")
+
+        generator.generate(1, WorksheetOptions(count = 3))
+
+        // The islands take turns, and each starts with its card that is slipping.
+        val anchors = anchors(translator.prompts.first())
+        assertEquals(listOf("Food: Ich möchte einen Kaffee.", "Travel: Ich gehe zum Strand."), anchors.take(2))
+        assertEquals(5, anchors.distinct().size)
+    }
+
+    @Test
+    fun noCardIsBuiltFromTwiceWhileItsIslandHasOthers() = runTest {
+        // Thirty cards on each island and a sheet of forty: two requests of 25 sentences.
+        flashcards.cards.value = (1..60).map { Flashcard(cardId = it, islandId = if (it <= 30) 1 else 2, nativeText = "native $it", targetText = "ziel$it") }
+        var asked = 0
+        translator.completionFor = { prompt ->
+            asked++
+            Completion(anchors(prompt).indices.joinToString("\n") { "${it + 1} || Kind Satz $asked ${it + 1} || Sentence $asked ${it + 1}" })
+        }
+
+        val sheet = (generator.generate(1, WorksheetOptions(count = 40)) as WorksheetResult.Ready).worksheet
+
+        assertEquals(2, translator.prompts.size)
+        val anchors = translator.prompts.flatMap { anchors(it) }
+        assertEquals(50, anchors.size)
+        assertEquals(50, anchors.distinct().size)
+        // So every sentence of the sheet is from another card.
+        assertEquals(40, sheet.sentences.mapNotNull { it.card }.distinct().size)
+    }
+
+    @Test
+    fun theRequestSaysHowTheLearnerSpeaksOfThemselvesAndTheLevelTheyHaveReached() = runTest {
+        translator.completion = Completion("")
+
+        // Nothing said under About you, and none of the coast's islands is on the route: the request says neither.
+        generator.generate(1, WorksheetOptions(count = 3))
+        val plain = translator.prompts.first()
+        assertFalse("The learner is a" in plain)
+        assertTrue("Their native language is English.\n" in plain)
+        assertTrue(" Its words and grammar suit the learner, whose level the flashcards show.\n" in plain)
+
+        // A woman, on a coast that has a starter topic of the route on it. One card of the route among the
+        // coast's own says nothing yet about where she stands.
+        translator.prompts.clear()
+        settings.wording.value = Wording.Feminine
+        flashcards.islands.value += LanguageIsland(islandId = 4, coastId = 1, name = "Greetings")
+        flashcards.cards.value += Flashcard(cardId = 8, islandId = 4, nativeText = "Good morning", targetText = "Guten Morgen")
+        settings.markStarterTopicAdded(1, "Greetings")
+
+        generator.generate(1, WorksheetOptions(count = 3))
+
+        val few = translator.prompts.first()
+        assertTrue("- The learner is a woman: wherever German marks the speaker's gender" in few)
+        assertFalse("level is about" in few)
+
+        // Once half of the sheet's cards are the route's, the request says the level she has reached on it.
+        translator.prompts.clear()
+        val ownCards = flashcards.cards.value.count { it.islandId != 4 && it.islandId in flashcards.islands.value.filter { island -> island.coastId == 1 }.map { island -> island.islandId } }
+        flashcards.cards.value += (1 until ownCards).map { Flashcard(cardId = 100 + it, islandId = 4, nativeText = "Good morning $it", targetText = "Guten Morgen $it") }
+
+        generator.generate(1, WorksheetOptions(count = 3))
+
+        val prompt = translator.prompts.first()
+        assertTrue("Their native language is English and their level is about A1.\n" in prompt)
+        assertTrue(" Its words and grammar suit level A1.\n" in prompt)
+
+        // A sheet from the islands that are not the route's says no level, whatever else is on the coast.
+        translator.prompts.clear()
+        val ownIslands = flashcards.islands.value.filter { it.coastId == 1 && it.islandId != 4 }.mapTo(HashSet()) { it.islandId }
+        generator.generate(1, WorksheetOptions(count = 3, islandIds = ownIslands))
+        assertFalse("level is about" in translator.prompts.first())
     }
 
     @Test
@@ -140,8 +302,10 @@ class WorksheetGeneratorTest {
         assertEquals(listOf("Wo ist das Kind?", "Der Kaffee ist gut.", "Das Brot ist spät.", "Ich gehe zum Bahnhof."), sheet.sentences.map { it.targetText })
         assertEquals(listOf(2, 3, 4), progress)
         assertEquals(3, translator.prompts.size)
-        assertTrue("Do not repeat any of these, which are already on the sheet: Wo ist das Kind? | Der Kaffee ist gut." in translator.prompts[1])
-        assertTrue("Write 4 new German sentences" in translator.prompts[1])
+        assertTrue("- Do not repeat any of these, which are already in the exercise: Wo ist das Kind? | Der Kaffee ist gut." in translator.prompts[1])
+        assertFalse("Do not repeat any of these" in translator.prompts[0])
+        // Six were wanted and two came: the next request is for four.
+        assertEquals(listOf(6, 4), translator.prompts.take(2).map { anchors(it).size })
     }
 
     @Test
@@ -149,8 +313,7 @@ class WorksheetGeneratorTest {
         var asked = 0
         translator.completionFor = { prompt ->
             asked++
-            val batch = Regex("Write (\\d+) new").find(prompt)!!.groupValues[1].toInt()
-            Completion((1..batch).joinToString("\n") { "Kind Satz $asked $it || Sentence $asked $it" })
+            Completion((1..anchors(prompt).size).joinToString("\n") { "$it || Kind Satz $asked $it || Sentence $asked $it || -" })
         }
         val progress = mutableListOf<Int>()
 
@@ -161,12 +324,14 @@ class WorksheetGeneratorTest {
         // 510 sentences, ten of them to spare, 25 per request.
         assertEquals(21, translator.prompts.size)
         assertEquals(worksheetRequests(500, isLocal = false), translator.prompts.size)
-        assertTrue("Write 25 new German sentences" in translator.prompts.first())
-        assertTrue("Write 10 new German sentences" in translator.prompts.last())
+        assertEquals(25, anchors(translator.prompts.first()).size)
+        assertEquals(10, anchors(translator.prompts.last()).size)
+        // Six cards and 510 sentences: the cards come round again and again, and every sentence still has one.
+        assertTrue(sheet.sentences.all { it.card != null })
         assertEquals(listOf(25, 50, 75), progress.take(3))
         assertEquals(500, progress.last())
         // A request names the latest sentences on the sheet, not all of them.
-        val avoided = translator.prompts.last().lines().single { it.startsWith("8. ") }
+        val avoided = translator.prompts.last().lines().single { it.startsWith("- Do not repeat any of these") }
         assertEquals(60, avoided.split(" | ").size)
         assertTrue(avoided.endsWith("Kind Satz 20 25"))
     }
@@ -212,7 +377,10 @@ class WorksheetGeneratorTest {
         assertEquals(10, sheet.sentences.size)
         assertEquals("Local AI", sheet.providerLabel)
         assertEquals(2, translator.prompts.size)
-        assertTrue(translator.prompts.all { "Write 5 new German sentences" in it })
+        assertTrue(translator.prompts.all { anchors(it).size == 5 })
+        // A small model keeps to three fields better than to four: it isn't asked for the words that are on no card.
+        assertTrue(translator.prompts.all { it.endsWith("[number] || [German sentence] || [English translation]") })
+        assertFalse(translator.prompts.any { "word = meaning" in it || "list them after the translation" in it })
     }
 
     @Test
@@ -312,8 +480,7 @@ class WorksheetGeneratorTest {
         var asked = 0
         translator.completionFor = { prompt ->
             asked++
-            val batch = Regex("Write (\\d+) new").find(prompt)!!.groupValues[1].toInt()
-            Completion((1..batch).joinToString("\n") { "ziel$it satz $asked || Sentence $asked $it" })
+            Completion((1..anchors(prompt).size).joinToString("\n") { "$it || ziel$it satz $asked || Sentence $asked $it" })
         }
 
         val sheet = (generator.generate(1, WorksheetOptions(count = 500)) as WorksheetResult.Ready).worksheet
@@ -329,6 +496,8 @@ class WorksheetGeneratorTest {
         }
         val shown = translator.prompts.flatMap { prompt -> prompt.lines().filter { it.startsWith("[Insel ") } }.distinct()
         assertEquals(120, shown.size)
+        // And so does the sheet: it has sentences built from the cards of every island.
+        assertEquals(120, sheet.sentences.mapNotNull { it.island }.distinct().size)
     }
 
     @Test
@@ -345,9 +514,8 @@ class WorksheetGeneratorTest {
         var asked = 0
         translator.completionFor = { prompt ->
             asked++
-            val batch = Regex("Write (\\d+) new").find(prompt)!!.groupValues[1].toInt()
             // The first line of every answer copies a card, which the sheet can do without.
-            Completion((1..batch).joinToString("\n") { if (it == 1) "Ziel$asked satz! || Copy $asked" else "ziel$it satz $asked || Sentence $asked $it" })
+            Completion((1..anchors(prompt).size).joinToString("\n") { if (it == 1) "1 || Ziel$asked satz! || Copy $asked" else "$it || ziel$it satz $asked || Sentence $asked $it" })
         }
 
         val sheet = (generator.generate(1, WorksheetOptions(count = 500)) as WorksheetResult.Ready).worksheet
@@ -372,7 +540,7 @@ class WorksheetGeneratorTest {
         settings.translationProvider.value = TranslationProvider.LocalAi
         assertEquals(500, (generator.generate(1, WorksheetOptions(count = 500)) as WorksheetResult.Ready).worksheet.sentences.size)
         assertEquals(100, translator.prompts.size)
-        assertTrue(translator.prompts.all { it.length < 8_000 })
+        assertTrue(translator.prompts.maxOf { it.length }.toString(), translator.prompts.all { it.length < 8_000 })
     }
 
     /** [card] as it is after studying it [daysAgo] days ago, with a memory FSRS expects to last two days. */
@@ -380,9 +548,8 @@ class WorksheetGeneratorTest {
         stability = 2.0, difficulty = 5.0, lastReviewed = TEST_CLOCK.now().toEpochMilliseconds() - daysAgo * 86_400_000L, lapses = lapses
     )
 
-    /** How many sentences [prompt] asks for about each island, in the order it names them. */
-    private fun quotas(prompt: String): List<Pair<String, Int>> =
-        Regex("(\\d+) about (.+?)(?:,| and |\\.)").findAll(prompt.lines().single { it.startsWith("2. ") }.substringAfter("Of the sentences, write ")).map { it.groupValues[2] to it.groupValues[1].toInt() }.toList()
+    /** How many sentences [prompt] asks for from each island's cards, in the order it first names the islands. */
+    private fun quotas(prompt: String): List<Pair<String, Int>> = anchors(prompt).groupingBy { it.substringBefore(": ") }.eachCount().toList()
 
     @Test
     fun aCoastNobodyHasStudiedSharesTheSheetByWhatIsOnItsIslands() = runTest {
@@ -392,7 +559,11 @@ class WorksheetGeneratorTest {
 
         // Twelve sentences, two islands of three cards.
         assertEquals(listOf("Food" to 6, "Travel" to 6), quotas(translator.prompts.first()))
-        assertFalse("The other topics" in translator.prompts.first())
+        // The islands take turns down the list, so the sheet is mixed.
+        val anchors = anchors(translator.prompts.first())
+        assertEquals(List(6) { listOf("Food", "Travel") }.flatten(), anchors.map { it.substringBefore(": ") })
+        // An island of three cards with six sentences to give: its cards come round a second time, each of them.
+        assertEquals(coastCards().associateWith { 2 }, anchors.groupingBy { it }.eachCount())
     }
 
     @Test
@@ -435,7 +606,13 @@ class WorksheetGeneratorTest {
             assertTrue(asked.toString(), asked.getValue("Deck") > asked.getOrDefault("Reisen", 0) + asked.getOrDefault("Essen", 0))
             val deck = cardsOf(prompt, "Deck")
             assertTrue((100..3000 step 100).all { "ziel$it = native $it" in deck })
+            // And the deck's sentences are built from those thirty, not from the 2970 cards nobody has studied.
+            val built = anchors(prompt).filter { it.startsWith("Deck: ") }.map { it.removePrefix("Deck: ziel").toInt() }
+            assertTrue(built.toString(), built.all { it % 100 == 0 })
         }
+        // A second request doesn't go back to the cards the first one took.
+        val deckCards = translator.prompts.flatMap { prompt -> anchors(prompt).filter { it.startsWith("Deck: ") } }
+        assertEquals(deckCards.size, deckCards.distinct().size)
     }
 
     @Test
@@ -450,8 +627,8 @@ class WorksheetGeneratorTest {
         val prompt = translator.prompts.first()
         val shown = prompt.lines().count { " = native " in it }
         // About 40 000 characters of cards, not all 200 000.
-        assertTrue(shown in 30..40)
-        assertTrue(prompt.length < 45_000)
+        assertTrue("$shown", shown in 30..40)
+        assertTrue("${prompt.length} characters, ${anchors(prompt).sumOf { it.length }} of them in the numbered lines", prompt.length < 45_000)
     }
 
     @Test

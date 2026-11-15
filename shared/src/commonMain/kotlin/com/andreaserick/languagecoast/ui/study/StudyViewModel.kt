@@ -15,6 +15,7 @@ import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.data.LanguageIsland
+import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
@@ -91,7 +92,9 @@ data class WordExplanation(
     val sentence: String,
     val providerLabel: String,
     val text: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    /** The language the word and its sentence are in. */
+    val targetLanguage: String = ""
 ) {
     val isLoading: Boolean get() = text == null && error == null
 }
@@ -151,7 +154,9 @@ data class CardQuestions(
     val targetText: String,
     val providerLabel: String,
     val unavailable: String? = null,
-    val asked: List<AskedQuestion> = emptyList()
+    val asked: List<AskedQuestion> = emptyList(),
+    /** The language the card's translation is in. */
+    val targetLanguage: String = ""
 ) {
     /** Whether a question is still waiting for its answer; the next one can be asked once it has it. */
     val isAsking: Boolean get() = asked.lastOrNull()?.isLoading == true
@@ -215,7 +220,9 @@ data class StudyUiState(
     /** Cards introduced in this session that the user is learning (not the ones they said they knew). */
     val learnedCount: Int = 0,
     /** The daily session was shrunk because the user was away for days. */
-    val isWelcomeBack: Boolean = false
+    val isWelcomeBack: Boolean = false,
+    /** Whether the scope has any card to practice; a coast without cards has none after every new sentence was skipped. */
+    val canPracticeAll: Boolean = true
 ) {
     val currentPlaced: PlacedCard? get() = sessionCards.getOrNull(currentIndex)
     val currentCard: Flashcard? get() = currentPlaced?.card
@@ -232,8 +239,23 @@ data class StudyUiState(
     /** The islands on the current card's coast, which the card can be moved to when editing it. */
     val coastIslands: List<LanguageIsland> get() = currentPlaced?.let { placed -> allIslands.filter { it.coastId == placed.coastId } }.orEmpty()
 
+    /**
+     * Whether the current card's language puts spaces between its words. Fill gap and tapping a word need
+     * that, so they are left out where it doesn't (Japanese).
+     */
+    val hasSpacedWords: Boolean get() = Languages.isSpaceSeparated(targetLanguage)
+
+    /** How the current card is answered: [mode], or typed in full where Fill gap has no words to blank. */
+    val cardMode: StudyMode get() = if (mode == StudyMode.Cloze && !hasSpacedWords) StudyMode.Type else mode
+
     /** The current card's translation with its key word blanked, in [StudyMode.Cloze]; null when it is a single word. */
-    val cloze: Cloze? get() = if (mode == StudyMode.Cloze) currentCard?.let { clozeOf(it.targetText) } else null
+    val cloze: Cloze? get() = if (cardMode == StudyMode.Cloze) currentCard?.let { clozeOf(it.targetText) } else null
+
+    /**
+     * Whether a completed session counts as a day studied. One in which every offered sentence was skipped
+     * doesn't: nothing was reviewed, introduced or kept.
+     */
+    val countsAsStudied: Boolean get() = totalCards > 0 || keptCount > 0 || introTotal > 0
 
     /** Share of the session already done: cards passed (graded anything but "Again") and new sentences decided, from 0 to 1. */
     val progress: Float get() {
@@ -359,7 +381,8 @@ class StudyViewModel(
             mode = s.mode,
             isSessionComplete = s.isComplete,
             isCaughtUp = s.isCaughtUp,
-            nextDueInDays = daysUntilNextDue(s.allCards.map { it.card }, now),
+            // Only the end screens say when the next card is due, so it isn't worked out from every card after each grade.
+            nextDueInDays = if (s.isComplete || s.isCaughtUp) daysUntilNextDue(s.allCards.map { it.card }, now) else null,
             gradeIntervals = s.cards.getOrNull(s.index)
                 ?.let { placed -> reviewOutcomes(placed.card, now, timeZone).mapValues { it.value.intervalDays } }
                 .orEmpty(),
@@ -381,7 +404,8 @@ class StudyViewModel(
             learnTotal = s.learnTotal,
             learnLeft = s.learnQueue.size,
             keptCount = s.keptCount,
-            isWelcomeBack = s.plan?.isWelcomeBack == true
+            isWelcomeBack = s.plan?.isWelcomeBack == true,
+            canPracticeAll = s.allCards.isNotEmpty()
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StudyUiState(islandName = title, scope = scope))
 
@@ -398,14 +422,18 @@ class StudyViewModel(
                 lastStudy = settings.lastStudyDate.first()
                 pace = settings.pace.first()
             }
-            flashcards.observeAllCards().map { cards -> cards.filter(::inScope) }.collect(::onCardsChanged)
+            scopeCards().collect(::onCardsChanged)
         }
     }
 
-    private fun inScope(placed: PlacedCard): Boolean = when (scope) {
-        StudyScope.Island -> placed.card.islandId == islandId
-        StudyScope.Coast, StudyScope.Daily -> placed.coastId == coastId
-        StudyScope.Today, StudyScope.Leaky -> true
+    /**
+     * The cards of the session's scope. An island or a coast reads only its own cards, so grading one doesn't
+     * read every card of every coast again.
+     */
+    private fun scopeCards(): Flow<List<PlacedCard>> = when (scope) {
+        StudyScope.Island -> flashcards.getPlacedCardsForIsland(islandId)
+        StudyScope.Coast, StudyScope.Daily -> flashcards.getPlacedCardsForCoast(coastId)
+        StudyScope.Today, StudyScope.Leaky -> flashcards.observeAllCards()
     }
 
     /**
@@ -474,13 +502,13 @@ class StudyViewModel(
         val card = uiState.value.currentCard ?: return
         if (alternative !in card.alternatives) return
         val alternatives = card.alternatives.map { if (it == alternative) card.targetText else it }
-        // observeAllCards re-emits the updated card, which replaces it in the session.
+        // The session's cards re-emit with the updated card, which replaces it in the session.
         viewModelScope.launch { flashcards.updateTranslation(card.cardId, alternative, alternatives) }
     }
 
     /**
      * Saves [edit] to card [cardId]. A card moved to another island leaves an island session;
-     * otherwise observeAllCards re-emits it with the changes in place.
+     * otherwise the session's cards re-emit it with the changes in place.
      */
     fun editCard(cardId: Int, edit: CardEdit) {
         viewModelScope.launch { flashcards.editCard(cardId, edit) }
@@ -588,7 +616,7 @@ class StudyViewModel(
         explainJob?.cancel()
         explainJob = viewModelScope.launch {
             val provider = settings.translationProvider.first()
-            explanation.value = WordExplanation(word, card.targetText, provider.label)
+            explanation.value = WordExplanation(word, card.targetText, provider.label, targetLanguage = state.targetLanguage)
             val answer = when (val choice = settings.currentEngine(provider)) {
                 is EngineChoice.Missing -> null to choice.message
                 is EngineChoice.Ready -> {
@@ -599,7 +627,8 @@ class StudyViewModel(
                     completion.text to completion.errorMessage
                 }
             }
-            explanation.value = explanation.value?.takeIf { it.word == word }?.copy(text = answer.first, error = answer.second)
+            explanation.value = explanation.value?.takeIf { it.word == word }
+                ?.copy(text = answer.first, error = answer.second ?: noAnswer(provider).takeIf { answer.first == null })
         }
     }
 
@@ -651,7 +680,7 @@ class StudyViewModel(
                 else -> null to "On-device translation can't check a card. Pick an AI provider in Settings."
             }
             cardCheck.value = cardCheck.value?.takeIf { it.cardId == card.cardId }
-                ?.copy(verdict = answer.first, error = answer.second ?: "No answer.".takeIf { answer.first == null })
+                ?.copy(verdict = answer.first, error = answer.second ?: noAnswer(provider).takeIf { answer.first == null })
         }
     }
 
@@ -668,7 +697,7 @@ class StudyViewModel(
         val previous = if (verdict.currentIsWrong) emptyList() else listOf(card.targetText)
         val alternatives = (previous + card.alternatives).filterNot { isSameSentence(it, verdict.better) }
         val note = listOfNotNull(verdict.reason.takeIf { it.isNotBlank() }, card.note).joinToString(" ").ifBlank { null }
-        // observeAllCards re-emits the updated card, which replaces it in the session.
+        // The session's cards re-emit with the updated card, which replaces it in the session.
         viewModelScope.launch {
             flashcards.editCard(card.cardId, CardEdit(card.nativeText, verdict.better, alternatives, note, card.islandId))
         }
@@ -706,7 +735,7 @@ class StudyViewModel(
                     when {
                         verdict != null -> verdict to null
                         completion.text != null -> null to "${provider.label}'s answer couldn't be read. Try again."
-                        else -> null to (completion.errorMessage ?: "No answer.")
+                        else -> null to (completion.errorMessage ?: noAnswer(provider))
                     }
                 }
             }
@@ -730,7 +759,7 @@ class StudyViewModel(
         if ((listOf(card.targetText) + card.alternatives).any { isSameSentence(it, sentence) }) return
         val difference = (asked.verdict as? AlternativeVerdict.Correct)?.note?.takeIf { it.isNotBlank() && it.length <= MAX_SAVED_NOTE }
         val note = listOfNotNull(card.note, difference).joinToString(" ").ifBlank { null }
-        // observeAllCards re-emits the updated card, which replaces it in the session.
+        // The session's cards re-emit with the updated card, which replaces it in the session.
         viewModelScope.launch {
             flashcards.editCard(card.cardId, CardEdit(card.nativeText, card.targetText, card.alternatives + sentence, note, card.islandId))
         }
@@ -753,7 +782,8 @@ class StudyViewModel(
      * if the provider picked in Settings can't answer any.
      */
     fun openCardQuestions() {
-        val card = uiState.value.currentCard ?: return
+        val placed = uiState.value.currentPlaced ?: return
+        val card = placed.card
         questionJob?.cancel()
         questionJob = viewModelScope.launch {
             val provider = settings.translationProvider.first()
@@ -761,7 +791,9 @@ class StudyViewModel(
                 is EngineChoice.Missing -> choice.message
                 is EngineChoice.Ready -> ON_DEVICE_CANNOT_ANSWER.takeIf { choice.engine == TranslationEngine.OnDevice }
             }
-            cardQuestions.value = CardQuestions(card.cardId, card.nativeText, card.targetText, provider.label, unavailable)
+            cardQuestions.value = CardQuestions(
+                card.cardId, card.nativeText, card.targetText, provider.label, unavailable, targetLanguage = placed.language
+            )
         }
     }
 
@@ -791,7 +823,7 @@ class StudyViewModel(
                         buildCardQuestionPrompt(placed.card, nativeLanguage, placed.language, region, earlier, question)
                     )
                     val parsed = completion.text?.let(::parseCardAnswer)
-                    parsed to (completion.errorMessage ?: "No answer.").takeIf { parsed == null }
+                    parsed to (completion.errorMessage ?: noAnswer(provider)).takeIf { parsed == null }
                 }
             }
             cardQuestions.update { current ->
@@ -811,7 +843,7 @@ class StudyViewModel(
     /** Deletes the current card; [onDeleted] receives it so the delete can be undone. */
     fun deleteCurrentCard(onDeleted: (DeletedContent) -> Unit) {
         val card = uiState.value.currentCard ?: return
-        // observeAllCards re-emits without the card, which removes it from the session.
+        // The session's cards re-emit without the card, which removes it from the session.
         viewModelScope.launch { onDeleted(flashcards.deleteFlashcard(card)) }
     }
 
@@ -849,6 +881,9 @@ class StudyViewModel(
     override fun onCleared() {
         speaker.stop()
     }
+
+    /** What the user is told when [provider] came back with neither an answer nor a reason. */
+    private fun noAnswer(provider: TranslationProvider): String = "${provider.label} gave no answer. Try again."
 
     private companion object {
         /** A provider's remark on an alternative becomes part of the card's note only up to this length. */

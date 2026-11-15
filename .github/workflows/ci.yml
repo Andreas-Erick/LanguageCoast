@@ -38,3 +38,144 @@ jobs:
         with:
           name: test-reports
           path: app/build/reports/tests/
+
+  # The unit tests above run on debug classes, so they cannot see what R8 does to a release build, and they
+  # cannot run the tests that need a device. This job builds the release variant, starts it on an emulator
+  # and runs the instrumented tests (database migrations, the Anki package reader, practice sheet PDFs).
+  device:
+    name: Release build and instrumented tests on an emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # The build a release tag publishes: minified by R8, with shrunk resources. A missing keep rule only shows
+      # here (v2.2.0 crashed that way). There is no keystore in CI, so it is signed with the debug key (see
+      # app/build.gradle.kts). allAbis keeps the x86_64 libraries the emulator needs, and idSuffix gives the build
+      # an application ID of its own, so it installs next to the debug build the instrumented tests use.
+      - name: Build the minified release APK
+        run: ./gradlew assembleRelease -PallAbis=true -PidSuffix=.r8
+
+      # Built before the emulator starts, so that it does not sit idle while Gradle compiles. The Gradle
+      # daemons are stopped afterwards to leave their memory to the emulator.
+      - name: Build the debug and test APKs
+        run: |
+          ./gradlew assembleDebug assembleDebugAndroidTest
+          ./gradlew --stop
+
+      # Lets the runner's user use KVM, which the emulator needs to run at a usable speed.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # The emulator action runs every line of its script in a shell of its own, so the smoke test is a file.
+      - name: Write the smoke test
+        run: |
+          cat > "$RUNNER_TEMP/smoke-test.sh" <<'SMOKE'
+          #!/usr/bin/env bash
+          # Installs the minified release build, starts it and fails unless it is still running 20 seconds later.
+          set -uo pipefail
+
+          PACKAGE=com.andreaserick.languagecoast.r8
+          ACTIVITY=com.andreaserick.languagecoast.MainActivity
+          APK=app/build/outputs/apk/release/app-release.apk
+          OUT=smoke-test
+          mkdir -p "$OUT"
+
+          screenshot() {
+            adb exec-out screencap -p > "$OUT/screen.png" 2> /dev/null || true
+          }
+
+          fail() {
+            echo "::error::$1"
+            screenshot
+            adb logcat -d -v threadtime > "$OUT/logcat.txt" 2>&1 || true
+            echo "---- Crash log ----"
+            adb logcat -d -b crash -v threadtime || true
+            echo "---- Last 200 lines of the log (the whole log is in the device-reports artifact) ----"
+            tail -n 200 "$OUT/logcat.txt" || true
+            exit 1
+          }
+
+          # The emulator action has waited for the boot. The package manager can be a moment behind it.
+          timeout 120 adb wait-for-device || fail "No emulator is connected."
+          booted=""
+          for _ in $(seq 1 90); do
+            if [ "$(adb shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = "1" ] && adb shell pm path android > /dev/null 2>&1; then
+              booted=yes
+              break
+            fi
+            sleep 2
+          done
+          [ -n "$booted" ] || fail "The emulator did not finish booting."
+
+          adb install -r "$APK" || fail "The release APK could not be installed."
+
+          adb logcat -b all -c || true
+          started=$(adb shell am start -W -n "$PACKAGE/$ACTIVITY" 2>&1) || true
+          echo "$started"
+          case "$started" in
+            *Error*|*Exception*) fail "The release build could not be started." ;;
+          esac
+
+          sleep 20
+
+          pid=$(adb shell pidof "$PACKAGE" 2> /dev/null | tr -d '\r' || true)
+          [ -n "$pid" ] || fail "The release build is not running 20 seconds after it was started."
+
+          # A process that the system started again after a crash has a pid too, so the crash log is checked as well.
+          crashes=$(adb logcat -d -b crash 2> /dev/null | grep -F "$PACKAGE" || true)
+          [ -z "$crashes" ] || fail "The release build crashed after it was started."
+
+          screenshot
+          echo "The release build is running 20 seconds after it was started (pid $pid)."
+          # Out of the way of the instrumented tests that run next.
+          adb shell am force-stop "$PACKAGE" || true
+          SMOKE
+
+      # connectedDebugAndroidTest installs the debug build and its tests, runs them and removes both again. That
+      # is fine on this throwaway emulator; the release build has another application ID and is left alone.
+      - name: Start the release build and run the instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disk-size: 6000M
+          script: |
+            bash "$RUNNER_TEMP/smoke-test.sh"
+            ./gradlew connectedDebugAndroidTest
+
+      - name: Upload the screenshot of the release build
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-release-screenshot
+          path: smoke-test/screen.png
+          if-no-files-found: ignore
+
+      # A crash log of the minified build has shortened names. The mapping file turns them back into the real
+      # ones (see README > Releases).
+      - name: Upload the logs, the test reports and the R8 mapping
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-reports
+          path: |
+            smoke-test/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: ignore

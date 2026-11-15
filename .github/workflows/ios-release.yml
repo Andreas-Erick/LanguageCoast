@@ -3,6 +3,8 @@ name: iOS release
 # Builds the signed iOS app and uploads it to App Store Connect, where it appears in TestFlight.
 # Submitting it for App Store review is still done by hand in App Store Connect.
 #   Runs for every version tag (git tag v1.8.0 && git push origin v1.8.0), or by hand from the Actions tab.
+#   The version comes from the tag. A run by hand uploads the version typed when starting it, or else that of
+#   the latest version tag; without either it stops, so the placeholder version in project.yml is never uploaded.
 # Signing is cloud-managed: Xcode creates the distribution certificate and profile with the App Store Connect
 # API key, so no Mac is needed. Requires the repository secrets APP_STORE_CONNECT_KEY_BASE64,
 # APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID and APPLE_TEAM_ID (see README > Releases).
@@ -12,6 +14,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to upload, like 3.1.0. Leave empty to use the latest version tag."
+        required: false
+        type: string
 
 concurrency:
   group: ios-release
@@ -20,7 +27,8 @@ concurrency:
 jobs:
   upload:
     name: Build signed iOS app and upload it to TestFlight
-    # App Store uploads must be built with the latest Xcode and iOS SDK.
+    # App Store uploads must be built with the latest Xcode and iOS SDK. The iOS workflow (ios.yml) tests
+    # with the same image; change it in both files together.
     runs-on: macos-26
     timeout-minutes: 60
 
@@ -42,6 +50,9 @@ jobs:
 
       - uses: actions/checkout@v7
         if: steps.secrets.outputs.ready == 'true'
+        with:
+          # The whole history with its tags: a run by hand reads its version from the latest tag.
+          fetch-depth: 0
 
       - uses: actions/setup-java@v6
         if: steps.secrets.outputs.ready == 'true'
@@ -78,13 +89,33 @@ jobs:
 
       - name: Choose the version
         if: steps.secrets.outputs.ready == 'true'
-        # A tag sets the version (v1.8.0 -> 1.8.0); a run by hand keeps the one in project.yml.
+        env:
+          TYPED_VERSION: ${{ inputs.version }}
+        # A tag sets the version (v1.8.0 -> 1.8.0). A tag the Android release refuses, such as v3.1.0-rc1, is
+        # refused here as well. A run by hand uses the version typed when starting it, or else the latest
+        # version tag. The version in project.yml is a placeholder and is never uploaded.
         # The run number is the build number, which App Store Connect needs to be new for every upload.
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            # The rule of the Android release (release.yml, "Check the tag"): a tag goes to both stores or to neither.
+            PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$'
+            if [[ ! "$GITHUB_REF_NAME" =~ $PATTERN ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME is not a release version. Use vMAJOR.MINOR.PATCH with minor and patch from 0 to 99, no leading zeros and no suffix (v3.1.0, not v3.1.0-rc1), as for the Android release."
+              exit 1
+            fi
             VERSION="${GITHUB_REF_NAME#v}"
-            echo "VERSION_SETTING=MARKETING_VERSION=${VERSION%%-*}" >> "$GITHUB_ENV"
+          elif [ -n "$TYPED_VERSION" ]; then
+            VERSION="${TYPED_VERSION#v}"
+          else
+            LATEST_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2> /dev/null || true)
+            VERSION="${LATEST_TAG#v}"
           fi
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+([.][0-9]+){0,2}$'; then
+            echo "::error::No version to upload ('$VERSION'). Push a version tag such as v3.1.0, or start this workflow by hand and type the version."
+            exit 1
+          fi
+          echo "Uploading version $VERSION, build ${{ github.run_number }}."
+          echo "VERSION_SETTING=MARKETING_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "BUILD_NUMBER=${{ github.run_number }}" >> "$GITHUB_ENV"
 
       # Archived unsigned: signing it here would need a development profile, which Apple only issues to teams with

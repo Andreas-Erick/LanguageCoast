@@ -10,13 +10,18 @@ package com.andreaserick.languagecoast.data
  *     same as [code] (Japanese is "ja", Japan is "JP"). Null for a language no country stands for, like Esperanto,
  *     which gets the world instead.
  * @property onDictCc Whether dict.cc has dictionaries for this language.
+ * @property latinScript Whether the language is written in Latin letters. Reading text from a photo only knows those.
+ * @property spaceSeparated Whether words are written with spaces between them. Where they aren't (Japanese), a
+ *     sentence can't be cut into words by looking at it, so the gap exercise and tapping a word are left out.
  */
 data class Language(
     val name: String,
     val nativeName: String,
     val code: String,
     val flagCountry: String? = null,
-    val onDictCc: Boolean = true
+    val onDictCc: Boolean = true,
+    val latinScript: Boolean = true,
+    val spaceSeparated: Boolean = true
 ) {
     /** The flag as an emoji, or the world for a language with no [flagCountry]. */
     val flag: String get() = flagCountry?.let(::flagEmoji) ?: WORLD
@@ -44,7 +49,7 @@ object Languages {
     val ALL: List<Language> = listOf(
         Language("Albanian", "Shqip", "sq", flagCountry = "AL"),
         Language("Bosnian", "Bosanski", "bs", flagCountry = "BA"),
-        Language("Bulgarian", "Български", "bg", flagCountry = "BG"),
+        Language("Bulgarian", "Български", "bg", flagCountry = "BG", latinScript = false),
         Language("Croatian", "Hrvatski", "hr", flagCountry = "HR"),
         Language("Czech", "Čeština", "cs", flagCountry = "CZ"),
         Language("Danish", "Dansk", "da", flagCountry = "DK"),
@@ -54,30 +59,36 @@ object Languages {
         Language("Finnish", "Suomi", "fi", flagCountry = "FI"),
         Language("French", "Français", "fr", flagCountry = "FR"),
         Language("German", "Deutsch", "de", flagCountry = "DE"),
-        Language("Greek", "Ελληνικά", "el", flagCountry = "GR"),
+        Language("Greek", "Ελληνικά", "el", flagCountry = "GR", latinScript = false),
         Language("Hungarian", "Magyar", "hu", flagCountry = "HU"),
         Language("Icelandic", "Íslenska", "is", flagCountry = "IS"),
         Language("Italian", "Italiano", "it", flagCountry = "IT"),
-        Language("Japanese", "日本語", "ja", flagCountry = "JP", onDictCc = false),
-        Language("Korean", "한국어", "ko", flagCountry = "KR", onDictCc = false),
+        Language("Japanese", "日本語", "ja", flagCountry = "JP", onDictCc = false, latinScript = false, spaceSeparated = false),
+        Language("Korean", "한국어", "ko", flagCountry = "KR", onDictCc = false, latinScript = false),
         Language("Latin", "Latina", "la", flagCountry = "VA"),
         Language("Norwegian", "Norsk", "no", flagCountry = "NO"),
         Language("Polish", "Polski", "pl", flagCountry = "PL"),
         Language("Portuguese", "Português", "pt", flagCountry = "PT"),
         Language("Romanian", "Română", "ro", flagCountry = "RO"),
-        Language("Russian", "Русский", "ru", flagCountry = "RU"),
-        Language("Serbian", "Српски", "sr", flagCountry = "RS"),
+        Language("Russian", "Русский", "ru", flagCountry = "RU", latinScript = false),
+        Language("Serbian", "Српски", "sr", flagCountry = "RS", latinScript = false),
         Language("Slovak", "Slovenčina", "sk", flagCountry = "SK"),
         Language("Spanish", "Español", "es", flagCountry = "ES"),
         Language("Swedish", "Svenska", "sv", flagCountry = "SE"),
         Language("Turkish", "Türkçe", "tr", flagCountry = "TR"),
-        Language("Ukrainian", "Українська", "uk", flagCountry = "UA")
+        Language("Ukrainian", "Українська", "uk", flagCountry = "UA", latinScript = false)
     )
 
     private val byName = ALL.associateBy { it.name }
 
     /** The language with English name [name], or null if it isn't offered. */
     fun byName(name: String): Language? = byName[name]
+
+    /** Whether [languageName] is written in Latin letters (see [Language.latinScript]); true for a name the app doesn't know. */
+    fun isLatinScript(languageName: String): Boolean = byName[languageName]?.latinScript ?: true
+
+    /** Whether [languageName] puts spaces between words (see [Language.spaceSeparated]); true for a name the app doesn't know. */
+    fun isSpaceSeparated(languageName: String): Boolean = byName[languageName]?.spaceSeparated ?: true
 }
 
 /**

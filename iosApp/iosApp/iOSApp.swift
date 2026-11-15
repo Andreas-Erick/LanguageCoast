@@ -9,7 +9,11 @@ struct iOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ComposeView().ignoresSafeArea()
+            ComposeView()
+                .ignoresSafeArea()
+                // The launch screen's colour stays behind the shared UI, so nothing lighter shows through
+                // while the window is set up.
+                .background { Color("LaunchBackground").ignoresSafeArea() }
         }
     }
 }

@@ -136,6 +136,17 @@ class TranslationResponseParserTest {
     }
 
     @Test
+    fun aLongJapaneseSentenceAsksForAlternativesThoughItHasNoSpaces() {
+        // Sixteen kana and kanji, about what a six-word sentence comes to.
+        assertTrue(wantsAlternatives("明日一緒に映画を見に行きませんか？"))
+        assertFalse(wantsAlternatives("ありがとう"))
+        // A long word in a language that does put spaces between words is still one word.
+        assertFalse(wantsAlternatives("Donaudampfschifffahrtsgesellschaft"))
+        assertTrue(wantsAlternatives("Do you want to go to the cinema tomorrow?"))
+        assertFalse(wantsAlternatives("Where is the station?"))
+    }
+
+    @Test
     fun normalizesRetiredGeminiModelsToCurrentIds() {
         assertEquals("gemini-3.5-flash-lite", normalizeGeminiModel("gemini-2.5-flash"))
         assertEquals("gemini-3.5-flash-lite", normalizeGeminiModel("models/gemini-2.0-flash"))
@@ -172,7 +183,9 @@ class TranslationResponseParserTest {
         assertEquals(LocalAiCatalog.MODELS.size, recommendations.size)
         val bestMatch = recommendations.firstOrNull { it.fitLevel == ModelFitLevel.BEST_MATCH }
         assertNotNull(bestMatch)
-        assertEquals("GPU (OpenCL)", bestMatch.recommendedBackend)
+        // Models run on the processor, whatever the graphics chip can do: nothing may claim otherwise.
+        assertEquals("CPU", bestMatch.recommendedBackend)
+        assertTrue(recommendations.none { "GPU" in it.reason || "GPU" in it.recommendedBackend })
         assertTrue(bestMatch.hasEnoughStorage)
 
         val lowStorageProfile = midRangeProfile.copy(freeStorageMb = 400L)

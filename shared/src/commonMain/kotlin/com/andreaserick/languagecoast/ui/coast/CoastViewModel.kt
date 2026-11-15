@@ -38,19 +38,23 @@ import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.WorksheetResult
 import com.andreaserick.languagecoast.data.buildTalkPrompt
 import com.andreaserick.languagecoast.data.currentEngine
+import com.andreaserick.languagecoast.data.engineReady
 import com.andreaserick.languagecoast.data.parseTalk
 import com.andreaserick.languagecoast.data.personalIslandKey
+import com.andreaserick.languagecoast.data.providerAwaitingPermission
 import com.andreaserick.languagecoast.data.routeFor
 import com.andreaserick.languagecoast.data.starterTopicKey
 import com.andreaserick.languagecoast.speech.Speaker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -138,7 +142,14 @@ data class CoastUiState(
     /** An island being turned into a talk, while its sheet is open. */
     val talk: TalkUiState? = null,
     /** A level the user has reached on this coast and hasn't been congratulated on yet (the highest, if several). */
-    val levelReached: Level? = null
+    val levelReached: Level? = null,
+    /**
+     * Why the picked provider can't translate or write yet (its key is missing, or it isn't allowed to be
+     * sent text), in words for the user; null when it can.
+     */
+    val engineProblem: String? = null,
+    /** Whether topics are being added or islands written on any coast right now; each runs one at a time, app-wide. */
+    val isBusyAnywhere: Boolean = false
 ) {
     /** Cards on all of the coast's islands. */
     val cardCount: Int get() = islands.sumOf { it.cardCount }
@@ -149,6 +160,15 @@ data class CoastUiState(
     /** Whether islands are being written right now. */
     val isBuilding: Boolean get() = build?.isFinished == false
 }
+
+/**
+ * Why the provider picked in Settings can't be used right now (its key is missing, or it isn't allowed to be
+ * sent text yet), as [currentEngine] words it for the user; null when it can. Asked again whenever the
+ * provider, its key or its permission changes.
+ */
+internal fun SettingsRepository.engineProblem(): Flow<String?> =
+    combine(translationProvider, engineReady(), providerAwaitingPermission()) { _, ready, _ -> ready }
+        .map { ready -> if (ready) null else (currentEngine() as? EngineChoice.Missing)?.message }
 
 /**
  * Shows the islands of one coast and its route through the levels: the starter topics it can still add
@@ -188,14 +208,32 @@ class CoastViewModel(
         }
     }
 
+    /**
+     * What each starter topic offers, by category. It never changes, and working it out reads every sentence
+     * of the starter bank, so it is done once and not for every change on the coast.
+     */
+    private val topicFacts: Map<String, TopicFacts> by lazy {
+        val anyValue = PROFILE_PLACEHOLDERS.associateWith { "x" }
+        PhraseBank.THEMES.associate { theme ->
+            val blanks = theme.sentences.flatMap(PhraseBank::placeholders).distinct()
+            theme.category to TopicFacts(
+                // Counted with the language filled in, as it is on every coast.
+                sentenceCount = importer.usableSentences(theme, "x", anyValue).size,
+                profileBlanks = PROFILE_PLACEHOLDERS.filter { it in blanks }
+            )
+        }
+    }
+
     val uiState: StateFlow<CoastUiState> =
         combine(
             flashcards.observeCoast(coastId),
-            flashcards.observeIslandSummaries(coastId, now = clock.now().toEpochMilliseconds()),
+            // The time due cards are counted at is read again each time the state is worked out anew, which is
+            // whenever the screen comes back after a while: a coast left open overnight shows the new day's cards.
+            flow { emit(clock.now().toEpochMilliseconds()) }.flatMapLatest { now -> flashcards.observeIslandSummaries(coastId, now) },
             combine(settings.starterTopicsAdded, settings.profile, settings.nativeLanguage, settings.personalAnswers, settings.personalIslandsBuilt, ::About),
             combine(importer.progress, worksheet, builder.progress, buildReview, talk, ::Activity),
-            combine(settings.translationProvider, settings.pace, settings.levelsCelebrated, ::Triple)
-        ) { coast, islands, about, activity, (provider, pace, celebrated) ->
+            combine(settings.translationProvider, settings.pace, settings.levelsCelebrated, settings.engineProblem(), ::Setup)
+        ) { coast, islands, about, activity, (provider, pace, celebrated, problem) ->
             val language = coast?.language.orEmpty()
             val prefix = "$coastId:"
             val builtHere = about.built.filterKeys { it.startsWith(prefix) }.mapKeys { it.key.removePrefix(prefix) }
@@ -213,12 +251,8 @@ class CoastViewModel(
                     // A topic whose island was deleted from the coast can be added again.
                     .filterNot { theme -> starterTopicKey(coastId, theme.category) in about.starterTopicsAdded && islands.any { it.island.name == theme.category } }
                     .map { theme ->
-                        val blanks = theme.sentences.flatMap(PhraseBank::placeholders).distinct()
-                        StarterTopicOption(
-                            theme = theme,
-                            sentenceCount = importer.usableSentences(theme, language, PROFILE_PLACEHOLDERS.associateWith { "x" }).size,
-                            profileBlanks = PROFILE_PLACEHOLDERS.filter { it in blanks }
-                        )
+                        val facts = topicFacts.getValue(theme.category)
+                        StarterTopicOption(theme = theme, sentenceCount = facts.sentenceCount, profileBlanks = facts.profileBlanks)
                     },
                 import = activity.import?.takeIf { it.coastId == coastId },
                 translationProvider = provider,
@@ -243,7 +277,9 @@ class CoastViewModel(
                 levelReached = route.levels.lastOrNull { it.isComplete && levelKey(coastId, it.level) !in celebrated }?.level,
                 islandFacts = (PersonalIslands.ALL + PersonalIslands.WRITTEN).associate { it.id to it.facts(about.profile, about.answers) },
                 pace = pace,
-                talk = activity.talk
+                talk = activity.talk,
+                engineProblem = problem,
+                isBusyAnywhere = activity.import?.isFinished == false || activity.build?.isFinished == false
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoastUiState(coastId = coastId, coastName = coastName))
 
@@ -254,6 +290,9 @@ class CoastViewModel(
 
     /** Clears a finished import from the screen. */
     fun dismissImport() = importer.dismiss()
+
+    /** Stops the starter topics being added; what is added stays. */
+    fun stopImport() = importer.stop()
 
     /** Has the AI provider write [orders] (islands about the user, theme islands, or islands a level up) on this coast, in the background. */
     fun buildIslands(orders: List<IslandOrder>) {
@@ -339,6 +378,17 @@ class CoastViewModel(
         val talk: TalkUiState?
     )
 
+    /** How the app is set up: who translates and writes, whether they can right now, the pace, and the levels already celebrated. */
+    private data class Setup(
+        val provider: TranslationProvider,
+        val pace: Pace,
+        val celebrated: Set<String>,
+        val engineProblem: String?
+    )
+
+    /** What a starter topic offers: how many of its sentences a whole-topic import can use, and the person's blanks it has. */
+    private class TopicFacts(val sentenceCount: Int, val profileBlanks: List<String>)
+
     init {
         viewModelScope.launch { settings.setActiveCoastId(coastId) }
     }
@@ -362,7 +412,7 @@ class CoastViewModel(
                 is WorksheetResult.Failed -> worksheet.value.copy(error = result.message)
                 is WorksheetResult.Ready -> {
                     val pdf = printer.print(result.worksheet)
-                    if (pdf == null) worksheet.value.copy(error = "The PDF couldn't be made. Check that the phone has storage left.")
+                    if (pdf == null) worksheet.value.copy(error = "The PDF couldn't be made. Check that your device has storage left.")
                     else worksheet.value.copy(pdf = pdf, sentenceCount = result.worksheet.sentences.size)
                 }
             }

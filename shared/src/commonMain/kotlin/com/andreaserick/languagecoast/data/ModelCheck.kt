@@ -99,7 +99,7 @@ internal fun parseModelListing(provider: TranslationProvider, status: Int, body:
             when (status) {
                 400, 401, 403 -> "${provider.label} didn't accept the API key. Check your key and try again."
                 429 -> "${provider.label} is busy or rate-limited. Wait a moment and try again."
-                else -> "${provider.label} couldn't list its models (HTTP $status). Try again later."
+                else -> "${provider.label} couldn't list its models right now. Try again later."
             }
         )
     }
@@ -196,16 +196,7 @@ fun updateModelList(known: List<String>, live: List<LiveModel>, selected: String
     return ModelListUpdate(models, added, removed = known.filterNot { it in kept }, selected = stillSelected)
 }
 
-/** The API key of [provider], and the model picked for it; null for a provider without a model list. */
-private fun SettingsRepository.keyOf(provider: TranslationProvider): Flow<String>? = when (provider) {
-    TranslationProvider.Gemini -> apiKey
-    TranslationProvider.OpenAI -> openAiKey
-    TranslationProvider.Claude -> claudeKey
-    TranslationProvider.Groq -> groqKey
-    TranslationProvider.DeepSeek -> deepSeekKey
-    else -> null
-}
-
+/** The model picked for [provider]; null for a provider without a model list. Its API key is [keyOf]. */
 private fun SettingsRepository.modelOf(provider: TranslationProvider): Flow<String>? = when (provider) {
     TranslationProvider.Gemini -> geminiModel
     TranslationProvider.OpenAI -> openAiModel
@@ -229,12 +220,18 @@ data class ModelCheckOutcome(val message: String, val failed: Boolean = false)
 
 /**
  * Checks [provider]'s models with the user's key and stores the list brought up to date. A check that
- * fails (no key, no network, an answer that can't be read) changes nothing.
+ * fails (no key, no network, an answer that can't be read) changes nothing. A provider with a key the user
+ * hasn't allowed sending to ([SettingsRepository.aiSharingAllowed]) is not asked at all.
  */
 suspend fun checkForNewModels(provider: TranslationProvider, settings: SettingsRepository, lister: ModelLister): ModelCheckOutcome {
-    val key = settings.keyOf(provider)?.first()
     val selected = settings.modelOf(provider)?.first()
-    if (key == null || selected == null) return ModelCheckOutcome("${provider.label} has no list of models to check.", failed = true)
+        ?: return ModelCheckOutcome("${provider.label} has no list of models to check.", failed = true)
+    val key = settings.keyOf(provider).first()
+    // A key saved before the app asked for permission: until the user allows it the provider gets nothing, not even the key.
+    // Without a key the lister says to save one first, and saving is the step that asks for the permission.
+    if (key.isNotBlank() && provider.name !in settings.aiSharingAllowed.first()) {
+        return ModelCheckOutcome(sharingNotAllowedMessage(provider), failed = true)
+    }
 
     val live = when (val listing = lister.list(provider, key)) {
         is ModelListing.Failed -> return ModelCheckOutcome(listing.message, failed = true)

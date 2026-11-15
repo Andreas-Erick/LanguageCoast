@@ -6,7 +6,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +17,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.progressSemantics
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -38,7 +41,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,7 +53,11 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,12 +73,14 @@ import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.IconTile
+import com.andreaserick.languagecoast.ui.components.inLanguage
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
@@ -101,6 +113,7 @@ data class PersonalIslandOption(
  * Confirms writing [options] (one island, or several) on the coast: what will happen, what one island is
  * written from, where the answers go with [provider], how long it takes, and the button.
  *
+ * @param problem Why [provider] can't write right now (no key yet, or not allowed to be sent text), or null when it can.
  * @param onAboutYou Opens the questions at the island with this id, to change the answers first.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,6 +123,7 @@ internal fun PersonalIslandSheet(
     coastLanguage: String,
     nativeLanguage: String,
     provider: TranslationProvider,
+    problem: String?,
     onWrite: () -> Unit,
     onAboutYou: (islandId: String) -> Unit,
     onDismiss: () -> Unit
@@ -134,7 +148,8 @@ internal fun PersonalIslandSheet(
                     single.state == PersonalIslandState.Changed -> "Write ${single.island.emoji} ${single.island.name} again"
                     else -> "Write ${single.island.emoji} ${single.island.name}"
                 },
-                style = MaterialTheme.typography.titleLarge
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() }
             )
             Text(
                 text = if (!canWrite) {
@@ -169,7 +184,7 @@ internal fun PersonalIslandSheet(
                         .background(SurfaceRaised, MaterialTheme.shapes.small)
                         .padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
-                    Text("Written from", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                    Text("Written from", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                     single.facts.forEach { (label, value) ->
                         Column {
                             Text(label, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
@@ -183,21 +198,24 @@ internal fun PersonalIslandSheet(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            if (canWrite) {
+            if (canWrite && problem != null) {
+                // Said here, before the button, so that nothing is started that can't be finished.
+                Text(problem, style = MaterialTheme.typography.bodyMedium, color = CoralText)
+            } else if (canWrite) {
                 val sent = when {
-                    !provider.isCloud -> "Everything stays on this phone. "
+                    !provider.isCloud -> "Nothing is sent to an AI provider. "
                     aboutUser -> "Your answers for ${if (single != null) "this island" else "these islands"} are sent to ${provider.label}. "
                     else -> ""
                 }
                 Text(
-                    text = sent + "About ${buildEstimate(options.size, provider)}. It runs in the background; you can leave this screen, and look the sentences over when it is done.",
+                    text = sent + "About ${buildEstimate(options.size, provider)}. You can leave this screen while it runs, but keep the app open. Look the sentences over when it is done.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
             }
             CoastButton(
                 onClick = onWrite,
-                enabled = canWrite,
+                enabled = canWrite && problem == null,
                 modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
             ) {
                 Text(if (single != null) "Write the island" else "Write ${options.size} islands")
@@ -248,7 +266,13 @@ internal fun BuildProgressCard(
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+                    // A screen reader says how it ended when that arrives; the steps before it would only interrupt.
+                    .then(if (progress.isFinished) Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite } else Modifier)
+            ) {
                 when {
                     progress.error != null -> {
                         Text("Couldn't finish", style = MaterialTheme.typography.titleMedium)
@@ -302,7 +326,9 @@ internal fun BuildProgressCard(
                             WorkingBar()
                         }
                         Text(
-                            text = if (several) "Island ${progress.done + 1} of ${progress.total}, ${plural(progress.added, "card")} so far" else "About 25 sentences, in both languages",
+                            // The run only goes on while the app is on screen.
+                            text = (if (several) "Island ${progress.done + 1} of ${progress.total}, ${plural(progress.added, "card")} so far."
+                            else "Up to $PERSONAL_ISLAND_SENTENCES sentences, in both languages.") + " Keep the app open until it is done.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 6.dp)
@@ -316,10 +342,10 @@ internal fun BuildProgressCard(
                 TextButton(onClick = onStop) { Text("Stop", style = MaterialTheme.typography.labelMedium, color = TextSecondary) }
             } else {
                 if (onReview != null) {
-                    TextButton(onClick = onReview) { Text("Look them over", style = MaterialTheme.typography.labelMedium, color = Sunlit) }
+                    TextButton(onClick = onReview) { Text("Look them over", style = MaterialTheme.typography.labelMedium, color = SunlitText) }
                 }
                 TextButton(onClick = onDismiss) {
-                    Text(if (progress.error != null) "OK" else "Done", style = MaterialTheme.typography.labelMedium, color = if (onReview != null) TextSecondary else Sunlit)
+                    Text(if (progress.error != null) "OK" else "Done", style = MaterialTheme.typography.labelMedium, color = if (onReview != null) TextSecondary else SunlitText)
                 }
             }
         }
@@ -335,6 +361,8 @@ private fun WorkingBar(modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .height(6.dp)
+            // Tells a screen reader that work is going on, as Material's own bar would.
+            .progressSemantics()
             .clip(RoundedCornerShape(50))
             .background(SurfaceRaised)
             .drawBehind {
@@ -353,11 +381,16 @@ private fun WorkingBar(modifier: Modifier = Modifier) {
  * The cards a run of the builder left, for the user to look over: every sentence about their life is
  * ticked, and one that isn't true or isn't how they'd say it is unticked and removed. After an island was
  * written again, the studied cards that stayed are listed too, since the answers behind them may have changed.
+ *
+ * @param coastLanguage The language the cards' translations are in, so a screen reader reads them in its voice.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun BuildReviewSheet(review: BuildReview, onRemove: (Set<Int>) -> Unit, onDismiss: () -> Unit) {
-    val unticked = remember { mutableStateListOf<Int>() }
+internal fun BuildReviewSheet(review: BuildReview, coastLanguage: String, onRemove: (Set<Int>) -> Unit, onDismiss: () -> Unit) {
+    // The ids of the cards unticked so far, kept through a rotation.
+    val unticked = rememberSaveable(
+        saver = listSaver<SnapshotStateList<Int>, Int>(save = { it.toList() }, restore = { it.toMutableStateList() })
+    ) { mutableStateListOf<Int>() }
 
     @Composable
     fun CardRow(card: Flashcard) {
@@ -367,7 +400,8 @@ internal fun BuildReviewSheet(review: BuildReview, onRemove: (Set<Int>) -> Unit,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.small)
-                .clickable(role = Role.Checkbox) { if (ticked) unticked += card.cardId else unticked -= card.cardId }
+                // The row is the tick box: a screen reader says whether it is ticked, and reads the sentence as its name.
+                .toggleable(value = ticked, role = Role.Checkbox) { if (it) unticked -= card.cardId else unticked += card.cardId }
                 .padding(vertical = 6.dp)
         ) {
             Checkbox(
@@ -377,7 +411,7 @@ internal fun BuildReviewSheet(review: BuildReview, onRemove: (Set<Int>) -> Unit,
                 modifier = Modifier.padding(top = 2.dp, end = 12.dp)
             )
             Column(modifier = Modifier.weight(1f)) {
-                Text(card.targetText, style = MaterialTheme.typography.bodyLarge, color = if (ticked) TextPrimary else TextSecondary)
+                Text(inLanguage(card.targetText, coastLanguage), style = MaterialTheme.typography.bodyLarge, color = if (ticked) TextPrimary else TextSecondary)
                 Text(card.nativeText, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
         }
@@ -385,24 +419,27 @@ internal fun BuildReviewSheet(review: BuildReview, onRemove: (Set<Int>) -> Unit,
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp)) {
-            Text("Look them over", style = MaterialTheme.typography.titleLarge)
+            Text("Look them over", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
             Text(
                 text = "You'll learn these by heart, and you are the one who knows if they're right. Untick anything that isn't true or isn't how you'd say it.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
             )
-            Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                review.added.forEach { CardRow(it) }
+            // A level's worth of islands is a couple of hundred sentences: only the rows in view are drawn.
+            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                items(review.added) { CardRow(it) }
                 if (review.kept.isNotEmpty()) {
-                    Text("Kept from before", style = MaterialTheme.typography.labelMedium, color = Sunlit, modifier = Modifier.padding(top = 16.dp))
-                    Text(
-                        text = "You've studied these, so they stayed. Untick the ones your new answers made untrue.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
-                    )
-                    review.kept.forEach { CardRow(it) }
+                    item {
+                        Text("Kept from before", style = MaterialTheme.typography.labelMedium, color = SunlitText, modifier = Modifier.padding(top = 16.dp))
+                        Text(
+                            text = "You've studied these, so they stayed. Untick the ones your new answers made untrue.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
+                        )
+                    }
+                    items(review.kept) { CardRow(it) }
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))

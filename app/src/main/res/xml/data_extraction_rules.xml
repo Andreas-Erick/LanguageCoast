@@ -1,16 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Data extraction rules for API 31+.
-    The DataStore file holds the user's Gemini and OpenRouter API keys; exclude it
-    from cloud backup (Google Drive) and device-to-device transfer so keys are
-    never shared between devices automatically.
+    Data extraction rules for API 31+, for cloud backup (Google Drive) and for a transfer from phone to
+    phone. Everything not excluded here travels: the cards (the database) and files/settings-snapshot.json,
+    a copy of the settings without any key, written each time the app is left (see SettingsSnapshotFile),
+    from which the settings are brought back after a restore.
+
+    Left out of both:
+    - datastore/: the settings file, which also holds the cloud providers' API keys and the Hugging Face
+      token. Keys are never shared between devices automatically.
+    - local_models/: downloaded Local AI models, in the app's external files folder (and, for old installs,
+      the internal one or files/model.litertlm). They are hundreds of megabytes each, and a cloud backup
+      larger than 25 MB is not made at all, so one model would stop the backup of the cards. A model can be
+      downloaded again, and may not suit the new phone.
     See https://developer.android.com/about/versions/12/backup-restore
 -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="datastore/" />
+        <exclude domain="external" path="local_models/" />
+        <exclude domain="file" path="local_models/" />
+        <exclude domain="file" path="model.litertlm" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="datastore/" />
+        <exclude domain="external" path="local_models/" />
+        <exclude domain="file" path="local_models/" />
+        <exclude domain="file" path="model.litertlm" />
     </device-transfer>
 </data-extraction-rules>

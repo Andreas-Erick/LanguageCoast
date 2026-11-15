@@ -5,6 +5,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.plus
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -58,6 +59,26 @@ class ReminderMessagesTest {
         assertTrue("3 cards" in message.text)
         // Already studied: the milestone is reached, so it's an ordinary day again.
         assertNotEquals(ReminderKind.Milestone, reminderMessage(3, 6, true, teaser, monday).kind)
+    }
+
+    // Any finished session keeps the streak, and the reminder opens Today, so it speaks of today's session, not of an island.
+    @Test
+    fun remindersSpeakOfTodaysSessionAndOfCardsThatAreDue() {
+        val month = (0 until 30).map { monday.plus(it, DateTimeUnit.DAY) }
+        val messages = month.map { reminderMessage(12, 5, false, teaser, it) } +
+            month.map { reminderMessage(3, 6, false, null, it) } + // Day 7 is a milestone.
+            month.map { reminderMessage(0, 0, true, null, it) } +
+            (0 until 7).map { scheduledReminderMessage(it) }
+
+        messages.forEach { message ->
+            val words = message.title + " " + message.text
+            assertFalse("island today" in words || "an island and" in words, words)
+            // Not true while the week's streak freeze is unused.
+            assertFalse("ends tonight" in words, words)
+            // "Waiting" is what Today calls new cards; cards to review are due.
+            assertFalse(Regex("cards? waiting").containsMatchIn(words), words)
+        }
+        assertTrue(messages.any { "today's session" in it.text })
     }
 
     @Test

@@ -51,4 +51,46 @@ class BackupTest {
 
         assertFailsWith<BackupException> { decodeBackup(encodeBackup(damaged)) }
     }
+
+    // A file that was edited by hand or made by another tool: restored unchecked, one such value would stop the app at every start.
+    @Test
+    fun aDateOrReminderTimeThatCannotBeReadIsRefused() {
+        fun refused(settings: BackupSettings) {
+            val error = assertFailsWith<BackupException> { decodeBackup(encodeBackup(backup.copy(settings = settings))) }
+            assertEquals("This backup is damaged and can't be restored.", error.message)
+        }
+
+        refused(backup.settings.copy(lastStudyDate = "11/05/2026"))
+        refused(backup.settings.copy(studyDays = listOf("2026-10-09", "yesterday")))
+        refused(backup.settings.copy(freezeUsedOn = "2026-13-40"))
+        refused(backup.settings.copy(reminderMinuteOfDay = 1_500))
+        refused(backup.settings.copy(reminderMinuteOfDay = -1))
+        refused(backup.settings.copy(streakCount = -3))
+        // A streak nobody can have studied: every one of its days would be counted at each start.
+        refused(backup.settings.copy(streakCount = 2_000_000_000))
+        refused(backup.settings.copy(streakCount = 36_501))
+    }
+
+    @Test
+    fun aLongStreakIsStillAStreak() {
+        val longStreak = backup.copy(settings = backup.settings.copy(streakCount = 36_500))
+
+        assertEquals(longStreak, decodeBackup(encodeBackup(longStreak)))
+    }
+
+    @Test
+    fun theEdgesOfADayAreValidReminderTimes() {
+        val midnight = backup.copy(settings = backup.settings.copy(reminderMinuteOfDay = 0))
+        val lastMinute = backup.copy(settings = backup.settings.copy(reminderMinuteOfDay = 1_439, lastStudyDate = null, freezeUsedOn = "2026-10-08"))
+
+        assertEquals(midnight, decodeBackup(encodeBackup(midnight)))
+        assertEquals(lastMinute, decodeBackup(encodeBackup(lastMinute)))
+    }
+
+    @Test
+    fun twoCoastsForOneLanguageAreRefused() {
+        val doubled = backup.copy(coasts = backup.coasts + BackupCoast(2, "German", 150))
+
+        assertFailsWith<BackupException> { decodeBackup(encodeBackup(doubled)) }
+    }
 }

@@ -4,7 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -27,11 +26,14 @@ object NotificationHelper {
     private const val SURFACE_RAISED = 0xFF1F4560.toInt()
     private const val CORAL = 0xFFF5A28C.toInt()
 
-    /** Creates the channel study reminders are posted to (Android 8 and later); creating it again changes nothing. */
+    /**
+     * Creates the channel study reminders are posted to (Android 8 and later); creating it again only updates
+     * its name. Called when the app starts, so the phone's notification settings list the channel from day one.
+     */
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Study Reminders"
-            val descriptionText = "Daily notifications to remind you to practice"
+            val name = "Study reminders"
+            val descriptionText = "One reminder a day to study your cards"
             val importance = NotificationManager.IMPORTANCE_DEFAULT
             val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText
@@ -50,11 +52,9 @@ object NotificationHelper {
     fun showStudyNotification(context: Context, message: ReminderMessage) {
         createNotificationChannel(context)
 
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
+        // Tapping the reminder brings the app to the front as it was left, as the launcher icon does.
         val pendingIntent: PendingIntent = PendingIntent.getActivity(
-            context, 0, intent,
+            context, 0, MainActivity.resumeIntent(context),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
@@ -90,10 +90,10 @@ object NotificationHelper {
     /** Replaces the teaser reminder with [teaser]'s answer and the buttons that grade it. */
     fun showRevealedTeaser(context: Context, teaser: ReminderCard) {
         createNotificationChannel(context)
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val open = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val open = PendingIntent.getActivity(
+            context, 0, MainActivity.resumeIntent(context),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
         val text = "${teaser.targetText}\n“${teaser.nativeText}” · ${teaser.emoji} ${teaser.islandName}"
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)

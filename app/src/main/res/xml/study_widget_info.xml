@@ -2,15 +2,19 @@
 <!--
     The home-screen widget (see StudyWidgetProvider). It refreshes every hour so due counts follow
     the day; leaving the app refreshes it right away.
+
+    It takes three cells by two and can't be made smaller: below that the header, the wave and the footer
+    leave the two tiles no room for their numbers. Until its first numbers arrive it shows widget_study as
+    it is, with dashes; the widget picker shows widget_study_preview, with sample numbers.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description"
     android:initialLayout="@layout/widget_study"
     android:minWidth="180dp"
-    android:minHeight="110dp"
-    android:minResizeWidth="140dp"
-    android:minResizeHeight="90dp"
-    android:previewLayout="@layout/widget_study"
+    android:minHeight="150dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="150dp"
+    android:previewLayout="@layout/widget_study_preview"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="3"
     android:targetCellHeight="2"

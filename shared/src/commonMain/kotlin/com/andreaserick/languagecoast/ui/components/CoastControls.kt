@@ -9,21 +9,26 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
@@ -48,10 +53,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.ui.theme.CardEdge
 import com.andreaserick.languagecoast.ui.theme.ChipContainer
 import com.andreaserick.languagecoast.ui.theme.OnSunlit
@@ -59,6 +69,7 @@ import com.andreaserick.languagecoast.ui.theme.SurfaceCard
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
@@ -163,7 +174,7 @@ fun coastTextFieldColors(): TextFieldColors = TextFieldDefaults.colors(
     unfocusedContainerColor = ChipContainer,
     focusedIndicatorColor = Color.Transparent,
     unfocusedIndicatorColor = Color.Transparent,
-    focusedLabelColor = Sunlit,
+    focusedLabelColor = SunlitText,
     unfocusedLabelColor = TextSecondary,
     focusedPlaceholderColor = TextSecondary,
     unfocusedPlaceholderColor = TextSecondary,
@@ -195,6 +206,7 @@ fun coastChipBorder(enabled: Boolean, selected: Boolean) = FilterChipDefaults.fi
 /**
  * A group of content on a solid surface. Tappable when [onClick] is set, with the ripple kept inside its corners.
  *
+ * @param onClickLabel What a tap does, for screen readers ("open", "edit card"); they say it after "double-tap to".
  * @param padding The space between the card's edge and [content].
  */
 @Composable
@@ -212,8 +224,24 @@ fun ContentCard(
     if (onClick == null) {
         Card(modifier = modifier.fillMaxWidth(), colors = colors, shape = shape, border = edge, content = body)
     } else {
-        Card(onClick = onClick, modifier = modifier.fillMaxWidth(), colors = colors, shape = shape, border = edge, content = body)
+        Card(
+            onClick = onClick,
+            modifier = modifier.fillMaxWidth().tappableCardSemantics(onClickLabel),
+            colors = colors,
+            shape = shape,
+            border = edge,
+            content = body
+        )
     }
+}
+
+/**
+ * Tells screen readers that a tappable card is a button and, with [label], what a tap does. The card's own
+ * click stays in place: an action without a function only adds its name to it.
+ */
+private fun Modifier.tappableCardSemantics(label: String?): Modifier = semantics {
+    role = Role.Button
+    if (label != null) onClick(label = label, action = null)
 }
 
 /** A small rounded label, such as "7 due". The accent by default; pass colors for anything that isn't a call to action. */
@@ -229,6 +257,7 @@ fun Pill(
             text = text,
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
         )
     }
@@ -249,6 +278,9 @@ fun IconTile(modifier: Modifier = Modifier, size: Dp = 44.dp, content: @Composab
 /**
  * A compact switch between two or three modes of the same view. Selection is a lighter tile and a brighter
  * label, without the accent: choosing a mode isn't the main action of a screen.
+ *
+ * A label that doesn't fit its tile wraps to a second line and then shrinks a little, before it is cut;
+ * every tile is as tall as the tallest, so a wrapped label doesn't leave the selected tile short.
  */
 @Composable
 fun SegmentedSwitch(
@@ -258,11 +290,13 @@ fun SegmentedSwitch(
     modifier: Modifier = Modifier
 ) {
     val haptics = LocalHapticFeedback.current
+    val hapticsEnabled = LocalHapticsEnabled.current
     Row(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier = modifier
             .background(SurfaceCard, MaterialTheme.shapes.small)
             .padding(3.dp)
+            .height(IntrinsicSize.Min)
             .selectableGroup()
     ) {
         options.forEachIndexed { index, option ->
@@ -271,27 +305,35 @@ fun SegmentedSwitch(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .weight(1f)
+                    .fillMaxHeight()
                     .heightIn(min = 40.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (selected) SurfaceSelected else Color.Transparent)
                     .selectable(selected = selected, role = Role.Tab, onClick = {
-                        if (!selected) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                        if (!selected && hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                         onSelect(index)
                     })
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .padding(horizontal = 6.dp, vertical = 8.dp)
             ) {
+                val labelStyle = MaterialTheme.typography.labelMedium
                 Text(
                     text = option,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = labelStyle,
                     color = if (selected) TextPrimary else TextSecondary,
-                    maxLines = 1
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = labelStyle.fontSize),
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
     }
 }
 
-/** Shown in place of a screen's content when it has none yet: an icon, what's going on, and optionally what to do. */
+/**
+ * Shown in place of a screen's content when it has none yet: an icon, what's going on, and optionally what to do.
+ * Centred while it fits; in a short window (landscape, split screen, large text) it scrolls instead of being cut.
+ */
 @Composable
 fun EmptyState(
     icon: ImageVector,
@@ -305,6 +347,7 @@ fun EmptyState(
         verticalArrangement = Arrangement.Center,
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(ScreenMargin)
     ) {
         IconTile(size = 64.dp) {

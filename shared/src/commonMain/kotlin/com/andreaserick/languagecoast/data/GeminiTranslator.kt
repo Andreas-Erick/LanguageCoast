@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.data
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -30,14 +31,14 @@ class GeminiTranslator(private val client: HttpClient) : Translator {
         if (engine !is TranslationEngine.Gemini) return Completion.failure("This provider can't answer here.")
         val apiKey = engine.apiKey.trim()
         if (apiKey.isBlank()) {
-            return Completion.failure("Please enter a Gemini API key in Settings first!")
+            return Completion.failure("Gemini needs an API key. Add one in Settings.")
         }
 
         val primaryModel = normalizeGeminiModel(engine.model)
         val promptBody = geminiRequestBody(prompt)
 
         return try {
-            var (status, responseText) = postGenerateContent(apiKey, primaryModel, promptBody)
+            var (status, responseText, retryAfter) = postGenerateContent(apiKey, primaryModel, promptBody)
 
             if (status == 404) {
                 // Google retires models often, and its 404 names the replacement ("use models/gemini-x"):
@@ -49,6 +50,7 @@ class GeminiTranslator(private val client: HttpClient) : Translator {
                     val fallback = postGenerateContent(apiKey, replacement, promptBody)
                     status = fallback.first
                     responseText = fallback.second
+                    retryAfter = fallback.third
                 }
             } else if (status == 503 || status == 500) {
                 // Brief retry on transient Gemini server overload.
@@ -56,24 +58,29 @@ class GeminiTranslator(private val client: HttpClient) : Translator {
                 val retry = postGenerateContent(apiKey, primaryModel, promptBody)
                 status = retry.first
                 responseText = retry.second
+                retryAfter = retry.third
             }
 
-            geminiAnswer(status, responseText)
+            geminiAnswer(status, responseText, retryAfter)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: HttpRequestTimeoutException) {
+            logError(TAG, "Gemini took too long to answer", e)
+            Completion.failure(tookTooLongMessage("Gemini"))
         } catch (e: Exception) {
             logError(TAG, "Translation request failed", e)
-            Completion.failure("Couldn't reach Google Gemini. Check your internet connection and try again.")
+            Completion.failure("Couldn't reach Gemini. Check your internet connection and try again.")
         }
     }
 
-    private suspend fun postGenerateContent(apiKey: String, model: String, body: String): Pair<Int, String> {
+    /** The response's status, its body, and its `retry-after` header if it has one. */
+    private suspend fun postGenerateContent(apiKey: String, model: String, body: String): Triple<Int, String, String?> {
         val response = client.post("$ENDPOINT/$model:generateContent") {
             header("x-goog-api-key", apiKey)
             contentType(ContentType.Application.Json)
             setBody(body)
         }
-        return response.status.value to response.bodyAsText()
+        return Triple(response.status.value, response.bodyAsText(), response.headers["retry-after"])
     }
 
     private companion object {
@@ -146,8 +153,12 @@ internal fun geminiRequestBody(prompt: String): String =
 internal fun parseGeminiResponse(status: Int, body: String): TranslationResult =
     geminiAnswer(status, body).toTranslation("Gemini's response couldn't be read. Try again.")
 
-/** [parseGeminiResponse] without reading the answer as a translation. */
-internal fun geminiAnswer(status: Int, body: String): Completion {
+/**
+ * [parseGeminiResponse] without reading the answer as a translation.
+ *
+ * @param retryAfter The response's `retry-after` header (seconds), which a rate-limited answer may carry.
+ */
+internal fun geminiAnswer(status: Int, body: String, retryAfter: String? = null): Completion {
     val response = try {
         json.decodeFromString(GenerateResponse.serializer(), body)
     } catch (e: SerializationException) {
@@ -158,21 +169,21 @@ internal fun geminiAnswer(status: Int, body: String): Completion {
     if (status >= 400 || response?.error != null) {
         val rawMsg = response?.error?.message.orEmpty()
         logError("GeminiTranslator", "Gemini returned $status: $rawMsg")
+        // The requests per minute (or the day's quota) are used up. The first passes, so work that sends many requests waits it out.
+        if (status == 429) {
+            return Completion.busy("Gemini rate limit or quota reached. Wait a moment or switch to another provider.", retryAfterHeaderSeconds(retryAfter))
+        }
         val userMessage = when {
             status == 400 && rawMsg.contains("API key", ignoreCase = true) ->
-                "Gemini didn't accept the API key. Double-check your key in Settings."
+                "Gemini didn't accept the API key. Check your key in Settings."
             status == 401 || status == 403 ->
-                "Gemini API key was rejected or lacks permission. Check your key in Settings."
+                "Gemini didn't accept the API key, or the key can't use this model. Check your key in Settings."
             status == 404 ->
-                "The selected Gemini model wasn't found. Pick ${SettingsDefaults.GEMINI_MODEL} in Settings."
-            status == 429 ->
-                "Gemini rate limit or quota reached. Wait a moment or switch to another provider."
+                "The selected Gemini model wasn't found. Pick another model in Settings, or tap Check for new models."
             status >= 500 ->
-                "Google Gemini is temporarily overloaded ($status). Try again in a moment."
-            rawMsg.isNotBlank() ->
-                "Gemini: $rawMsg"
+                "Gemini is overloaded right now. Try again in a moment."
             else ->
-                "Gemini request failed (HTTP $status)."
+                providerErrorMessage("Gemini", status, rawMsg)
         }
         return Completion.failure(userMessage)
     }
@@ -184,7 +195,7 @@ internal fun geminiAnswer(status: Int, body: String): Completion {
         ?.takeIf { it.isNotBlank() }
         ?: return Completion.failure(
             if (candidate?.finishReason == "SAFETY") {
-                "Gemini blocked this phrase due to safety filters. Try rephrasing or use another provider."
+                "Gemini's safety filter blocked this text. Try other words, or pick another provider in Settings."
             } else {
                 "Gemini returned an empty answer. Try again or pick another model."
             }

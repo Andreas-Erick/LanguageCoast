@@ -192,6 +192,43 @@ class PersonalIslandBuilderTest {
     }
 
     @Test
+    fun aRateLimitIsWaitedOutInsteadOfEndingTheRun() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        settings.setPersonalAnswer("pets_which", "a cat called Milo")
+        var asked = 0
+        translator.completionFor = { prompt ->
+            asked++
+            when {
+                // The provider's per-minute limit is used up when the first request arrives.
+                asked == 1 -> Completion.busy("Gemini rate limit or quota reached. Wait a moment or switch to another provider.", retryAfterSeconds = 15)
+                "language island" in prompt -> Completion("1 || I have a cat. || Ich habe eine Katze.")
+                else -> Completion("NONE")
+            }
+        }
+
+        builder.run(1, orders("pets"))
+
+        assertEquals(listOf("I have a cat."), flashcards.cards.value.map { it.nativeText })
+        assertNull(builder.progress.value!!.error)
+        // The refused request went out again unchanged after the wait.
+        assertEquals(translator.prompts[0], translator.prompts[1])
+    }
+
+    @Test
+    fun aKeyWithoutPermissionWritesNothingAndSaysSo() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        settings.setPersonalAnswer("pets_which", "a cat called Milo")
+        settings.aiSharingAllowed.value = emptySet()
+
+        builder.run(1, orders("pets"))
+
+        // The answers about the user stay on the phone until the user has allowed sending text to the provider.
+        assertEquals("Allow Language Coast to send text to Gemini first. You can do that under Settings.", builder.progress.value?.error)
+        assertTrue(translator.prompts.isEmpty())
+        assertTrue(flashcards.cards.value.isEmpty())
+    }
+
+    @Test
     fun whatWasWrittenAndWhatWasKeptCanBeLookedOverAndRemoved() = runTest {
         flashcards.seedCoast(coastId = 1, language = "German")
         val viewModel = coastViewModel(coastId = 1)

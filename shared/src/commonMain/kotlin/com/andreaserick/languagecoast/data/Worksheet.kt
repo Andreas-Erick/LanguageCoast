@@ -14,18 +14,34 @@ import kotlin.time.Clock
 
 /*
  * The practice sheet: new sentences to translate, written by the AI provider from the cards of one coast
- * and laid out as a PDF (see [WorksheetPrinter]). A sentence is to make sense first: something a person
- * would say in the situation of one island, built from that island's cards, with at most
- * [WORKSHEET_NEW_WORDS] word the coast doesn't have where it needs one. The prompt carries the cards and
- * says so, and of the sentences that come back the ones that stray further from the cards' words are the
- * first to be left out (see [CoastVocabulary]).
+ * and laid out as a PDF (see [WorksheetPrinter]).
+ *
+ * Every sentence is built from one card the learner is forgetting ([WorksheetAnchor]): the prompt names the
+ * card, and the model says something new with its key word or phrase, as a question, about someone else,
+ * with a reason. That is the step from a memorised line to using it, and it gives the model a small, clear
+ * job. What a sentence must be comes in the order it matters: correct and natural first, a faithful
+ * translation second, the right length third, the learner's own words fourth. An earlier version put the words first ("only the
+ * cards' words, and one more") and got sentences nobody would say, from the best models most of all, since
+ * they keep to a rule. Measured on five coasts in four languages and graded blind, the new order took a top
+ * model's sheets from one sentence in nine with something to mark to none in sixty.
+ *
+ * What comes back is read line by line, lines that can't be a sentence pair are dropped, and when the model
+ * wrote some to spare, the ones left out are the copies of a card, the near-repeats and the ones furthest
+ * from the coast's words (see [pickWorksheetSentences] and [CoastVocabulary]). Words a sentence needed that
+ * are on no card are printed under it as word help.
  */
 
-/** How hard a practice sheet's sentences are. */
-enum class WorksheetDifficulty(val label: String, val hint: String) {
-    Easy("Easy", "Short sentences that stay close to your cards."),
-    Medium("Medium", "An island's words put together into new everyday sentences."),
-    Hard("Hard", "Longer sentences that say two things about one situation.")
+/**
+ * How hard a practice sheet's sentences are.
+ *
+ * @property words How long a sentence is to be, in words; the prompt says so and the pick checks it.
+ * @property newWords How many words that are on no card a sentence may bring before it counts as straying.
+ */
+enum class WorksheetDifficulty(val label: String, val hint: String, internal val words: IntRange, internal val newWords: Int) {
+    Easy("Easy", "Short sentences that stay close to your cards.", 3..7, 1),
+    Medium("Medium", "Your cards turned into new everyday sentences: questions, negations, other people.", 5..10, 2),
+    // Measured before 3.1.0: a small model bolts a reason onto a question ("Where is the station, because my train leaves?").
+    Hard("Hard", "Longer sentences that add a reason, a condition or a contrast. Small models write these less naturally.", 9..16, 2)
 }
 
 /** Which way a practice sheet is translated. */
@@ -81,14 +97,36 @@ fun worksheetRequests(count: Int, isLocal: Boolean): Int {
 const val WORKSHEET_MIN_CARDS = 5
 
 /**
- * Words a sheet's sentence may use that are on none of the coast's cards. Without any, a small coast only
- * has odd sentences in it; with one, a sentence can be made to mean something. [buildWorksheetPrompt] says
- * the number in words.
+ * Words an easy sheet's sentence may use that are on none of the coast's cards before it counts as straying
+ * from them; a harder sheet's may use more ([WorksheetDifficulty.newWords]). The prompt sets no number: a
+ * sentence takes the words it needs to be natural, and lists them.
  */
 const val WORKSHEET_NEW_WORDS = 1
 
-/** One sentence of a practice sheet, in the coast's language and in the user's. */
-data class WorksheetSentence(val targetText: String, val nativeText: String)
+/** Word help is printed for at most this many words of a sentence; more would give the exercise away. */
+const val WORKSHEET_WORD_HELP = 3
+
+/** A word of a sheet's sentence that is on none of the learner's cards, and what it means. */
+data class WordHelp(val word: String, val meaning: String)
+
+/**
+ * One sentence of a practice sheet, in the coast's language and in the user's.
+ *
+ * @property card The card it was built from, when the prompt named one; the answer key shows it.
+ * @property newWords The words in it that the learner hasn't met, printed under the sentence.
+ * @property hint How the user's-language side is meant where it could be translated two ways ("formal",
+ *     "to a friend"); shown after the sentence when it is the one to translate.
+ */
+data class WorksheetSentence(
+    val targetText: String,
+    val nativeText: String,
+    val card: WorksheetCard? = null,
+    val newWords: List<WordHelp> = emptyList(),
+    val hint: String? = null
+) {
+    /** The island it practises, when it was built from a card. */
+    val island: String? get() = card?.island
+}
 
 /**
  * A practice sheet, ready to be drawn.
@@ -112,9 +150,47 @@ data class Worksheet(
     val fromLanguage: String get() = if (options.direction == WorksheetDirection.ToTarget) nativeLanguage else targetLanguage
     val toLanguage: String get() = if (options.direction == WorksheetDirection.ToTarget) targetLanguage else nativeLanguage
 
-    /** What sentence [sentence] shows on the sheet, and what the answer key gives for it. */
-    fun question(sentence: WorksheetSentence): String = if (options.direction == WorksheetDirection.ToTarget) sentence.nativeText else sentence.targetText
-    fun answer(sentence: WorksheetSentence): String = if (options.direction == WorksheetDirection.ToTarget) sentence.targetText else sentence.nativeText
+    /**
+     * What sentence [sentence] shows on the sheet, and what the answer key gives for it. A sentence in the
+     * user's language that could be translated two ways carries its hint: "Where are you from? (formal)".
+     * The bracket stays with that side when it is the answer, too: it is part of what the model wrote there.
+     */
+    fun question(sentence: WorksheetSentence): String = when (options.direction) {
+        WorksheetDirection.ToTarget -> withHint(sentence)
+        WorksheetDirection.ToNative -> sentence.targetText
+    }
+    fun answer(sentence: WorksheetSentence): String = when (options.direction) {
+        WorksheetDirection.ToTarget -> sentence.targetText
+        WorksheetDirection.ToNative -> withHint(sentence)
+    }
+
+    private fun withHint(sentence: WorksheetSentence): String = sentence.nativeText + (sentence.hint?.let { " ($it)" } ?: "")
+
+    /** The line of word help under [sentence], "besuchen = to visit · bar = in cash", or null when it needs none. */
+    fun wordHelp(sentence: WorksheetSentence): String? =
+        sentence.newWords.takeIf { it.isNotEmpty() }?.joinToString(" · ") { "${it.word} = ${it.meaning}" }
+
+    /** The card [sentence] was built from, as the answer key shows it under the answer; null when it had none. */
+    fun cardLine(sentence: WorksheetSentence): String? =
+        sentence.card?.let { "Your card: ${shortened(it.targetText, CARD_SIDE)} = ${shortened(it.nativeText, CARD_SIDE)}" }
+
+    /**
+     * What the sheet practises, for its first page: "Built from your cards on Restaurant (4), Directions (3)
+     * and Small Talk (3)." Null when the sentences came without cards, or the coast has a single island.
+     */
+    val focusLine: String?
+        get() {
+            val shares = sentences.mapNotNull { it.island }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }
+            if (shares.isEmpty() || islandCount <= 1) return null
+            val named = shares.take(FOCUS_ISLANDS).map { "${it.key} (${it.value})" }
+            val more = shares.size - named.size
+            val listed = when {
+                more > 0 -> named.joinToString(", ") + " and ${if (more == 1) "1 more island" else "$more more islands"}"
+                named.size == 1 -> named.single()
+                else -> named.dropLast(1).joinToString(", ") + " and " + named.last()
+            }
+            return "Built from your cards on $listed."
+        }
 
     /** A file name such as "german-coast-practice-2026-11-05.pdf". */
     val fileName: String
@@ -122,6 +198,14 @@ data class Worksheet(
             val coast = coastName.lowercase().map { if (it.isLetterOrDigit()) it else '-' }.joinToString("").replace(Regex("-+"), "-").trim('-')
             return "${coast.ifEmpty { "coast" }}-practice-$date.pdf"
         }
+
+    private companion object {
+        /** Islands the first page names before it says "and 3 more islands". */
+        const val FOCUS_ISLANDS = 4
+
+        /** A card's side longer than this is cut short under an answer; only an island of nothing but long cards has such a card. */
+        const val CARD_SIDE = 160
+    }
 }
 
 /** A practice sheet drawn as a PDF file in the app's cache. */
@@ -150,29 +234,71 @@ data class WorksheetCard(val island: String, val targetText: String, val nativeT
 /** How many of a prompt's sentences are to be about one island. */
 data class IslandQuota(val island: String, val sentences: Int)
 
-/** What one prompt of a sheet is made from: the cards it shows, and the islands its sentences are to be about. */
-internal class WorksheetDeal(val cards: List<WorksheetCard>, val quotas: List<IslandQuota>)
+/** A numbered line of a prompt: the card one sentence is to be built from. */
+data class WorksheetAnchor(val card: WorksheetCard)
 
-private fun levelRule(difficulty: WorksheetDifficulty): String = when (difficulty) {
-    WorksheetDifficulty.Easy ->
-        "Level: easy. Short sentences of 3 to 6 words with one simple clause. Stay close to the flashcards: take one and change a word or two for other words of its topic."
-    WorksheetDifficulty.Medium ->
-        "Level: medium. Sentences of 5 to 10 words that put words from several flashcards of one topic together. Mix statements, questions and negations."
-    WorksheetDifficulty.Hard ->
-        "Level: hard. Longer sentences of 9 to 16 words that say two things about one situation, in two clauses where the flashcards have a word to join them. " +
-            "Mix statements, questions and negations."
+/**
+ * What one prompt of a sheet is made from: the cards it shows, the cards its sentences are built from
+ * ([anchors], one per sentence), and how many of them are about which island.
+ */
+internal class WorksheetDeal(val cards: List<WorksheetCard>, val quotas: List<IslandQuota>, val anchors: List<WorksheetAnchor> = emptyList())
+
+/** [text], or its first [limit] characters and "…" when it is longer. */
+private fun shortened(text: String, limit: Int): String {
+    if (text.length <= limit) return text
+    val cut = text.take(limit)
+    // Not through the middle of an emoji, which is two characters to Kotlin.
+    return (if (cut.last().isHighSurrogate()) cut.dropLast(1) else cut).trimEnd() + "…"
+}
+
+/** A numbered line of the prompt shows this much of a card; the whole card is in the list above it. */
+private const val ANCHOR_LINE = 160
+
+/** How long and how built a sentence of [difficulty] is, as the prompt says it after "It is". */
+private fun lengthRule(difficulty: WorksheetDifficulty): String {
+    val words = "${difficulty.words.first} to ${difficulty.words.last} words"
+    return when (difficulty) {
+        WorksheetDifficulty.Easy -> "short and simple: $words in one clause"
+        WorksheetDifficulty.Medium -> "an everyday sentence of $words"
+        WorksheetDifficulty.Hard ->
+            "a longer sentence of $words in two parts that belong together (a reason, a condition, a contrast or a second step), never two unrelated things joined"
+    }
 }
 
 /**
- * The prompt that asks a model for [count] new sentences in [targetLanguage] built from [cards], each with
- * its translation into [nativeLanguage]. Its rules come in the order they matter: a sentence must make
- * sense, keep to one island's topic and use the cards' words, with [WORKSHEET_NEW_WORDS] new word allowed
- * so that the first rule never loses to the third.
+ * What a sheet of [difficulty] asks the model to do with a card, besides saying something new with it. An
+ * easy sheet asks for nothing more. The model picks the change that suits each card: one it is handed can
+ * be the one that card takes badly ("lovely" doesn't negate well), and a small model then writes the odd
+ * sentence anyway.
+ */
+private fun changeRule(difficulty: WorksheetDifficulty): String = when (difficulty) {
+    WorksheetDifficulty.Easy -> ""
+    WorksheetDifficulty.Medium ->
+        " Do something different with the flashcard each time: ask a question with it, say what is not the case, say it about someone else " +
+            "(he, she, we or they), or add a time or a place. For each line pick the change that gives the most natural sentence, and vary the changes over the exercise."
+    WorksheetDifficulty.Hard ->
+        " Give each sentence a second part that belongs to the first: a reason (because), a condition (if, when), a contrast (but, although) or " +
+            "what happens next. For each line pick the one that fits the flashcard best, and vary them over the exercise."
+}
+
+/**
+ * The prompt that asks a model for new sentences in [targetLanguage] built from [cards], each with its
+ * translation into [nativeLanguage]: one sentence for each of [anchors], the cards the sheet practises, or
+ * [count] sentences spread over the islands when there are none.
+ *
+ * What a sentence must be comes most important first: correct and natural, a faithful translation, the
+ * right length, and only then the learner's own words, so a model never bends a sentence to fit the cards.
  *
  * @param cards The coast's cards (or some of its islands, when there are too many), island by island.
  * @param region Where the language will be used, so the sentences use that place's words; null for no preference.
  * @param avoid Sentences in [targetLanguage] already written for this sheet, when asking for more.
- * @param quotas How many of the sentences are to be about which island, adding up to [count]; none to leave the spread to the model.
+ * @param quotas Without [anchors]: how many of the sentences are to be about which island, adding up to [count].
+ * @param level The level the learner has reached on the coast's route, or null when the route says nothing about them.
+ * @param wording How the learner speaks of themselves, so "I am tired" comes out in the right gender.
+ * @param direction Which side the learner is given: for [WorksheetDirection.ToTarget] a sentence that could be
+ *     translated two ways gets a hint.
+ * @param wordHelp Whether to ask for the words that are on no card, to print under the sentence. A small local
+ *     model does better without a fourth field.
  */
 fun buildWorksheetPrompt(
     cards: List<WorksheetCard>,
@@ -182,70 +308,186 @@ fun buildWorksheetPrompt(
     difficulty: WorksheetDifficulty,
     region: String? = null,
     avoid: List<String> = emptyList(),
-    quotas: List<IslandQuota> = emptyList()
+    quotas: List<IslandQuota> = emptyList(),
+    anchors: List<WorksheetAnchor> = emptyList(),
+    level: Level? = null,
+    wording: Wording = Wording.Unspecified,
+    direction: WorksheetDirection = WorksheetDirection.ToTarget,
+    wordHelp: Boolean = true
 ): String {
     val byIsland = cards.groupBy { it.island }
     val flashcards = byIsland.entries.joinToString("\n\n") { (island, group) ->
         "[$island]\n" + group.joinToString("\n") { "${it.targetText} = ${it.nativeText}" }
     }
-    val spread = when {
-        quotas.isEmpty() -> "Spread the sentences over the topics."
-        // In words and without the brackets of the topics' headings: a small model copies brackets into its
-        // answer, whose format has brackets of its own.
-        else -> {
-            val shares = quotas.map { "${it.sentences} about ${it.island}" }
-            val listed = if (shares.size == 1) shares.single() else shares.dropLast(1).joinToString(", ") + " and " + shares.last()
-            "Of the sentences, write $listed." +
-                if (byIsland.keys.any { island -> quotas.none { it.island == island } }) " The other topics get no sentence of their own this time." else ""
-        }
-    }
     val where = region?.trim()?.takeIf { it.isNotEmpty() }?.let { " from $it" } ?: ""
-    // Raw strings don't process escapes, so the rule's line break (with the raw string's indent) is built outside it.
-    val avoidRule = if (avoid.isEmpty()) "" else "\n        8. Do not repeat any of these, which are already on the sheet: " + avoid.joinToString(" | ")
-    val sentences = if (count == 1) "1 new $targetLanguage sentence" else "$count new $targetLanguage sentences"
-    // The flashcards are joined on afterwards: trimIndent would trip over their unindented lines.
+    val levelClause = level?.let { " and their level is about ${it.label}" } ?: ""
+    // The flashcards and the numbered lines are joined on afterwards: trimIndent would trip over their unindented lines.
     val intro = """
-        You are a $targetLanguage teacher writing a translation exercise for one learner, whose native language is $nativeLanguage.
+        You are a native $targetLanguage speaker$where who teaches $targetLanguage to adults. You are writing a translation exercise for one learner. Their native language is $nativeLanguage$levelClause.
 
-        The flashcards below are what the learner knows of $targetLanguage so far. They are grouped by topic, one per line, as "$targetLanguage = $nativeLanguage":
+        These are the learner's flashcards, grouped by topic, one per line, as "$targetLanguage = $nativeLanguage":
     """.trimIndent()
-    val task = """
-        Write $sentences for the learner to translate, each with its $nativeLanguage translation.
 
-        Rules:
-        1. Every sentence must make sense: something a real person would say or hear in an everyday situation. If you can't picture who would say it and when, write a different sentence.
-        2. Every sentence belongs to one topic and fits that topic's situation. Build it from that topic's flashcards; small everyday words (pronouns, articles, "and", "not", "very") may come from any flashcard. Never put words from unrelated topics together just to make a sentence new. $spread
-        3. Build the sentences from the $targetLanguage words on the flashcards. A word may take another form of itself (a verb for another person, a noun in the plural or in another case, an adjective that agrees), and names and numbers are allowed. Where a sentence needs it to make sense or to sound natural, it may also use one common, simple word that is not on the flashcards; never more than one, and never a rare word.
-        4. Use only grammar the flashcards show: their tenses and their constructions.
-        5. Every sentence must be new: different from every flashcard and from the other sentences. Never copy a flashcard.
-        6. ${levelRule(difficulty)}
-        7. Every sentence must be correct, natural $targetLanguage that a native speaker$where would say, and its $nativeLanguage translation must be exact and natural.$avoidRule
+    val task: String
+    val lines: String
+    if (anchors.isNotEmpty()) {
+        task = "Write one new $targetLanguage sentence for each numbered line below, with its $nativeLanguage translation. " +
+            "A line names a topic and one of the flashcards. " +
+            "The sentence must use that flashcard's key word or phrase, in whatever form the sentence needs, and say something new with it: " +
+            "something that really is said in that topic's situation." +
+            changeRule(difficulty)
+        // In words and without the brackets of the topics' headings: a small model copies brackets into its answer.
+        lines = "\n\n" + anchors.withIndex().joinToString("\n") { (index, anchor) ->
+            "${index + 1}. ${anchor.card.island}: ${shortened(anchor.card.targetText, ANCHOR_LINE)}"
+        }
+    } else {
+        val spread = when {
+            quotas.isEmpty() -> "Spread the sentences over the topics."
+            else -> {
+                val shares = quotas.map { "${it.sentences} about ${it.island}" }
+                val listed = if (shares.size == 1) shares.single() else shares.dropLast(1).joinToString(", ") + " and " + shares.last()
+                "Of the sentences, write $listed." +
+                    if (byIsland.keys.any { island -> quotas.none { it.island == island } }) " The other topics get no sentence of their own this time." else ""
+            }
+        }
+        val sentences = if (count == 1) "1 new $targetLanguage sentence" else "$count new $targetLanguage sentences"
+        task = "Write $sentences for the learner to translate, each with its $nativeLanguage translation. " +
+            "Each sentence takes a word or phrase from one topic's flashcards and says something new with it: something that really is said in that topic's situation. " +
+            spread + changeRule(difficulty)
+                .replace("For each line", "For each sentence")
+                .replace("with the flashcard each time", "with the word or phrase each time")
+                .replace("fits the flashcard best", "fits the word or phrase best")
+        lines = ""
+    }
 
-        Write EXACTLY one line per sentence and nothing else, in this format:
-        [sentence in $targetLanguage] || [translation in $nativeLanguage]
-    """.trimIndent()
-    return "$intro\n\n$flashcards\n\n$task"
+    // The difficulty sets the length and the level the words and grammar. Said as one ("it suits level A1: longer
+    // sentences of 9 to 16 words"), a hard sheet for a beginner would contradict itself.
+    val suits = if (level != null) "Its words and grammar suit level ${level.label}." else "Its words and grammar suit the learner, whose level the flashcards show."
+    val notes = buildList {
+        speakerRule(wording, targetLanguage).takeIf { it.isNotEmpty() }?.let { add(it) }
+        if (direction == WorksheetDirection.ToTarget) {
+            add(
+                "- Where the $nativeLanguage line could fairly be translated in more than one way (formal or informal \"you\", one person or several), " +
+                    "end it with a short hint in round brackets, " +
+                    // The examples are English; a learner who reads another language gets the hint in theirs.
+                    if (nativeLanguage == "English") "such as (formal) or (to a friend)."
+                    else "written in $nativeLanguage: what (formal) or (to a friend) would be in $nativeLanguage."
+            )
+        }
+        if (avoid.isNotEmpty()) add("- Do not repeat any of these, which are already in the exercise: " + avoid.joinToString(" | "))
+    }
+    val newWords = if (wordHelp) "; list them after the translation" else ""
+    val rules = """
+        What matters, most important first:
+        1. The $targetLanguage sentence is correct and natural: what a native speaker$where would really say, with every ending, article, case, preposition and the word order right. Picture who says it, to whom and when. If a sentence only exists to reuse a word, write a different one.
+        2. The $nativeLanguage line says the same thing the way a native speaker of $nativeLanguage would say it: the same meaning, person, tense and politeness, nothing added and nothing dropped, and not word for word where that sounds odd.
+        3. It is ${lengthRule(difficulty)}. $suits
+        4. It leans on what the learner knows. Prefer words and patterns from the flashcards. Other words are welcome where the sentence needs them, as long as they are common, everyday words$newWords.
+        5. No two sentences are the same or differ by a single word, and none repeats a flashcard.
+    """.trimIndent() + notes.joinToString("") { "\n$it" }
+
+    val number = if (anchors.isNotEmpty()) "[number] || " else ""
+    val words =
+        if (wordHelp) {
+            " || [the $targetLanguage words that are not on the flashcards, each with its $nativeLanguage meaning, " +
+                "as \"word = meaning; word = meaning\", or - if there are none]"
+        } else ""
+    val format = "Answer with exactly one line per ${if (anchors.isNotEmpty()) "number" else "sentence"} and nothing else, in this format:\n" +
+        "$number[$targetLanguage sentence] || [$nativeLanguage translation]$words"
+
+    return "$intro\n\n$flashcards\n\n$task$lines\n\n$rules\n\n$format"
 }
 
 /**
- * Parses a model's reply to [buildWorksheetPrompt]: one sentence per line, the coast's language first, then
- * `||` and the translation. Numbering, bullets, markdown and the prompt's brackets are tolerated; lines
- * without both parts are dropped, as are repeats.
+ * Parses a model's reply to [buildWorksheetPrompt]: one sentence per line, as `number || sentence ||
+ * translation || new words`. The number says which of [anchors] the sentence was built from. A model that
+ * drops the number, the new words or both is still read (`sentence || translation`), as are numbering with
+ * a dot, bullets, markdown and the prompt's brackets. Lines that can't be a sentence pair are dropped: one
+ * side missing, both sides the same, or the format line itself; so are repeats.
  */
-fun parseWorksheetResponse(text: String): List<WorksheetSentence> =
+fun parseWorksheetResponse(text: String, anchors: List<WorksheetAnchor> = emptyList()): List<WorksheetSentence> =
     text.replace("```", "").replace("**", "").lines()
-        .map { it.trim().replace(LINE_MARKER, "") }
+        .map { it.trim() }
         .filter { it.contains("||") }
-        .mapNotNull { line ->
-            val parts = line.split("||").map { unwrapped(it.trim()) }
-            val target = parts[0]
-            val native = parts.getOrNull(1).orEmpty()
-            if (target.isEmpty() || native.isEmpty()) null else WorksheetSentence(target, native)
-        }
+        .mapNotNull { line -> parseWorksheetLine(line, anchors) }
         .distinctBy { normalizedWords(it.targetText) }
 
-/** "1." or "-" at the start of a line. */
-private val LINE_MARKER = Regex("^(?:[-*•]|\\d+[.)])\\s*")
+private fun parseWorksheetLine(line: String, anchors: List<WorksheetAnchor>): WorksheetSentence? {
+    var parts = line.split("||").map { unwrapped(it.trim()) }
+    var number: Int? = null
+    // A model that answers as a list puts a bullet before the number: "- 3 || sentence || translation".
+    val first = unwrapped(parts[0].replace(BULLET, "").trim())
+    val alone = NUMBER_ALONE.matchEntire(first)
+    val leading = NUMBER_LEADING.matchEntire(first)
+    when {
+        // "3 || sentence || translation"
+        alone != null -> {
+            number = alone.groupValues[1].toIntOrNull()
+            parts = parts.drop(1)
+        }
+        // "3. sentence || translation"
+        leading != null -> {
+            number = leading.groupValues[1].toIntOrNull()
+            parts = listOf(unwrapped(leading.groupValues[2].trim())) + parts.drop(1)
+        }
+        else -> parts = listOf(first) + parts.drop(1)
+    }
+    val target = parts.getOrNull(0).orEmpty()
+    var native = parts.getOrNull(1).orEmpty()
+    if (target.isEmpty() || native.isEmpty()) return null
+    // A hint for the learner at the end of their own language's side: "Where are you from? (formal)".
+    val hinted = HINT.matchEntire(native)
+    val hint = hinted?.groupValues?.get(2)?.trim()
+    // A small model sets the hint off with a slash and quotes the sentence before it: "Where are you from?" / (formal).
+    if (hinted != null) native = unwrapped(hinted.groupValues[1].trim().trimEnd('/').trim())
+    if (native.isEmpty() || isBroken(target, native)) return null
+    val card = number?.let { anchors.getOrNull(it - 1) }?.card
+    return WorksheetSentence(target, native, card = card, newWords = parseWordHelp(parts.getOrNull(2).orEmpty()), hint = hint)
+}
+
+/**
+ * Whether a parsed line can't be a sentence with its translation: the model sent the format line back, wrote
+ * the same text on both sides (it didn't translate), or left the prompt's own marks in ("=" between two
+ * sides belongs to the flashcards, not to a sentence).
+ */
+private fun isBroken(target: String, native: String): Boolean {
+    val words = normalizedWords(target)
+    if (words.size >= SAME_SIDES_WORDS && words == normalizedWords(native)) return true
+    if (FORMAT_ECHO.containsMatchIn(target) || FORMAT_ECHO.containsMatchIn(native)) return true
+    // The format line itself, its brackets gone: "number || German sentence || English translation".
+    if (target.equals("number", ignoreCase = true)) return true
+    if (target.endsWith(" sentence", ignoreCase = true) && native.endsWith(" translation", ignoreCase = true)) return true
+    return " = " in target || " = " in native
+}
+
+/** "besuchen = to visit; bar = in cash" as word help; "-", "none" or anything without "=" is none. */
+private fun parseWordHelp(text: String): List<WordHelp> =
+    text.split(';').mapNotNull { entry ->
+        val word = entry.substringBefore('=', "").trim().trim('"', '“', '”', '„')
+        val meaning = entry.substringAfter('=', "").trim().trim('"', '“', '”', '„')
+        if (word.isEmpty() || meaning.isEmpty() || word.length > WORD_HELP_LENGTH || meaning.length > WORD_HELP_LENGTH) null else WordHelp(word, meaning)
+    }
+
+/** "12", "[12]", "(12)", "#12", "12." or "12:" alone in the first field. */
+private val NUMBER_ALONE = Regex("^[\\[(#]?\\s*(\\d{1,3})\\s*[\\])]?[.):]?$")
+
+/** "12. Sentence" or "12) Sentence" in the first field. */
+private val NUMBER_LEADING = Regex("^\\[?(\\d{1,3})\\]?[.)]\\s+(.+)$")
+
+/** "-" or "*" at the start of a line. */
+private val BULLET = Regex("^[-*•]\\s*")
+
+/** A sentence followed by a short note in round brackets, or in the wide ones Chinese and Japanese are written with. */
+private val HINT = Regex("^(.*\\S)\\s*[(（]([^()（）]{2,40})[)）]$")
+
+/** The prompt's own placeholders, sent back as if they were a sentence. */
+private val FORMAT_ECHO = Regex("^(?:sentence in|translation in|the (?:\\S+ )?words that are not)\\b", RegexOption.IGNORE_CASE)
+
+/** From this many words on, two sides that read the same are a line the model didn't translate. */
+private const val SAME_SIDES_WORDS = 3
+
+/** A word or a meaning longer than this isn't one: the model wrote a sentence into the field. */
+private const val WORD_HELP_LENGTH = 40
 
 /** `[Hello]` or `"Hello"` -> `Hello`, in case the model copied the prompt's brackets or quoted the sentence. */
 private fun unwrapped(value: String): String = when {
@@ -295,13 +537,37 @@ class CoastVocabulary(texts: List<String>) {
     }
 
     /**
-     * Whether [sentence] keeps to the coast's words, the [WORKSHEET_NEW_WORDS] new word a sheet's sentence may
-     * bring aside. In a script without spaces a new word shows as its characters, mostly two of them.
+     * Whether [sentence] keeps to the coast's words, the [newWords] new ones a sheet's sentence may bring
+     * aside. In a script without spaces a new word shows as its characters, mostly two of them.
      */
-    fun keepsToCoast(sentence: String): Boolean {
+    fun keepsToCoast(sentence: String, newWords: Int = WORKSHEET_NEW_WORDS): Boolean {
         val unknown = unknownWords(sentence)
         val perWord = if (unknown.all { it.length == 1 && writtenWithoutSpaces(it[0]) }) CHARACTERS_PER_NEW_WORD else 1
-        return unknown.size <= WORKSHEET_NEW_WORDS * perWord
+        return unknown.size <= newWords * perWord
+    }
+
+    /**
+     * The entries of [help] worth printing under [sentence]: the word is in the sentence, in some form, and
+     * on none of the coast's cards. A model also lists small words the learner has ("nicht = not"), and now
+     * and then a word that isn't in the sentence; neither helps. At most [WORKSHEET_WORD_HELP] are kept.
+     */
+    fun wordHelp(sentence: String, help: List<WordHelp>): List<WordHelp> {
+        if (help.isEmpty()) return help
+        val inSentence = normalizedWords(sentence)
+        val written = sentence.lowercase()
+        return help
+            .filter { entry ->
+                normalizedWords(entry.word).any { word ->
+                    // A model lists a Japanese verb in its dictionary form ("遅れる"); the sentence has it with another ending ("遅れています").
+                    if (word.any(::writtenWithoutSpaces)) {
+                        val inSentence = word in written || word.length > 1 && word.last() in '\u3040'..'\u309F' && word.dropLast(1) in written
+                        inSentence && word.any { writtenWithoutSpaces(it) && it !in characters }
+                    }
+                    else !isKnown(word) && inSentence.any { isSameWord(it, word) }
+                }
+            }
+            .distinctBy { normalizedWords(it.word) }
+            .take(WORKSHEET_WORD_HELP)
     }
 
     private fun isKnown(word: String): Boolean {
@@ -325,6 +591,15 @@ class CoastVocabulary(texts: List<String>) {
 
         fun stemLength(length: Int, share: Double): Int = maxOf(MIN_STEM, (length * share + 0.999).toInt()).coerceAtMost(length)
 
+        /** Whether [a] and [b] are one word in two forms ("liegen", "liegt"): they start alike for most of the shorter one. */
+        fun isSameWord(a: String, b: String): Boolean {
+            if (a == b) return true
+            val shorter = minOf(a.length, b.length)
+            // Korean writes a syllable as one character, so a noun is often two of them, with its particle attached: "학교", "학교에".
+            if (shorter < MIN_STEM) return shorter == 2 && a[0] in '\uAC00'..'\uD7A3' && (a.startsWith(b) || b.startsWith(a))
+            return a.commonPrefixWith(b).length >= stemLength(shorter, STEM_SHARE)
+        }
+
         /** Chinese, Japanese, Thai, Lao, Khmer and Burmese write sentences without spaces between words. */
         fun writtenWithoutSpaces(char: Char): Boolean =
             char in '\u0E00'..'\u0EFF' || char in '\u1000'..'\u109F' || char in '\u1780'..'\u17FF' ||
@@ -333,17 +608,24 @@ class CoastVocabulary(texts: List<String>) {
 }
 
 /**
- * The [count] sentences of [candidates] that keep closest to the coast's cards, in the order the model
- * wrote them. Copies of a card ([known], the cards' translations) are the last resort, then come the
- * sentences with the largest share of words the coast doesn't have. The one new word a sentence may bring
- * ([CoastVocabulary.keepsToCoast]) doesn't count against it: a sentence that needed one to make sense is
- * as good as one that needed none.
+ * The [count] sentences of [candidates] that make the best sheet, in the order the model wrote them. When
+ * there are some to spare, the first to go are copies of a card ([known], the cards' translations). Then
+ * come the sentences with something against them: far more words the coast doesn't have than a sentence of
+ * [difficulty] may bring ([CoastVocabulary.keepsToCoast]), a length well outside what the difficulty
+ * promises, or a question on one side and not on the other. Among the rest, a sentence that says nearly the
+ * same as one already taken ("Where is the bus?" after "Where is the station?") waits until the others
+ * are in: a sheet of one pattern over and over teaches little.
+ *
+ * None of this drops a sentence that the sheet needs to reach [count]; it only decides which ones stay out.
+ *
+ * @param difficulty What the sheet asked for; null to judge by the coast's words alone.
  */
 fun pickWorksheetSentences(
     candidates: List<WorksheetSentence>,
     vocabulary: CoastVocabulary,
     known: List<String>,
-    count: Int
+    count: Int,
+    difficulty: WorksheetDifficulty? = null
 ): List<WorksheetSentence> {
     if (candidates.size <= count) return candidates
     // Worked out once per sentence, not once per comparison: a long sheet from a large coast has hundreds.
@@ -353,15 +635,64 @@ fun pickWorksheetSentences(
     val written = words.toHashSet()
     val copies = HashSet<List<String>>()
     for (text in known) normalizedWords(text).let { if (it in written) copies += it }
-    class Ranked(val index: Int, val isCopy: Boolean, val strays: Double)
-    val best = candidates
+    val newWords = difficulty?.newWords ?: WORKSHEET_NEW_WORDS
+    class Ranked(val index: Int, val isCopy: Boolean, val faults: Double)
+    val ranked = candidates
         .mapIndexed { index, sentence ->
             val text = sentence.targetText
-            Ranked(index, words[index] in copies, if (vocabulary.keepsToCoast(text)) 0.0 else vocabulary.unknownShare(text))
+            val strays = if (vocabulary.keepsToCoast(text, newWords)) 0.0 else vocabulary.unknownShare(text)
+            Ranked(index, words[index] in copies, strays + lengthFault(text, words[index].size, difficulty) + questionFault(sentence))
         }
-        .sortedWith(compareBy({ it.isCopy }, { it.strays }, { it.index }))
-        .take(count)
-    return best.map { it.index }.sorted().map { candidates[it] }
+        .sortedWith(compareBy({ it.isCopy }, { it.faults }, { it.index }))
+    // Best first. A near-repeat of a sentence already taken waits until the other clean ones are in; ranked has
+    // the clean sentences first, so those waiting are the near-repeats, then the faulty ones, then the copies.
+    val taken = ArrayList<Int>(count)
+    val waiting = ArrayList<Int>()
+    val sets = HashMap<Int, Set<String>>()
+    fun wordSet(index: Int) = sets.getOrPut(index) { words[index].toHashSet() }
+    for (candidate in ranked) {
+        if (taken.size >= count) break
+        val waits = candidate.isCopy || candidate.faults > 0.0 || taken.any { isNearRepeat(wordSet(it), wordSet(candidate.index)) }
+        if (waits) waiting += candidate.index else taken += candidate.index
+    }
+    for (index in waiting) if (taken.size >= count) break else taken += index
+    return taken.sorted().map { candidates[it] }
+}
+
+/** How much a sentence counts against itself for each thing wrong with its shape; a stray word counts by its share of the sentence. */
+private const val SHAPE_FAULT = 0.3
+
+/** A sentence may be this many words shorter or longer than its difficulty says before it counts as off. */
+private const val LENGTH_SLACK = 2
+
+/** Two sentences share this much of the shorter one's words: they differ by a word or two. */
+private const val NEAR_REPEAT = 0.75
+
+/** Sentences shorter than this have too few words for their overlap to mean anything. */
+private const val NEAR_REPEAT_WORDS = 3
+
+/** Whether [target]'s length is well outside what [difficulty] asks for. Scripts without spaces have no words to count. */
+private fun lengthFault(target: String, wordCount: Int, difficulty: WorksheetDifficulty?): Double {
+    if (difficulty == null || target.any { it in '\u3040'..'\u30FF' || it in '\u4E00'..'\u9FFF' || it in '\u0E00'..'\u0EFF' }) return 0.0
+    val range = difficulty.words
+    return if (wordCount < range.first - LENGTH_SLACK || wordCount > range.last + LENGTH_SLACK) SHAPE_FAULT else 0.0
+}
+
+/** Whether one side of [sentence] asks and the other doesn't, in scripts that mark a question with a question mark. */
+private fun questionFault(sentence: WorksheetSentence): Double {
+    fun asks(text: String) = text.trimEnd().trimEnd('"', '”', '»', ')', ' ').lastOrNull()?.let { it == '?' || it == '？' || it == '؟' } == true
+    val target = sentence.targetText
+    // Japanese, Chinese and Thai often end a question without one, and Greek uses ";": on either side.
+    if ((target + sentence.nativeText).any { it in '\u3040'..'\u30FF' || it in '\u4E00'..'\u9FFF' || it in '\u0E00'..'\u0EFF' || it in '\u0370'..'\u03FF' }) return 0.0
+    return if (asks(target) != asks(sentence.nativeText)) SHAPE_FAULT else 0.0
+}
+
+/** Whether two sentences, as their sets of words, say nearly the same: most of the shorter one's words are in the other. */
+private fun isNearRepeat(a: Set<String>, b: Set<String>): Boolean {
+    val shorter = minOf(a.size, b.size)
+    if (shorter < NEAR_REPEAT_WORDS) return false
+    val shared = if (a.size <= b.size) a.count { it in b } else b.count { it in a }
+    return shared >= shorter * NEAR_REPEAT
 }
 
 /**
@@ -369,7 +700,10 @@ fun pickWorksheetSentences(
  * prompt at most, in the coast's order.
  *
  * Every prompt is told which islands its sentences are to be about and how many each ([WorksheetDeal.quotas]):
- * the islands whose cards need practice most get the most, by the rules in `WorksheetFocus.kt`.
+ * the islands whose cards need practice most get the most, by the rules in `WorksheetFocus.kt`. And it is
+ * told which card each sentence is built from ([WorksheetDeal.anchors]): of an island's cards, the studied
+ * ones that need practice most come first, and no card is used twice on a sheet until its island has run
+ * out of others. The islands take turns down the list, so the sheet is mixed.
  *
  * A coast that fits is shown whole every time. A larger one, be it tens of thousands of cards, is shown
  * island by island: a sentence is built from one island's cards, so a prompt gets up to [perIsland] cards of
@@ -409,6 +743,9 @@ internal class WorksheetCardDealer(
     private val lastShown = IntArray(islands.size)
     private var prompts = 0
 
+    /** The cards a sentence of this sheet has been built from already. */
+    private val anchored = HashSet<Int>()
+
     /** How many islands the cards are on. */
     val islandCount: Int get() = islands.size
 
@@ -421,7 +758,11 @@ internal class WorksheetCardDealer(
         val named = LinkedHashMap<String, Int>()
         if (islands.size > 1) planned.sortedBy { islands[it].first() }.forEach { named[names[it]] = (named[names[it]] ?: 0) + quotas[it] }
         val islandQuotas = named.map { (island, count) -> IslandQuota(island, count) }
-        if (fitsWhole) return WorksheetDeal(lines, islandQuotas)
+        // An island's cards in this prompt's order, drawn once: its anchors are the first of the cards it shows.
+        val orders = HashMap<Int, List<Int>>()
+        fun order(island: Int) = orders.getOrPut(island) { inPickOrder(islands[island]) }
+        val inCoastOrder = planned.sortedBy { islands[it].first() }
+        if (fitsWhole) return WorksheetDeal(lines, islandQuotas, anchorsFor(inCoastOrder, quotas, ::order, shown = null, sentences))
 
         val picked = ArrayList<Int>(limit)
         val passedOver = ArrayList<Int>()
@@ -438,7 +779,7 @@ internal class WorksheetCardDealer(
         for (island in planned.sortedByDescending { quotas[it] } + others) {
             if (full()) break
             var taken = 0
-            for (index in inPickOrder(islands[island])) {
+            for (index in order(island)) {
                 if (taken < perIsland && take(index)) taken++ else passedOver += index
             }
             if (taken > 0) lastShown[island] = prompts
@@ -446,7 +787,59 @@ internal class WorksheetCardDealer(
         if (!full()) for (index in passedOver.shuffled(random)) if (full()) break else take(index)
         // Cards too long for any prompt: the shortest ones are still better than a prompt without cards.
         if (picked.isEmpty()) picked += sizes.indices.sortedBy { sizes[it] }.take(WORKSHEET_MIN_CARDS)
-        return WorksheetDeal(picked.sorted().map { lines[it] }, islandQuotas)
+        val shown = picked.toHashSet()
+        return WorksheetDeal(picked.sorted().map { lines[it] }, islandQuotas, anchorsFor(inCoastOrder, quotas, ::order, shown, sentences))
+    }
+
+    /**
+     * The cards a prompt's [sentences] sentences are built from: each of the [planned] islands' share
+     * ([quotas]), mixed. An island whose cards found no room in the prompt has none to give, so its
+     * sentences go to the islands that are shown, one at a time in turn.
+     */
+    private fun anchorsFor(planned: List<Int>, quotas: IntArray, order: (Int) -> List<Int>, shown: Set<Int>?, sentences: Int): List<WorksheetAnchor> {
+        val dealt = planned.map { anchorsOf(order(it), quotas[it], shown).toMutableList() }
+        val withCards = dealt.indices.filter { dealt[it].isNotEmpty() }
+        var turn = 0
+        while (withCards.isNotEmpty() && dealt.sumOf { it.size } < sentences) {
+            val at = withCards[turn++ % withCards.size]
+            dealt[at] += anchorsOf(order(planned[at]), 1, shown, already = dealt[at])
+        }
+        return anchors(dealt)
+    }
+
+    /**
+     * The [wanted] cards of one island that its sentences are built from, out of the island's cards in
+     * [order] (those that need practice most first). Cards the prompt doesn't show ([shown], null for all of
+     * them) and very long ones are passed over, and cards used on this sheet before come last: an island
+     * with fewer cards than sentences has them come round again.
+     *
+     * @param already The island's cards this prompt has been given before this call.
+     */
+    private fun anchorsOf(order: List<Int>, wanted: Int, shown: Set<Int>?, already: List<Int> = emptyList()): List<Int> {
+        val there = order.filter { shown == null || it in shown }
+        val usable = there.filter { sizes[it] <= ANCHOR_CHARACTERS }.ifEmpty { there }
+        if (usable.isEmpty()) return emptyList()
+        val picked = ArrayList<Int>(wanted)
+        // First the cards no sentence of this sheet was built from yet, then the ones this prompt doesn't have yet;
+        // only an island with fewer cards than the prompt wants sentences has a card twice in it.
+        for (index in usable) if (picked.size >= wanted) break else if (index !in anchored) picked += index
+        val inPrompt = (already + picked).toHashSet()
+        for (index in usable) if (picked.size >= wanted) break else if (inPrompt.add(index)) picked += index
+        while (picked.size < wanted) picked += usable[(already.size + picked.size) % usable.size]
+        anchored += picked
+        return picked
+    }
+
+    /** The islands' anchors as the prompt lists them: the islands take turns, so the sheet is mixed. */
+    private fun anchors(byIsland: List<List<Int>>): List<WorksheetAnchor> {
+        val mixed = ArrayList<WorksheetAnchor>()
+        var turn = 0
+        while (true) {
+            val before = mixed.size
+            for (island in byIsland) island.getOrNull(turn)?.let { mixed += WorksheetAnchor(lines[it]) }
+            if (mixed.size == before) return mixed
+            turn++
+        }
     }
 
     /**
@@ -466,6 +859,9 @@ internal class WorksheetCardDealer(
     private companion object {
         /** " = " and the line break around a card's two sides. */
         const val SEPARATOR_LENGTH = 4
+
+        /** A card longer than this (both sides) is a paragraph, not something to build one sentence from. */
+        const val ANCHOR_CHARACTERS = 160
 
         /**
          * A studied card's weight in a prompt's draw before its need is added: a card that needs all the
@@ -499,13 +895,15 @@ sealed interface WorksheetResult {
 /**
  * Writes a coast's practice sheet with the AI provider picked in Settings, a batch of sentences per request
  * ([worksheetRequests]), each request being told what is on the sheet already. It asks for a few sentences
- * more than the sheet needs and keeps the ones closest to the coast's words ([pickWorksheetSentences]). A
- * model that sends too few is asked again, but not forever: a small coast only has so many sentences in it,
- * so a long sheet can come out shorter than asked for.
+ * more than the sheet needs and leaves out the weakest ([pickWorksheetSentences]). A model that sends too
+ * few is asked again, but not forever: a small coast only has so many sentences in it, so a long sheet can
+ * come out shorter than asked for.
  *
- * What a sheet practises follows from how the coast's cards have been studied: every request is told how
- * many of its sentences to write about which island, and the islands whose cards are slipping or keep being
- * forgotten get the most (`WorksheetFocus.kt`).
+ * What a sheet practises follows from how the coast's cards have been studied: every sentence is built from
+ * one card, the islands whose cards are slipping or keep being forgotten get the most sentences
+ * (`WorksheetFocus.kt`), and of an island's cards the ones that need practice most come first
+ * ([WorksheetCardDealer]). The request also carries the level the learner has reached on the coast's route
+ * and how they speak of themselves (as a woman, as a man), as the other writing requests do.
  *
  * A coast of any size works: a prompt never carries more than a fixed number of cards and characters, of a
  * large coast it shows the islands its sentences are about ([WorksheetCardDealer]), and a local model, which
@@ -551,6 +949,12 @@ class WorksheetGenerator(
         }
 
         val nativeLanguage = settings.nativeLanguage.first()
+        val wording = settings.wording.first()
+        // The level only when the sheet's cards are mostly the route's: an imported deck says nothing about where
+        // its owner stands, and neither does one starter topic beside it.
+        val route = observeRoute(flashcards, settings, coastId, clock.now().toEpochMilliseconds()).first()
+        val routeIslands = route.levels.flatMap { it.stops }.filter { it.isOnCoast }.mapTo(HashSet()) { it.name }
+        val level = if (cards.count { it.islandName in routeIslands } * 2 >= cards.size) route.current.level else null
         val count = options.count.coerceIn(WORKSHEET_COUNT_RANGE)
         val isLocal = engine is TranslationEngine.LocalAi
         val (known, vocabulary, dealer) = withContext(background) {
@@ -587,7 +991,7 @@ class WorksheetGenerator(
         fun moreNeeded() = written.size < count || (requests < planned && written.size < wanted)
         while (moreNeeded() && requests < planned + EXTRA_REQUESTS && barren < MAX_BARREN_REQUESTS) {
             requests++
-            val prompt = withContext(background) {
+            val (prompt, anchors) = withContext(background) {
                 val asked = minOf(perRequest, wanted - written.size)
                 val deal = dealer.next(asked)
                 buildWorksheetPrompt(
@@ -599,8 +1003,14 @@ class WorksheetGenerator(
                     region = coast.region,
                     // Every repeat is dropped below anyway; the prompt names the latest ones, which a model repeats most readily.
                     avoid = written.takeLast(AVOID_LIMIT).map { it.targetText },
-                    quotas = deal.quotas
-                )
+                    quotas = deal.quotas,
+                    anchors = deal.anchors,
+                    level = level,
+                    wording = wording,
+                    direction = options.direction,
+                    // A small local model keeps to three fields better than to four.
+                    wordHelp = !isLocal
+                ) to deal.anchors
             }
             var completion = translator.complete(engine, prompt)
             // Turned away for now (the per-minute limit is used up, or the provider is overloaded): the same
@@ -621,7 +1031,9 @@ class WorksheetGenerator(
             waits = 0
             val fresh = withContext(background) {
                 val seen = written.mapTo(HashSet()) { normalizedWords(it.targetText) }
-                parseWorksheetResponse(text).filter { seen.add(normalizedWords(it.targetText)) }
+                parseWorksheetResponse(text, anchors)
+                    .filter { seen.add(normalizedWords(it.targetText)) }
+                    .map { it.copy(newWords = vocabulary.wordHelp(it.targetText, it.newWords)) }
             }
             if (fresh.isEmpty() && written.isEmpty()) lastError = "${provider.label}'s answer couldn't be read. Try again."
             barren = if (fresh.isEmpty()) barren + 1 else 0
@@ -629,7 +1041,7 @@ class WorksheetGenerator(
             onProgress(minOf(written.size, count))
         }
 
-        val sentences = withContext(background) { pickWorksheetSentences(written, vocabulary, known, count) }
+        val sentences = withContext(background) { pickWorksheetSentences(written, vocabulary, known, count, options.difficulty) }
         if (sentences.isEmpty()) return WorksheetResult.Failed(lastError ?: "${provider.label} sent no sentences. Try again.")
         return WorksheetResult.Ready(
             Worksheet(

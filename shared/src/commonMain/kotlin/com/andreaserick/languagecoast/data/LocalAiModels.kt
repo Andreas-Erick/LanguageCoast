@@ -17,24 +17,24 @@ expect class LocalAiTranslator() : Translator {
 /** Classification of a phone's capability for running on-device generative AI models. */
 enum class HardwareTier(val label: String, val badge: String, val summary: String) {
     COMPACT(
-        label = "Compact Device",
-        badge = "Entry AI",
-        summary = "Best suited for ultra-compact sub-1B quantized models running on the CPU."
+        label = "Fits small models",
+        badge = "Small",
+        summary = "This phone has the memory for the smallest models."
     ),
     MID_RANGE(
-        label = "Balanced Device",
-        badge = "Everyday AI",
-        summary = "Comfortably runs 0.6B–1.5B local models with fast response times."
+        label = "Fits mid-size models",
+        badge = "Mid-size",
+        summary = "This phone runs the small and mid-size models well."
     ),
     HIGH_END(
-        label = "High-Performance",
-        badge = "Pro AI Ready",
-        summary = "Great RAM headroom and processor capability for 1B–2B+ multilingual models."
+        label = "Fits large models",
+        badge = "Large",
+        summary = "This phone has the memory for the larger models too."
     ),
     FLAGSHIP(
-        label = "Flagship AI Device",
-        badge = "Ultra AI",
-        summary = "Top-tier memory and hardware acceleration — runs every local model smoothly."
+        label = "Fits every model",
+        badge = "All",
+        summary = "This phone runs every model on the list."
     )
 }
 
@@ -108,7 +108,7 @@ data class LocalAiModel(
         get() = formatGb(sizeMb)
 
     val minRamLabel: String
-        get() = "${formatGb(minRamMb)}+ RAM"
+        get() = "${formatGb(minRamMb)}+ memory"
 }
 
 /** Curated catalog of `.litertlm` models compatible with LiteRT-LM on Android. */
@@ -127,9 +127,9 @@ object LocalAiCatalog {
             minRamMb = 3_072L,
             recommendedRamMb = 4_096L,
             supportsGpu = true,
-            badge = "Fastest · Compact",
-            summary = "Ultra-lightweight multilingual model that loads in seconds and uses minimal battery and RAM.",
-            strengths = listOf("Instant responses", "Low memory footprint", "30+ languages")
+            badge = "Smallest and fastest",
+            summary = "The smallest model. It loads in seconds and is easy on memory and battery.",
+            strengths = listOf("Quick answers", "Needs little memory", "Many languages")
         ),
         LocalAiModel(
             id = "lfm2.5-1.2b",
@@ -142,7 +142,7 @@ object LocalAiCatalog {
             minRamMb = 4_096L,
             recommendedRamMb = 5_000L,
             supportsGpu = true,
-            badge = "Balanced · Multilingual",
+            badge = "Balanced",
             summary = "Built for phones: quick, frugal with memory and trained on many European and Asian languages.",
             strengths = listOf("Natural phrasing", "Fast on mid-range phones", "Small download")
         ),
@@ -157,9 +157,9 @@ object LocalAiCatalog {
             minRamMb = 4_500L,
             recommendedRamMb = 6_000L,
             supportsGpu = true,
-            badge = "Consistent · Reliable",
-            summary = "A step up in accuracy and island sorting while still fitting most phones.",
-            strengths = listOf("Strict format adherence", "Good at categories", "Many languages")
+            badge = "Reliable",
+            summary = "A step up in accuracy and in sorting cards onto islands, and it still fits most phones.",
+            strengths = listOf("Keeps to the format", "Good at sorting onto islands", "Many languages")
         ),
         LocalAiModel(
             id = "gemma3-1b-it",
@@ -172,9 +172,9 @@ object LocalAiCatalog {
             minRamMb = 4_096L,
             recommendedRamMb = 5_500L,
             supportsGpu = true,
-            badge = "Gated · Needs a token",
-            summary = "Google's compact instruction-tuned model. Gated on Hugging Face: accept its licence there and add a token below.",
-            strengths = listOf("Great island sorting", "Natural phrasing", "Balanced size"),
+            badge = "Needs a token",
+            summary = "A small model from Google. Hugging Face asks you to accept its licence first: do that there, then add a token below.",
+            strengths = listOf("Good at sorting onto islands", "Natural phrasing", "Balanced size"),
             gated = true
         ),
         LocalAiModel(
@@ -188,9 +188,9 @@ object LocalAiCatalog {
             minRamMb = 6_000L,
             recommendedRamMb = 7_500L,
             supportsGpu = true,
-            badge = "High Accuracy · Rich Nuance",
-            summary = "Google's flagship edge model for nuanced translations, idioms, and formal/informal alternatives.",
-            strengths = listOf("Nuanced alternatives", "GPU accelerated", "Deep grammar notes")
+            badge = "More accurate",
+            summary = "A larger model from Google. It is better with idioms and with formal and informal alternatives.",
+            strengths = listOf("Good alternatives", "Handles idioms", "Fuller notes")
         ),
         LocalAiModel(
             id = "phi-4-mini",
@@ -203,9 +203,9 @@ object LocalAiCatalog {
             minRamMb = 8_000L,
             recommendedRamMb = 11_000L,
             supportsGpu = true,
-            badge = "Flagship Quality",
-            summary = "Desktop-class reasoning and translation quality for flagship phones with 8 GB+ RAM.",
-            strengths = listOf("Near-cloud quality", "Complex sentences", "Rich usage notes")
+            badge = "Largest",
+            summary = "The largest model on the list, for phones with 8 GB of memory or more.",
+            strengths = listOf("Best quality on the list", "Long sentences", "Fuller notes")
         )
     )
 
@@ -214,10 +214,10 @@ object LocalAiCatalog {
 
 /** How well a [LocalAiModel] fits the scanned phone hardware. */
 enum class ModelFitLevel(val label: String) {
-    BEST_MATCH("Best Match for Your Phone"),
-    GREAT_FIT("Runs Smoothly"),
-    HEAVY_FIT("Playable · High RAM Use"),
-    NOT_RECOMMENDED("Hardware Too Limited")
+    BEST_MATCH("Best for this phone"),
+    GREAT_FIT("Runs well"),
+    HEAVY_FIT("Heavy for this phone"),
+    NOT_RECOMMENDED("Doesn't fit this phone")
 }
 
 /** A [LocalAiModel] paired with its hardware compatibility evaluation on the user's device. */
@@ -258,7 +258,8 @@ fun recommendModelsForHardware(
     val scored = catalog.map { model ->
         val requiredStorageMb = model.sizeMb + 250L // Leave 250 MB safety buffer
         val enoughStorage = profile.freeStorageMb >= requiredStorageMb
-        val backend = if (profile.gpuAccelerationSupported && model.supportsGpu) "GPU (OpenCL)" else "CPU"
+        // Models run on the processor. The graphics chip isn't used, so nothing here may say that it is.
+        val backend = "CPU"
         val estimatedWorkingSetMb = (model.sizeMb * 1.25).toLong()
 
         when {
@@ -266,15 +267,15 @@ fun recommendModelsForHardware(
                 model = model,
                 rawFit = ModelFitLevel.NOT_RECOMMENDED,
                 score = 5,
-                reason = "Requires a 64-bit ARM processor (arm64-v8a); this device uses ${profile.primaryAbi}.",
-                backend = "CPU",
+                reason = "Needs a 64-bit ARM processor, which this phone doesn't have.",
+                backend = backend,
                 enoughStorage = enoughStorage
             )
             !enoughStorage -> Scored(
                 model = model,
                 rawFit = ModelFitLevel.NOT_RECOMMENDED,
                 score = 15,
-                reason = "Needs ${model.sizeLabel} free space, but only ${profile.freeStorageGbText} is available.",
+                reason = "Needs ${model.sizeLabel} of free space. This phone has ${profile.freeStorageGbText} free.",
                 backend = backend,
                 enoughStorage = false
             )
@@ -282,7 +283,7 @@ fun recommendModelsForHardware(
                 model = model,
                 rawFit = ModelFitLevel.NOT_RECOMMENDED,
                 score = 20,
-                reason = "Requires at least ${formatGb(model.minRamMb)} RAM (your phone has ${profile.totalRamGbText}).",
+                reason = "Needs at least ${formatGb(model.minRamMb)} of memory. This phone has ${profile.totalRamGbText}.",
                 backend = backend,
                 enoughStorage = true
             )
@@ -290,7 +291,7 @@ fun recommendModelsForHardware(
                 model = model,
                 rawFit = ModelFitLevel.HEAVY_FIT,
                 score = 55 - ((model.recommendedRamMb - profile.totalRamMb).coerceAtLeast(0L) / 250L).toInt(),
-                reason = "Fits in ${profile.totalRamGbText} RAM (${profile.availableRamGbText} free now), though background apps may close while translating.",
+                reason = "Fits in this phone's ${profile.totalRamGbText} of memory (${profile.availableRamGbText} free right now), but other apps may close while it translates.",
                 backend = backend,
                 enoughStorage = true
             )
@@ -299,11 +300,7 @@ fun recommendModelsForHardware(
                 val closenessBonus = (35 - (distanceFromIdeal / 150L).toInt()).coerceIn(0, 35)
                 val gpuBonus = if (profile.gpuAccelerationSupported && model.supportsGpu) 10 else 0
                 val totalScore = (65 + closenessBonus + gpuBonus).coerceAtMost(99)
-                val reason = if (profile.gpuAccelerationSupported && model.supportsGpu) {
-                    "Tailored for your ${profile.totalRamGbText} RAM and ${profile.cpuCores}-core processor with OpenCL GPU acceleration."
-                } else {
-                    "Runs smoothly on your ${profile.cpuCores}-core CPU with plenty of headroom in ${profile.totalRamGbText} RAM."
-                }
+                val reason = "Runs well with this phone's ${profile.totalRamGbText} of memory."
                 Scored(
                     model = model,
                     rawFit = ModelFitLevel.GREAT_FIT,
@@ -361,8 +358,10 @@ interface LocalModelController {
      * Downloads and installs the `.litertlm` model with [modelId] into app storage.
      *
      * @param accessToken A Hugging Face token, needed for a [LocalAiModel.gated] model; otherwise ignored.
+     * @param allowMetered Whether the download may use mobile data (or another metered connection). Without
+     *     it the download only runs on Wi-Fi: it waits while there is none, and carries on when Wi-Fi is back.
      */
-    fun installModel(modelId: String, accessToken: String? = null)
+    fun installModel(modelId: String, accessToken: String? = null, allowMetered: Boolean = false)
 
     /** Cancels an in-progress download for [modelId] and cleans up partial files. */
     fun cancelInstall(modelId: String)
@@ -387,7 +386,7 @@ class NoOpLocalModelController : LocalModelController {
     override val installStates: StateFlow<Map<String, ModelInstallStatus>> =
         MutableStateFlow<Map<String, ModelInstallStatus>>(emptyMap()).asStateFlow()
     override fun scanHardware() = Unit
-    override fun installModel(modelId: String, accessToken: String?) = Unit
+    override fun installModel(modelId: String, accessToken: String?, allowMetered: Boolean) = Unit
     override fun cancelInstall(modelId: String) = Unit
     override fun deleteModel(modelId: String) = Unit
     override fun registerExternalModelFile(modelId: String, absolutePath: String) = Unit

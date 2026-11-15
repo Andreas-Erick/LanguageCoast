@@ -23,6 +23,9 @@ object PhraseBank {
     /** The placeholder the coast's language fills in on its own. */
     const val LANGUAGE_PLACEHOLDER = "language"
 
+    /** "a [job]": an article right before a blank, which depends on the word that goes in. The groups are the article and the placeholder's name. */
+    private val ARTICLE_BEFORE_BLANK = Regex("\\b([Aa]) \\[([a-z][a-z ]*)]")
+
     /**
      * A topic of the bank: the island its sentences go on, words in a goal that point to it, and the sentences.
      *
@@ -157,7 +160,7 @@ object PhraseBank {
                 "Turn left at the corner.",
                 "Go straight ahead, then turn right.",
                 "It's on the other side of the street.",
-                "Is this the way to the city center?",
+                "Is this the way to the city centre?",
                 "Could you show me on the map?",
                 "I think I'm lost.",
                 "Which way is the exit?",
@@ -192,7 +195,7 @@ object PhraseBank {
             listOf(
                 "Where is the train station?",
                 "One ticket to [destination], please.",
-                "How much is a ticket to the city center?",
+                "How much is a ticket to the city centre?",
                 "Which platform does the train leave from?",
                 "Does this bus go to [place]?",
                 "What time is the next train?",
@@ -608,7 +611,7 @@ object PhraseBank {
                 "Last month",
                 "Every day",
                 "What's the date today?",
-                "It's the [number]th of [month].",
+                "Today's date is [number] [month].",
                 "Spring",
                 "Summer",
                 "Autumn",
@@ -755,8 +758,8 @@ object PhraseBank {
                 "cold",
                 "new",
                 "old",
-                "left",
-                "right",
+                "on the left",
+                "on the right",
                 "near",
                 "far",
                 "cheap",
@@ -898,7 +901,7 @@ object PhraseBank {
             listOf(
                 "T-shirt",
                 "shirt",
-                "jumper",
+                "sweater",
                 "jacket",
                 "coat",
                 "trousers",
@@ -909,7 +912,7 @@ object PhraseBank {
                 "suit",
                 "shoes",
                 "boots",
-                "trainers",
+                "sports shoes",
                 "socks",
                 "underwear",
                 "hat",
@@ -979,7 +982,7 @@ object PhraseBank {
                 "balcony",
                 "garden",
                 "stairs",
-                "lift",
+                "elevator",
                 "door",
                 "window",
                 "floor",
@@ -1039,7 +1042,7 @@ object PhraseBank {
                 "gym",
                 "hairdresser",
                 "dentist",
-                "doctor's surgery",
+                "doctor's office",
                 "playground",
                 "car park",
                 "city centre",
@@ -1077,7 +1080,7 @@ object PhraseBank {
                 "Hospital",
                 "Danger",
                 "Caution",
-                "Free",
+                "Vacant",
                 "Occupied",
                 "Parking",
                 "Reserved",
@@ -1189,11 +1192,17 @@ object PhraseBank {
 
     /**
      * [sentence] with its placeholders replaced by [fillers] (placeholder name to value), or null if one
-     * has no value (blank counts as none), so the sentence can't be used as it is.
+     * has no value (blank counts as none), so the sentence can't be used as it is. An "a" right before a
+     * blank becomes "an" where the word that goes in asks for it: "I work as an engineer."
      */
     fun fill(sentence: String, fillers: Map<String, String>): String? {
         var missing = false
-        val filled = PLACEHOLDER.replace(sentence) { match ->
+        val withArticles = ARTICLE_BEFORE_BLANK.replace(sentence) { match ->
+            val value = fillers[match.groupValues[2]]?.trim()
+            if (value.isNullOrEmpty() || indefiniteArticle(value) == "a") match.value
+            else (if (match.groupValues[1] == "A") "An" else "an") + " [" + match.groupValues[2] + "]"
+        }
+        val filled = PLACEHOLDER.replace(withArticles) { match ->
             val value = fillers[match.groupValues[1]]?.trim()
             if (value.isNullOrEmpty()) {
                 missing = true

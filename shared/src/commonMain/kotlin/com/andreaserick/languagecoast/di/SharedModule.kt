@@ -72,12 +72,18 @@ val sharedModule = module {
     /** Asks a cloud provider which models it offers, for "Check for new models" in Settings. */
     single<ModelLister> { ProviderModelLister(get()) }
 
-    /** For the cloud AI APIs and local model downloads; Ktor picks each platform's own networking. */
+    /**
+     * For the cloud AI APIs; Ktor picks each platform's own networking. No connection shows within seconds;
+     * an answer gets two minutes, since a model that thinks first can take longer than one over a batch of sentences.
+     */
     single {
         HttpClient {
             install(HttpTimeout) {
                 connectTimeoutMillis = 15_000
-                requestTimeoutMillis = 60_000
+                requestTimeoutMillis = 120_000
+                // Silence from the provider. Above the request timeout, so that one ends a slow answer on both
+                // engines; unset, iPhone gives up after 60 s without a byte and Android after 100 s.
+                socketTimeoutMillis = 125_000
             }
         }
     }
