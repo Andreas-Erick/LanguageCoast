@@ -14,6 +14,7 @@ import com.andreaserick.languagecoast.ui.coast.PersonalIslandState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -328,6 +329,35 @@ class PersonalIslandBuilderTest {
         assertEquals(0, pets.learned)
         assertEquals(RouteStop.State.Ready, viewModel.uiState.value.route!!.stop(levelUpStopId("pets", Level.B1))?.state)
         assertEquals(listOf("Your pets: kind, name, age" to "a cat called Milo"), viewModel.uiState.value.islandFacts["pets"])
+    }
+
+    @Test
+    fun reachingALevelIsCelebratedOnceAndShowsOnMyCoasts() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = coastViewModel(coastId = 1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        assertNull(viewModel.uiState.value.levelReached)
+        assertEquals(Level.A1, viewModel.uiState.value.route!!.islandLevels()["Greetings"])
+
+        // Every island of A1 on the coast, with its one card studied.
+        val a1 = viewModel.uiState.value.route!!.levels.first()
+        settings.setPersonalAnswer("details_age", "34")
+        for (stop in a1.stops) {
+            val card = flashcards.addFlashcard(1, "n ${stop.name}", "t ${stop.name}", stop.name).card
+            flashcards.saveReview(card.copy(lastReviewed = 1L, due = Long.MAX_VALUE))
+            if (stop.kind == RouteStop.Kind.Topic) settings.markStarterTopicAdded(1, stop.name)
+            else settings.markPersonalIslandBuilt(1, "details", PersonalIslands.byId("details")!!.fingerprint(settings.profile.value, settings.personalAnswers.value))
+        }
+
+        assertEquals(Level.A1, viewModel.uiState.value.levelReached)
+        assertEquals(Level.A2, viewModel.uiState.value.route!!.current.level)
+        val route = observeRoute(flashcards, settings, 1, 0L).first()
+        assertTrue(route.levels.first().isComplete)
+
+        viewModel.celebrated(Level.A1)
+
+        assertNull(viewModel.uiState.value.levelReached)
+        assertEquals(setOf("1:A1"), settings.levelsCelebrated.value)
     }
 
     @Test

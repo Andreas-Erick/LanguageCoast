@@ -29,7 +29,9 @@ import com.andreaserick.languagecoast.data.WorksheetPdf
 import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.WorksheetSourceCard
 import com.andreaserick.languagecoast.data.emojiForCategory
+import com.andreaserick.languagecoast.data.Level
 import com.andreaserick.languagecoast.data.Pace
+import com.andreaserick.languagecoast.data.levelKey
 import com.andreaserick.languagecoast.data.Wording
 import com.andreaserick.languagecoast.data.personalIslandKey
 import com.andreaserick.languagecoast.data.starterTopicKey
@@ -336,6 +338,8 @@ class FakeSettingsRepository : SettingsRepository {
     override val wording = MutableStateFlow(Wording.Unspecified)
     override val pace = MutableStateFlow(Pace.Steady)
     override val aboutYouInviteDismissed = MutableStateFlow(false)
+    override val levelsCelebrated = MutableStateFlow<Set<String>>(emptySet())
+    override suspend fun markLevelCelebrated(coastId: Int, level: Level) { levelsCelebrated.update { it + levelKey(coastId, level) } }
     override suspend fun setWording(wording: Wording) { this.wording.value = wording }
     override suspend fun setPace(pace: Pace) { this.pace.value = pace }
     override suspend fun dismissAboutYouInvite() { aboutYouInviteDismissed.value = true }

@@ -1,5 +1,8 @@
 package com.andreaserick.languagecoast.data
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+
 /**
  * The language levels a coast is climbed through. Every island belongs to one, so the coast can show how
  * far the user is and what comes next (see [routeFor]).
@@ -207,3 +210,35 @@ fun routeFor(
 
 /** The part of [personalIslandKey] after the coast for an island written at [level]; its own level has no suffix. */
 fun builtKey(islandId: String, level: Level?): String = if (level == null) islandId else "$islandId@${level.label}"
+
+/**
+ * The route of coast [coastId] as it changes, for screens that show where the user stands without showing
+ * the coast itself (Today, My Coasts). Due cards are counted at [now].
+ */
+fun observeRoute(flashcards: FlashcardRepository, settings: SettingsRepository, coastId: Int, now: Long): Flow<Route> =
+    combine(
+        flashcards.observeIslandSummaries(coastId, now),
+        settings.starterTopicsAdded,
+        settings.personalIslandsBuilt,
+        settings.profile,
+        settings.personalAnswers
+    ) { islands, topics, built, profile, answers ->
+        val prefix = "$coastId:"
+        routeFor(
+            islands = islands,
+            topicsAdded = topics.filter { it.startsWith(prefix) }.mapTo(HashSet()) { it.removePrefix(prefix) },
+            built = built.filterKeys { it.startsWith(prefix) }.mapKeys { it.key.removePrefix(prefix) },
+            profile = profile,
+            answers = answers
+        )
+    }
+
+/** The entry in [SettingsRepository.levelsCelebrated] for [level] on coast [coastId]. */
+fun levelKey(coastId: Int, level: Level): String = "$coastId:${level.label}"
+
+/** The level each island on the coast belongs to, by island name: the level of the first stop on the [Route] with that name. */
+fun Route.islandLevels(): Map<String, Level> {
+    val levels = LinkedHashMap<String, Level>()
+    this.levels.forEach { level -> level.stops.forEach { stop -> if (stop.name !in levels) levels[stop.name] = stop.level } }
+    return levels
+}

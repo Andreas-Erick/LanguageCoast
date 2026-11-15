@@ -39,6 +39,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.IslandSummary
+import com.andreaserick.languagecoast.data.Level
+import com.andreaserick.languagecoast.data.islandLevels
+import com.andreaserick.languagecoast.ui.components.Pill
+import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.graphics.StrokeCap
 import com.andreaserick.languagecoast.data.PersonalIslands
 import com.andreaserick.languagecoast.data.RouteLevel
 import com.andreaserick.languagecoast.data.RouteStop
@@ -179,6 +185,7 @@ fun CoastScreen(
     }
 
     val route = uiState.route
+    val islandLevels = remember(route) { route?.islandLevels().orEmpty() }
     if (showRoute && route != null) {
         RouteSheet(route = route, busy = busy, onStop = ::take, onAddTopics = ::addTopics, onWriteAll = ::writeAll, onDismiss = { showRoute = false })
     }
@@ -234,6 +241,17 @@ fun CoastScreen(
                 contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
+                val reached = uiState.levelReached
+                if (reached != null) {
+                    item(key = "reached", span = { GridItemSpan(maxLineSpan) }) {
+                        LevelReachedCard(
+                            level = reached,
+                            next = Level.entries.getOrNull(reached.ordinal + 1),
+                            onDismiss = { viewModel.celebrated(reached) },
+                            modifier = Modifier.animateItem()
+                        )
+                    }
+                }
                 if (route != null) {
                     item(key = "route", span = { GridItemSpan(maxLineSpan) }) {
                         RouteCard(
@@ -279,6 +297,7 @@ fun CoastScreen(
                 items(uiState.islands, key = { it.island.islandId }) { summary ->
                     IslandCard(
                         summary = summary,
+                        level = islandLevels[summary.island.name],
                         today = uiState.today ?: return@items,
                         onClick = { onIslandClick(summary.island.islandId, summary.island.name) },
                         onShowCards = { onShowCards(summary.island.islandId, summary.island.name) },
@@ -301,11 +320,13 @@ fun CoastScreen(
  * on it (cards due, new cards waiting) or when it was last studied, with a ⋮ menu to see its cards,
  * rehearse it as a talk or delete it.
  *
+ * @param level The level the island belongs to on the coast's route; null for an island of the user's own.
  * @param onTalk Turns the island into a talk to rehearse; null when it can't be (no AI model, or too few cards).
  */
 @Composable
 fun IslandCard(
     summary: IslandSummary,
+    level: Level?,
     today: LocalDate,
     onClick: () -> Unit,
     onShowCards: () -> Unit,
@@ -318,6 +339,7 @@ fun IslandCard(
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
             IconTile { Text(islandEmoji(island), fontSize = 22.sp) }
             Spacer(modifier = Modifier.weight(1f))
+            if (level != null) Pill(level.label, container = SurfaceRaised, content = TextSecondary, modifier = Modifier.padding(top = 12.dp))
             IslandMenu(islandName = island.name, onShowCards = onShowCards, onTalk = onTalk, onDelete = onDeleteClick)
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -334,6 +356,19 @@ fun IslandCard(
                 summary.reviewCount > 0 -> Text("${summary.reviewCount} due", style = MaterialTheme.typography.labelMedium, color = Sunlit)
                 summary.newCount > 0 -> Text("${summary.newCount} new", style = MaterialTheme.typography.labelMedium, color = Seafoam)
                 else -> Text(lastStudiedLabel(island.lastStudied, today), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            }
+            // How much of the island is learned: the cards studied at least once.
+            if (summary.cardCount > 0) {
+                val learned = (summary.cardCount - summary.newCount).toFloat() / summary.cardCount
+                LinearProgressIndicator(
+                    progress = { learned },
+                    color = if (learned >= 1f) Seafoam else Sunlit,
+                    trackColor = SurfaceRaised,
+                    strokeCap = StrokeCap.Round,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(4.dp)
+                )
             }
         }
     }

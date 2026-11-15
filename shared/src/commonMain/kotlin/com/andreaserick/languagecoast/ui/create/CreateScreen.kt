@@ -113,6 +113,8 @@ import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.data.RouteLevel
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -304,7 +306,8 @@ private fun CreateContent(
                     onBrowseStarters = { showStarters = true },
                     onAddOwn = { composerOpen = true },
                     pace = uiState.pace,
-                    onChangePace = { showPace = true }
+                    onChangePace = { showPace = true },
+                    level = uiState.level
                 )
 
                 if (uiState.showAboutYouInvite) AboutYouInvite(onOpen = onAboutYou, onDismiss = onDismissAboutYou)
@@ -404,7 +407,8 @@ private fun DailyCard(
     onBrowseStarters: () -> Unit,
     onAddOwn: () -> Unit,
     pace: Pace,
-    onChangePace: () -> Unit
+    onChangePace: () -> Unit,
+    level: RouteLevel?
 ) {
     val language = Languages.byName(coast.language)
     ContentCard(padding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
@@ -422,7 +426,26 @@ private fun DailyCard(
             }
             if (coasts.size > 1) CoastPicker(coasts = coasts, selected = coast, onSelected = onCoastSelected)
         }
-        HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 14.dp))
+        if (level == null) {
+            HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 14.dp))
+        } else {
+            // The line under the coast is the level's progress: where today's session is taking the user.
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
+                Pill(level.level.label, container = Sunlit, content = OnSunlit)
+                Spacer(modifier = Modifier.width(10.dp))
+                LinearProgressIndicator(
+                    progress = { level.progress },
+                    color = Sunlit,
+                    trackColor = SurfaceRaised,
+                    strokeCap = StrokeCap.Round,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                    modifier = Modifier.weight(1f).height(6.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text("${(level.progress * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            }
+        }
 
         when {
             plan == null -> Unit

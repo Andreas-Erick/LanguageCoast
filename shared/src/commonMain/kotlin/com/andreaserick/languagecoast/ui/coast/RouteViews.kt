@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -111,32 +113,14 @@ internal fun RouteCard(
     val next = route.next
     ContentCard(modifier = modifier, onClick = onOpen, onClickLabel = "See the whole route", padding = PaddingValues(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.size(48.dp).background(Sunlit, MaterialTheme.shapes.small)
-            ) {
-                Text(current.level.label, style = MaterialTheme.typography.titleMedium, color = OnSunlit)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("${current.level.title} · ${percent(current.progress)}", style = MaterialTheme.typography.titleMedium)
+                Text("Level ${current.level.label} · ${current.level.title}", style = MaterialTheme.typography.titleMedium)
                 Text(current.level.can, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(percent(current.progress), style = MaterialTheme.typography.headlineSmall, color = Sunlit)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
-            route.levels.forEach { level ->
-                Column(modifier = Modifier.weight(1f)) {
-                    ProgressBar(level.progress, color = if (level.isComplete) Seafoam else Sunlit)
-                    Text(
-                        text = if (level.isComplete) "${level.level.label} ✓" else "${level.level.label} · ${level.onCoast}/${level.stops.size} islands",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (level.level == current.level) TextPrimary else TextSecondary,
-                        maxLines = 1,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
-            }
-        }
+        LevelStepper(route = route, modifier = Modifier.padding(top = 16.dp))
         if (waiting > 0) {
             Text(
                 text = "${plural(waiting, "new card")} waiting on your islands: ${roughDuration(daysToLearn(waiting, pace))} at the ${pace.label.lowercase()} pace.",
@@ -163,6 +147,98 @@ internal fun RouteCard(
                 Text("Every island of ${current.level.label} is on your coast.", style = MaterialTheme.typography.bodySmall, color = TextSecondary, modifier = Modifier.weight(1f))
             }
             TextButton(onClick = onOpen) { Text("Route", style = MaterialTheme.typography.labelMedium, color = Sunlit) }
+        }
+    }
+}
+
+/**
+ * The levels as a path: a marker per level (ticked once reached, lit for the one the user is on) and
+ * between them a line that fills as the level before it is learned, ending in a flag. Under each stretch,
+ * how many of the level's islands are on the coast.
+ */
+@Composable
+internal fun LevelStepper(route: Route, modifier: Modifier = Modifier) {
+    val current = route.current.level
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            route.levels.forEach { level ->
+                LevelMarker(level = level.level, reached = level.isComplete, current = level.level == current)
+                ProgressBar(
+                    share = level.progress,
+                    color = if (level.isComplete) Seafoam else Sunlit,
+                    modifier = Modifier.weight(1f).padding(horizontal = 6.dp)
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.Flag,
+                contentDescription = null,
+                tint = if (route.levels.all { it.isComplete }) Seafoam else TextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp, end = 20.dp)) {
+            route.levels.forEach { level ->
+                Text(
+                    text = if (level.isComplete) "Reached" else "${level.onCoast} of ${level.stops.size} islands",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (level.level == current) TextPrimary else TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+/** A level's marker on the path: its name in a disc, ticked once reached. */
+@Composable
+internal fun LevelMarker(level: Level, reached: Boolean, current: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(32.dp)
+            .background(
+                color = when {
+                    reached -> Seafoam
+                    current -> Sunlit
+                    else -> SurfaceRaised
+                },
+                shape = CircleShape
+            )
+    ) {
+        if (reached) Icon(Icons.Default.Check, contentDescription = "${level.label} reached", tint = OnSunlit, modifier = Modifier.size(18.dp))
+        else Text(level.label, style = MaterialTheme.typography.labelSmall, color = if (current) OnSunlit else TextSecondary)
+    }
+}
+
+/**
+ * The moment a level is reached, at the top of the coast until it is acknowledged: what the user can now
+ * do, and what comes next.
+ *
+ * @param next The level after it, or null when it was the last.
+ */
+@Composable
+internal fun LevelReachedCard(level: Level, next: Level?, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    ContentCard(modifier = modifier, padding = PaddingValues(start = 16.dp, top = 16.dp, end = 8.dp, bottom = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp).background(Seafoam, CircleShape)) {
+                Text(level.label, style = MaterialTheme.typography.titleMedium, color = OnSunlit)
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("You've reached ${level.label} 🎉", style = MaterialTheme.typography.titleLarge)
+                Text("${level.title}. You can now: ${level.can.replaceFirstChar { it.lowercase() }}", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            }
+        }
+        Text(
+            text = if (next != null) "Next is ${next.label}, ${next.title.lowercase()}: ${next.can.replaceFirstChar { it.lowercase() }}"
+            else "That is every level on the route. Keep the islands alive with your daily session, and add your own.",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp, end = 8.dp)
+        )
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = onDismiss) { Text(if (next != null) "On to ${next.label}" else "Done", style = MaterialTheme.typography.labelMedium, color = Sunlit) }
         }
     }
 }
@@ -230,7 +306,7 @@ private fun LevelHeader(level: RouteLevel, busy: Boolean, onAddTopics: () -> Uni
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.size(40.dp).background(if (level.isComplete) Seafoam else Sunlit, MaterialTheme.shapes.small)
+                modifier = Modifier.size(40.dp).background(if (level.isComplete) Seafoam else Sunlit, CircleShape)
             ) {
                 Text(level.level.label, style = MaterialTheme.typography.labelLarge, color = OnSunlit)
             }
