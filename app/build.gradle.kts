@@ -33,6 +33,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    androidResources {
+        // The app's own texts are English only. Libraries bring theirs in some eighty languages; with those in
+        // the package, a phone set to one of them shows a few labels the libraries draw (the time picker's) in
+        // that language in the middle of an English app. Only English is packaged until the app is translated.
+        localeFilters += "en"
+    }
+
     signingConfigs {
         if (hasReleaseKeystore) {
             create("release") {

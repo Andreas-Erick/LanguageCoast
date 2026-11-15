@@ -4,6 +4,12 @@ import androidx.lifecycle.SavedStateHandle
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.DeletedContent
+import com.andreaserick.languagecoast.data.LiveModel
+import com.andreaserick.languagecoast.data.LocalAiCatalog
+import com.andreaserick.languagecoast.data.LocalModelController
+import com.andreaserick.languagecoast.data.ModelLister
+import com.andreaserick.languagecoast.data.ModelListing
+import com.andreaserick.languagecoast.data.NoOpLocalModelController
 import com.andreaserick.languagecoast.data.PersonalIslandBuilder
 import com.andreaserick.languagecoast.data.PhraseBank
 import com.andreaserick.languagecoast.data.ReminderSettings
@@ -15,6 +21,7 @@ import com.andreaserick.languagecoast.data.WorksheetDifficulty
 import com.andreaserick.languagecoast.data.WorksheetDirection
 import com.andreaserick.languagecoast.data.WorksheetGenerator
 import com.andreaserick.languagecoast.data.WorksheetOptions
+import com.andreaserick.languagecoast.data.sharingNotAllowedMessage
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeReminderScheduler
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
@@ -26,6 +33,8 @@ import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import com.andreaserick.languagecoast.ui.coast.CoastViewModel
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastViewModel
+import com.andreaserick.languagecoast.ui.settings.KeyCheckState
+import com.andreaserick.languagecoast.ui.settings.ModelCheckState
 import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
 import com.andreaserick.languagecoast.ui.theme.ThemeMode
 import kotlinx.coroutines.CoroutineScope
@@ -100,6 +109,205 @@ class SettingsAndMyCoastViewModelTest {
 
         viewModel.onOpenRouterKeyEdited()
         assertFalse(viewModel.uiState.value.openRouterSaved)
+    }
+
+    @Test
+    fun savingAKeyWithThePermissionAllowsTheProviderAndRemovingItTakesBothBack() = runTest {
+        settings.aiSharingAllowed.value = emptySet()
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        assertFalse(viewModel.uiState.value.sharingAllowed(TranslationProvider.Claude))
+        // What runs on the phone sends nothing, so it needs no permission.
+        assertTrue(viewModel.uiState.value.sharingAllowed(TranslationProvider.OnDevice))
+
+        // A key pasted from a web page can bring a line break and spaces along.
+        viewModel.saveKey(TranslationProvider.Claude, " sk-ant\n-key ", allowSharing = true)
+
+        assertEquals("sk-ant-key", settings.claudeKey.value)
+        assertEquals(setOf("Claude"), settings.aiSharingAllowed.value)
+        val saved = viewModel.uiState.value
+        assertEquals("sk-ant-key", saved.savedKey(TranslationProvider.Claude))
+        assertTrue(saved.keyJustSaved(TranslationProvider.Claude))
+        assertTrue(saved.sharingAllowed(TranslationProvider.Claude))
+        assertFalse(saved.sharingAllowed(TranslationProvider.Gemini))
+
+        viewModel.removeKey(TranslationProvider.Claude)
+
+        assertEquals("", settings.claudeKey.value)
+        assertTrue(settings.aiSharingAllowed.value.isEmpty())
+        assertEquals("", viewModel.uiState.value.savedKey(TranslationProvider.Claude))
+        assertFalse(viewModel.uiState.value.keyJustSaved(TranslationProvider.Claude))
+        assertFalse(viewModel.uiState.value.sharingAllowed(TranslationProvider.Claude))
+    }
+
+    @Test
+    fun aKeySavedBeforeThePermissionExistedIsAllowedOnItsOwn() = runTest {
+        settings.aiSharingAllowed.value = emptySet()
+        settings.groqKey.value = "gsk-old"
+        val asked = mutableListOf<Pair<TranslationProvider, String>>()
+        val lister = ModelLister { provider, key ->
+            asked += provider to key
+            ModelListing.Found(listOf(LiveModel(SettingsDefaults.GROQ_MODEL)))
+        }
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler, modelLister = lister)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        // Saving a key without the permission stores the key and nothing else: asking Groq whether it works would send the key.
+        viewModel.saveKey(TranslationProvider.Groq, "gsk-new")
+        assertEquals("gsk-new", settings.groqKey.value)
+        assertFalse(viewModel.uiState.value.sharingAllowed(TranslationProvider.Groq))
+        assertTrue(asked.isEmpty())
+        assertEquals(KeyCheckState(), viewModel.uiState.value.keyCheck)
+
+        viewModel.allowSharing(TranslationProvider.Groq)
+        assertEquals(setOf("Groq"), settings.aiSharingAllowed.value)
+        assertTrue(viewModel.uiState.value.sharingAllowed(TranslationProvider.Groq))
+    }
+
+    @Test
+    fun checkingForNewModelsAsksOnlyAProviderTheUserAllowed() = runTest {
+        settings.translationProvider.value = TranslationProvider.Claude
+        settings.aiSharingAllowed.value = emptySet()
+        val asked = mutableListOf<Pair<TranslationProvider, String>>()
+        val lister = ModelLister { provider, key ->
+            asked += provider to key
+            if (key.isBlank()) ModelListing.Failed("Save your key first.")
+            else ModelListing.Found(SettingsDefaults.models(provider).map { LiveModel(it) })
+        }
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler, modelLister = lister)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        // Without a key the check itself says to save one first: saving is the step that asks for the permission.
+        viewModel.checkForNewModels()
+        assertEquals(
+            ModelCheckState(provider = TranslationProvider.Claude, message = "Save your key first.", failed = true),
+            viewModel.uiState.value.modelCheck
+        )
+
+        // A key from before the app asked for permission: Claude gets nothing, not even the key.
+        settings.claudeKey.value = "sk-ant-old"
+        asked.clear()
+        viewModel.checkForNewModels()
+        assertTrue(asked.isEmpty())
+        assertEquals(
+            ModelCheckState(
+                provider = TranslationProvider.Claude,
+                message = sharingNotAllowedMessage(TranslationProvider.Claude),
+                failed = true,
+                needsPermission = true
+            ),
+            viewModel.uiState.value.modelCheck
+        )
+
+        // Allowing it takes that message away, and the next check asks Claude.
+        viewModel.allowSharing(TranslationProvider.Claude)
+        assertEquals(ModelCheckState(), viewModel.uiState.value.modelCheck)
+        viewModel.checkForNewModels()
+        assertEquals(listOf(TranslationProvider.Claude to "sk-ant-old"), asked)
+        val checked = viewModel.uiState.value.modelCheck
+        assertEquals(TranslationProvider.Claude, checked.provider)
+        assertFalse(checked.failed)
+        assertFalse(checked.needsPermission)
+    }
+
+    @Test
+    fun aKeyCheckThatFailedCanBeRunAgainWithTheSameKey() = runTest {
+        var listing: ModelListing = ModelListing.Failed("Couldn't reach Gemini.")
+        var asked = 0
+        val lister = ModelLister { _, _ ->
+            asked++
+            listing
+        }
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler, modelLister = lister)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.saveKey(TranslationProvider.Gemini, "good-key")
+        assertEquals(
+            KeyCheckState(provider = TranslationProvider.Gemini, message = "Couldn't reach Gemini.", failed = true),
+            viewModel.uiState.value.keyCheck
+        )
+
+        // "Check again" saves the same key once more: Gemini is asked again and the old answer goes.
+        listing = ModelListing.Found(listOf(LiveModel("gemini-3.5-flash-lite")))
+        viewModel.saveKey(TranslationProvider.Gemini, "good-key")
+        assertEquals(2, asked)
+        assertEquals("good-key", settings.apiKey.value)
+        assertEquals(
+            KeyCheckState(provider = TranslationProvider.Gemini, message = "Gemini accepted the key."),
+            viewModel.uiState.value.keyCheck
+        )
+    }
+
+    @Test
+    fun aSavedKeyIsCheckedWithTheProvider() = runTest {
+        var listing: ModelListing = ModelListing.Found(listOf(LiveModel("gemini-3.5-flash-lite")))
+        val asked = mutableListOf<Pair<TranslationProvider, String>>()
+        val lister = ModelLister { provider, key ->
+            asked += provider to key
+            listing
+        }
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler, modelLister = lister)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.saveKey(TranslationProvider.Gemini, "good-key")
+        assertEquals(listOf(TranslationProvider.Gemini to "good-key"), asked)
+        assertEquals(
+            KeyCheckState(provider = TranslationProvider.Gemini, message = "Gemini accepted the key."),
+            viewModel.uiState.value.keyCheck
+        )
+
+        listing = ModelListing.Failed("Gemini didn't accept the API key.")
+        viewModel.saveKey(TranslationProvider.Gemini, "bad-key")
+        // The key is kept all the same: the check may only have failed for the connection.
+        assertEquals("bad-key", settings.apiKey.value)
+        assertEquals(
+            KeyCheckState(provider = TranslationProvider.Gemini, message = "Gemini didn't accept the API key.", failed = true),
+            viewModel.uiState.value.keyCheck
+        )
+
+        // Editing the key again clears what was said about the one before.
+        viewModel.onKeyEdited(TranslationProvider.Gemini)
+        assertEquals(KeyCheckState(), viewModel.uiState.value.keyCheck)
+
+        // OpenRouter has no list of models to ask for, so its key isn't checked.
+        viewModel.saveKey(TranslationProvider.OpenRouter, "sk-or-key")
+        assertEquals(2, asked.size)
+        assertEquals(KeyCheckState(), viewModel.uiState.value.keyCheck)
+    }
+
+    /** Local models that only record what Settings asks to be downloaded, on a connection that is [metered] or not. */
+    private class RecordingModelController(var metered: Boolean) : LocalModelController by NoOpLocalModelController() {
+        /** The model of each download asked for, with whether it may use mobile data. */
+        val installs = mutableListOf<Pair<String, Boolean>>()
+
+        override fun installModel(modelId: String, accessToken: String?, allowMetered: Boolean) {
+            installs += modelId to allowMetered
+        }
+
+        override fun isOnMeteredNetwork(): Boolean = metered
+    }
+
+    @Test
+    fun aModelDownloadUsesMobileDataOnlyWhenTheUserAgreed() = runTest {
+        val models = RecordingModelController(metered = true)
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler, models)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        val modelId = LocalAiCatalog.DEFAULT_MODEL_ID
+
+        // On mobile data a large download asks first, and nothing starts.
+        viewModel.installLocalModel(modelId)
+        assertEquals(modelId, viewModel.uiState.value.meteredWarningModelId)
+        assertTrue(models.installs.isEmpty())
+
+        viewModel.installLocalModel(modelId, allowMetered = true)
+        assertEquals(null, viewModel.uiState.value.meteredWarningModelId)
+        assertEquals(listOf(modelId to true), models.installs)
+
+        // One started on Wi-Fi may not carry on over mobile data when Wi-Fi drops.
+        models.metered = false
+        viewModel.installLocalModel(modelId)
+        assertEquals(listOf(modelId to true, modelId to false), models.installs)
+        assertEquals(modelId, settings.localAiModel.value)
     }
 
     @Test
@@ -399,7 +607,8 @@ class SettingsAndMyCoastViewModelTest {
         assertEquals("German" to "English", sheet.fromLanguage to sheet.toLanguage)
         assertEquals(listOf("t1 t2", "t3 t4", "t5 t6"), sheet.sentences.map { it.targetText })
         assertEquals(6 to 1, sheet.cardCount to sheet.islandCount)
-        assertTrue("Level: hard" in translator.prompts.first())
+        // The picked difficulty reaches the request: a hard sheet's sentences are longer and have two parts.
+        assertTrue("a longer sentence of 9 to 16 words in two parts that belong together" in translator.prompts.first())
 
         viewModel.startNewWorksheet()
         assertEquals(null, viewModel.uiState.value.worksheet.pdf)

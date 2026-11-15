@@ -20,7 +20,7 @@ class WidgetContentTest {
         val content = widgetContent(dueCount = 1, streak = 1, studiedToday = true)
 
         assertEquals("card due", content.dueLabel)
-        assertEquals("Studied today. Nice work!", content.footer)
+        assertEquals("Studied today. Nice work.", content.footer)
     }
 
     @Test
@@ -31,6 +31,6 @@ class WidgetContentTest {
         assertEquals("all caught up", caughtUp.dueLabel)
         assertEquals("Add cards to start studying", caughtUp.footer)
 
-        assertEquals("Finish an island to start a streak", widgetContent(dueCount = 3, streak = 0, studiedToday = false).footer)
+        assertEquals("Study today to start a streak", widgetContent(dueCount = 3, streak = 0, studiedToday = false).footer)
     }
 }

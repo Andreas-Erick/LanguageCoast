@@ -272,6 +272,23 @@ class StudyViewModelTest {
     }
 
     @Test
+    fun theNextDueDayIsOnlyWorkedOutForTheEndScreens() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 2)
+        setDue("n2", startOfDay("2026-10-14"))
+        val viewModel = createViewModel()
+
+        // While cards are graded nothing asks for it.
+        assertEquals(listOf("n1"), viewModel.state.sessionCards.map { it.card.nativeText })
+        assertEquals(null, viewModel.state.nextDueInDays)
+
+        viewModel.onGrade(Grade.Good)
+
+        // A new card graded "Good" comes back in 3 days, before the one due on the 14th.
+        assertTrue(viewModel.state.isSessionComplete)
+        assertEquals(3, viewModel.state.nextDueInDays)
+    }
+
+    @Test
     fun islandWithNothingDueIsCaughtUpUntilPracticingAll() = runTest {
         flashcards.seed(islandId = 1, cardCount = 2)
         setDue("n1", startOfDay("2026-10-11"))
@@ -469,6 +486,8 @@ class StudyViewModelTest {
         assertTrue(viewModel.state.isSessionComplete)
         assertEquals(2, viewModel.state.keptCount)
         assertEquals(3, viewModel.state.totalCards)
+        assertTrue(viewModel.state.countsAsStudied)
+        assertTrue(viewModel.state.canPracticeAll)
         assertEquals(1, settings.studySessionsRecorded)
         assertTrue(flashcards.islands.value.all { it.lastStudied == TEST_CLOCK.now().toEpochMilliseconds() })
     }
@@ -489,6 +508,26 @@ class StudyViewModelTest {
 
         assertTrue(viewModel.state.isSessionComplete)
         assertEquals(0, viewModel.state.keptCount)
+        // Skipping everything ends the session, but it is no day studied, and the end screen says so.
+        assertFalse(viewModel.state.countsAsStudied)
+        assertEquals(0, settings.studySessionsRecorded)
+        // The coast still has no card, so the end screen leaves "Practice all cards" out.
+        assertFalse(viewModel.state.canPracticeAll)
+    }
+
+    @Test
+    fun keepingASentenceOnAnEmptyCoastGivesSomethingToPractice() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "Spanish")
+        suggest("s1", "s2")
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+        assertFalse(viewModel.state.canPracticeAll)
+
+        viewModel.keepSuggestion()
+        viewModel.skipSuggestion()
+
+        // The kept sentence is the coast's first card.
+        assertTrue(viewModel.state.canPracticeAll)
+        assertEquals(listOf("s1"), viewModel.state.sessionCards.map { it.card.nativeText })
     }
 
     @Test
@@ -699,7 +738,7 @@ class StudyViewModelTest {
 
         // No API key yet.
         viewModel.checkCard()
-        assertTrue(viewModel.state.cardCheck?.error.orEmpty().contains("API key"))
+        assertTrue(viewModel.state.cardCheck?.error.orEmpty().contains("key"))
 
         settings.apiKey.value = "key"
         translator.completion = Completion("Let me think about this card.")
@@ -848,6 +887,45 @@ class StudyViewModelTest {
         assertEquals("Wo ist der ______?", viewModel.state.cloze?.display)
     }
 
+    @Test
+    fun fillTheGapIsLeftOutForALanguageThatDoesNotSeparateItsWords() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "Japanese")
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
+        val viewModel = createViewModel()
+        assertFalse(viewModel.state.hasSpacedWords)
+
+        viewModel.setMode(StudyMode.Cloze)
+
+        // The card is typed in full instead; the mode itself is kept for a card in another language.
+        assertEquals(StudyMode.Type, viewModel.state.cardMode)
+        assertEquals(null, viewModel.state.cloze)
+        assertEquals(StudyMode.Cloze, viewModel.state.mode)
+    }
+
+    @Test
+    fun fillTheGapIsOfferedForALanguageWithSpaces() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        val viewModel = createViewModel()
+
+        viewModel.setMode(StudyMode.Cloze)
+
+        assertTrue(viewModel.state.hasSpacedWords)
+        assertEquals(StudyMode.Cloze, viewModel.state.cardMode)
+    }
+
+    @Test
+    fun theSheetsKnowTheLanguageOfTheCard() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        val viewModel = createViewModel()
+
+        viewModel.explainWord("t1")
+        viewModel.openCardQuestions()
+
+        assertEquals("Spanish", viewModel.state.explanation?.targetLanguage)
+        assertEquals("Spanish", viewModel.state.cardQuestions?.targetLanguage)
+    }
+
     private fun setDue(nativeText: String, due: Long) {
         flashcards.cards.update { all -> all.map { if (it.nativeText == nativeText) it.copy(due = due) else it } }
     }
@@ -892,7 +970,7 @@ class StudyViewModelTest {
 
         // No API key yet: the sheet says so instead of offering a field.
         viewModel.openCardQuestions()
-        assertTrue(viewModel.state.cardQuestions?.unavailable.orEmpty().contains("API key"))
+        assertTrue(viewModel.state.cardQuestions?.unavailable.orEmpty().contains("key"))
         viewModel.askAboutCard("Why?")
         assertTrue(translator.prompts.isEmpty())
 
@@ -965,7 +1043,47 @@ class StudyViewModelTest {
         viewModel.openCardQuestions()
         viewModel.askAboutCard("Why?")
 
-        assertEquals(listOf(AskedQuestion("Why?", error = "No answer.")), viewModel.state.cardQuestions?.asked)
+        assertEquals(
+            listOf(AskedQuestion("Why?", error = "${TranslationProvider.Gemini.label} gave no answer. Try again.")),
+            viewModel.state.cardQuestions?.asked
+        )
+    }
+
+    @Test
+    fun aProviderThatSaysNothingAtAllIsReportedInEverySheet() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        translator.completion = Completion(null)
+        val viewModel = createViewModel()
+        val nothing = "${TranslationProvider.Gemini.label} gave no answer. Try again."
+
+        // Neither an answer nor a reason: the sheet says so instead of waiting forever.
+        viewModel.explainWord("t1")
+        assertEquals(nothing, viewModel.state.explanation?.error)
+        assertFalse(viewModel.state.explanation!!.isLoading)
+
+        viewModel.checkCard()
+        assertEquals(nothing, viewModel.state.cardCheck?.error)
+    }
+
+    @Test
+    fun aProviderWithAKeyButWithoutPermissionIsNotSentAnything() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        settings.apiKey.value = "key"
+        settings.aiSharingAllowed.value = emptySet()
+        val viewModel = createViewModel()
+
+        viewModel.explainWord("t1")
+        viewModel.checkCard()
+        viewModel.openCardQuestions()
+        viewModel.askAboutCard("Why?")
+
+        // Each sheet says what is missing, and nothing left the phone.
+        assertTrue(viewModel.state.explanation?.error.orEmpty().isNotBlank())
+        assertTrue(viewModel.state.cardCheck?.error.orEmpty().isNotBlank())
+        assertFalse(viewModel.state.cardCheck!!.canAskAlternative)
+        assertTrue(viewModel.state.cardQuestions?.unavailable.orEmpty().isNotBlank())
+        assertTrue(translator.prompts.isEmpty())
     }
 
     @Test

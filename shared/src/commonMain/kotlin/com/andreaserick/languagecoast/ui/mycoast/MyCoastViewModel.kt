@@ -19,7 +19,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -92,9 +94,20 @@ class MyCoastViewModel(
         val weeklyGoal: Int, val islandsThisWeek: Int, val freezeUsedOn: LocalDate?, val leakyCount: Int, val levels: Map<Int, RouteLevel>
     )
 
-    val uiState: StateFlow<MyCoastUiState> = combine(
+    /**
+     * Every coast with its counts, as of the moment the screen starts watching. The app can stay open over
+     * midnight: when the screen comes back (see [uiState], which lets go of this a few seconds after the
+     * screen is left) the due cards and the week are counted afresh, and the streak is checked again.
+     */
+    private val summaries: Flow<List<CoastSummary>> = flow {
+        viewModelScope.launch { settings.refreshStreak() }
         // "This week" starts on Monday, like the streak bars and the weekly goal.
-        flashcards.observeCoastSummaries(studiedSince = startOfWeek(clock.todayIn(timeZone)).atStartOfDayIn(timeZone).toEpochMilliseconds(), now = clock.now().toEpochMilliseconds()),
+        val weekStart = startOfWeek(clock.todayIn(timeZone)).atStartOfDayIn(timeZone).toEpochMilliseconds()
+        emitAll(flashcards.observeCoastSummaries(studiedSince = weekStart, now = clock.now().toEpochMilliseconds()))
+    }
+
+    val uiState: StateFlow<MyCoastUiState> = combine(
+        summaries,
         settings.nativeLanguage,
         settings.streakCount,
         settings.studyDays,
@@ -115,10 +128,6 @@ class MyCoastViewModel(
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MyCoastUiState())
-
-    init {
-        viewModelScope.launch { settings.refreshStreak() }
-    }
 
     /** Starts a coast for [language] and makes it the one new cards are added to. */
     fun addCoast(language: String) {

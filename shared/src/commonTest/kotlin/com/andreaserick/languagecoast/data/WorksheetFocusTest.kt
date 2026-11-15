@@ -116,13 +116,99 @@ class WorksheetFocusTest {
         fun prompt(vararg quotas: IslandQuota) = buildWorksheetPrompt(cards, "German", "English", count = 5, difficulty = WorksheetDifficulty.Medium, quotas = quotas.toList())
 
         val focused = prompt(IslandQuota("Travel", 1), IslandQuota("Food", 4))
-        assertTrue("just to make a sentence new. Of the sentences, write 1 about Travel and 4 about Food. The other topics get no sentence of their own this time." in focused)
+        assertTrue(
+            "said in that topic's situation. Of the sentences, write 1 about Travel and 4 about Food. The other topics get no sentence of their own this time." in focused
+        )
         assertFalse("Spread the sentences" in focused)
         // Every island has a share: there are no other topics to speak of.
         val all = prompt(IslandQuota("Travel", 1), IslandQuota("Food", 3), IslandQuota("Home", 1))
-        assertTrue(all.lines().single { it.startsWith("2. ") }.endsWith("Of the sentences, write 1 about Travel, 3 about Food and 1 about Home."))
+        assertTrue("Of the sentences, write 1 about Travel, 3 about Food and 1 about Home. Do something different" in all)
+        assertFalse("The other topics" in all)
         assertTrue("Of the sentences, write 5 about Food. The other topics" in prompt(IslandQuota("Food", 5)))
         assertTrue("Spread the sentences over the topics." in prompt())
         assertTrue(focused.lines().none { it.startsWith(" ") })
+    }
+
+    /** [count] cards of an island, never studied: "travel1 = Travel 1", "travel2 = Travel 2", ... */
+    private fun island(id: Int, name: String, count: Int) = (1..count).map {
+        WorksheetSourceCard(islandId = id, islandName = name, targetText = "${name.lowercase()}$it", nativeText = "$name $it")
+    }
+
+    /** Deals [cards] to the prompts of one sheet, with room for a whole small coast in every prompt. */
+    private fun dealer(cards: List<WorksheetSourceCard>, seed: Int = 1) =
+        WorksheetCardDealer(cards, limit = 400, perIsland = 40, characters = 40_000, now = now, random = Random(seed))
+
+    @Test
+    fun everySentenceGetsACardAndTheIslandsTakeTurns() {
+        val deal = dealer(island(1, "Food", 6) + island(2, "Travel", 6)).next(sentences = 6)
+
+        // Nobody has studied anything: the islands share the sentences, and the prompt lists them turn by turn.
+        assertEquals(listOf(IslandQuota("Food", 3), IslandQuota("Travel", 3)), deal.quotas)
+        assertEquals(listOf("Food", "Travel", "Food", "Travel", "Food", "Travel"), deal.anchors.map { it.card.island })
+        assertEquals(6, deal.anchors.map { it.card }.distinct().size)
+        // The coast fits a prompt, so all of it is shown, the cards the sentences are built from among the rest.
+        assertEquals(12, deal.cards.size)
+        assertTrue(deal.anchors.all { it.card in deal.cards })
+    }
+
+    @Test
+    fun ofAnIslandTheStudiedCardsAreBuiltFromFirstAndNoCardTwiceUntilTheIslandRunsOut() {
+        val slipping = listOf("Brot", "Käse", "Wurst").map { studied(daysAgo = 100, lapses = 4).copy(targetText = it) }
+        val dealer = dealer(island(1, "Food", 5) + slipping)
+
+        val first = dealer.next(sentences = 4).anchors.map { it.card.targetText }
+        assertEquals(setOf("Brot", "Käse", "Wurst"), first.take(3).toSet())
+        assertTrue(first[3].startsWith("food"))
+
+        // The next request carries on with the cards that haven't had a sentence yet.
+        val second = dealer.next(sentences = 4).anchors.map { it.card.targetText }
+        assertEquals(8, (first + second).distinct().size)
+
+        // All eight have had one: they come round again, the ones that need practice first.
+        val third = dealer.next(sentences = 3).anchors.map { it.card.targetText }
+        assertEquals(setOf("Brot", "Käse", "Wurst"), third.toSet())
+    }
+
+    @Test
+    fun aRequestNamesNoCardTwiceWhileItsIslandHasOthers() {
+        repeat(50) { seed ->
+            val dealer = dealer(island(1, "Food", 8), seed)
+            val first = dealer.next(sentences = 5).anchors.map { it.card.targetText }
+            // Three cards are left for the second request; its other two are cards of the first, not those three again.
+            val second = dealer.next(sentences = 5).anchors.map { it.card.targetText }
+            assertEquals(5, second.distinct().size, "seed $seed: $second")
+            assertEquals(8, (first + second).distinct().size, "seed $seed")
+
+            // Only an island with fewer cards than sentences has a card twice in a request, and then each as often as the others.
+            val twice = dealer(island(1, "Food", 5), seed).next(sentences = 10).anchors.groupingBy { it.card.targetText }.eachCount()
+            assertEquals(listOf(2, 2, 2, 2, 2), twice.values.toList(), "seed $seed")
+        }
+    }
+
+    @Test
+    fun anIslandThatFindsNoRoomInThePromptLeavesItsSentencesToTheIslandsThatAreShown() {
+        // A local model's prompt: 60 cards, 20 of an island, 4,000 characters. Three islands of long cards: the third finds no room.
+        val long = (1..3).flatMap { id ->
+            (1..25).map { WorksheetSourceCard(id, "Island $id", "ziel $id-$it " + "x".repeat(50), "native $id-$it " + "y".repeat(50)) }
+        }
+        val dealer = WorksheetCardDealer(long, limit = 60, perIsland = 20, characters = 4_000, now = now, random = Random(1))
+
+        repeat(4) {
+            val deal = dealer.next(sentences = 5)
+            // Every sentence asked for has a card, and every such card is one the prompt shows.
+            assertEquals(5, deal.anchors.size)
+            assertTrue(deal.anchors.all { it.card in deal.cards })
+            assertEquals(5, deal.anchors.distinct().size)
+        }
+    }
+
+    @Test
+    fun theMoreAStudiedCardNeedsPracticeTheSoonerItIsBuiltFrom() {
+        // Two cards studied: one today, one long overdue and forgotten again and again. Which gets the island's one sentence?
+        val cards = listOf(studied(daysAgo = 0).copy(targetText = "Brot"), studied(daysAgo = 100, lapses = 4).copy(targetText = "Käse"))
+        val overdueFirst = (1..200).count { seed -> dealer(cards, seed).next(sentences = 1).anchors.single().card.targetText == "Käse" }
+
+        // Five times as likely as the one that needs nothing, not every time: a sheet is no drill of the worst card.
+        assertTrue(overdueFirst in 150..185, "$overdueFirst")
     }
 }

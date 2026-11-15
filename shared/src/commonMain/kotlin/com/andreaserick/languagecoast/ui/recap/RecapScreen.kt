@@ -25,6 +25,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,7 +76,7 @@ fun RecapScreen(onNavigateBack: () -> Unit, viewModel: RecapViewModel = koinView
 
             if (uiState.coasts.isNotEmpty()) {
                 ContentCard {
-                    Text("By coast", style = MaterialTheme.typography.titleMedium)
+                    Text("By coast", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                     uiState.coasts.forEachIndexed { index, coast ->
                         if (index > 0) HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 10.dp)) else Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -126,7 +128,7 @@ internal fun recapHeadline(state: RecapUiState): String = when {
     state.daysStudied >= state.dayOfMonth -> "Every single day so far. Remarkable."
     state.daysStudied >= state.dayOfMonth * 2 / 3 -> "Most days on the coast. The words are sticking."
     state.daysStudied >= 3 -> "${plural(state.daysStudied, "study day")} and ${plural(state.cardsReviewed, "card")} so far."
-    else -> "A quiet month so far. One island a day turns the tide."
+    else -> "A quiet month so far. A session a day turns the tide."
 }
 
 /** A large [value] with a short [label] below it. */

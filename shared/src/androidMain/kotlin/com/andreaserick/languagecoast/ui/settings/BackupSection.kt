@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,7 +27,7 @@ import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
-import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import java.time.Instant
@@ -62,9 +63,10 @@ actual fun BackupSection() {
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val file = viewModel.buildBackup()
+            // Writing out every card takes a moment on a large collection, so it happens away from the main thread.
+            val file = withContext(Dispatchers.Default) { viewModel.buildBackup() }
             val written = withContext(Dispatchers.IO) { writeText(context.contentResolver, uri, file.text) }
-            toast(if (written) "Backed up ${plural(file.cardCount, "card")}" else "The backup couldn't be saved")
+            toast(if (written) "Backed up ${plural(file.cardCount, "card")}" else "The backup couldn't be saved.")
         }
     }
 
@@ -72,7 +74,8 @@ actual fun BackupSection() {
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             val text = withContext(Dispatchers.IO) { readText(context.contentResolver, uri, MAX_BACKUP_CHARS) }
-            if (text == null) viewModel.onRestoreFileUnreadable() else viewModel.onRestoreFileRead(text)
+            // Reading a large backup takes a moment too. The ViewModel only stores what was read, which any thread may do.
+            if (text == null) viewModel.onRestoreFileUnreadable() else withContext(Dispatchers.Default) { viewModel.onRestoreFileRead(text) }
         }
     }
 
@@ -84,8 +87,8 @@ actual fun BackupSection() {
     }
 
     Hint(
-        "One file with all your coasts, cards and review progress, your streak and your settings. " +
-            "Keep it somewhere safe to move to a new phone. API keys aren't included."
+        "One file with all your coasts, cards and review progress, your streak, your settings and what you told the app " +
+            "under About you, in readable form. Keep it somewhere safe to move to a new phone. API keys aren't included."
     )
     Spacer(modifier = Modifier.height(12.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -94,7 +97,7 @@ actual fun BackupSection() {
             enabled = uiState.hasCoasts,
             modifier = Modifier
                 .weight(1f)
-                .height(ButtonHeight)
+                .heightIn(min = ButtonHeight)
         ) {
             Text("Back up")
         }
@@ -102,7 +105,7 @@ actual fun BackupSection() {
             onClick = { restoreLauncher.launch(BACKUP_MIME_TYPES) },
             modifier = Modifier
                 .weight(1f)
-                .height(ButtonHeight)
+                .heightIn(min = ButtonHeight)
         ) {
             Text("Restore")
         }
@@ -141,14 +144,14 @@ private fun RestoreDialog(summary: BackupSummary, isRestoring: Boolean, onRestor
                 if (summary.streakCount > 0) Text("${summary.streakCount} day streak", color = TextSecondary)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    "This replaces all coasts, cards and settings on this phone. Your API keys stay as they are.",
+                    "This replaces all coasts, cards and settings in the app. Your API keys stay as they are.",
                     color = CoralText
                 )
             }
         },
         confirmButton = {
             TextButton(onClick = onRestore, enabled = !isRestoring) {
-                Text(if (isRestoring) "Restoring…" else "Restore", color = Sunlit, style = MaterialTheme.typography.labelMedium)
+                Text(if (isRestoring) "Restoring…" else "Restore", color = SunlitText, style = MaterialTheme.typography.labelMedium)
             }
         },
         dismissButton = {

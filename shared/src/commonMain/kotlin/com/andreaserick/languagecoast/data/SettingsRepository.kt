@@ -1,10 +1,12 @@
 package com.andreaserick.languagecoast.data
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -123,6 +125,11 @@ interface SettingsRepository {
     val themeMode: Flow<String> get() = flowOf(SettingsDefaults.THEME_MODE)
     val hapticsEnabled: Flow<Boolean> get() = flowOf(true)
     val soundsEnabled: Flow<Boolean> get() = flowOf(true)
+    /**
+     * The cloud providers the user allowed the app to send text to, by [TranslationProvider.name]. A saved
+     * key alone is not permission: a cloud provider that isn't in here is not used (see [currentEngine]).
+     */
+    val aiSharingAllowed: Flow<Set<String>> get() = flowOf(emptySet())
 
     /** Stores [language] as the user's native language. */
     suspend fun setNativeLanguage(language: String)
@@ -199,6 +206,15 @@ interface SettingsRepository {
     /** Records that Today's invitation to tell the app about oneself was waved away. */
     suspend fun dismissAboutYouInvite() = Unit
 
+    /** Records that the user allowed the app to send text to cloud [provider]. */
+    suspend fun allowAiSharing(provider: TranslationProvider) = Unit
+
+    /** Clears [provider]'s saved API key and withdraws the permission to send text to it. */
+    suspend fun removeApiKey(provider: TranslationProvider) = Unit
+
+    /** Whether nothing at all is stored: a fresh install, or settings lost when the phone was restored from a backup. */
+    suspend fun isEmpty(): Boolean = false
+
     /** Records a completed study session for today and updates the streak. */
     suspend fun recordStudySession()
 
@@ -230,6 +246,8 @@ class DataStoreSettingsRepository(
 
     override val translationProvider: Flow<TranslationProvider> = dataStore.data.map { preferences ->
         preferences[TRANSLATION_PROVIDER]?.let { name -> TranslationProvider.entries.firstOrNull { it.name == name } }
+            // A provider this phone can't run (Local AI in settings that came from another phone) counts as none picked.
+            ?.takeUnless { (it == TranslationProvider.LocalAi && !localAiAvailable) || (it == TranslationProvider.OnDevice && !onDeviceTranslationAvailable) }
             // Before providers could be picked, Gemini was the only one; keep it for users who set it up.
             ?: if (onDeviceTranslationAvailable && preferences[API_KEY].isNullOrBlank()) TranslationProvider.OnDevice else TranslationProvider.Gemini
     }
@@ -281,15 +299,16 @@ class DataStoreSettingsRepository(
         dataStore.data.map { it[STREAK_COUNT] ?: 0 }
 
     override val studyDays: Flow<Set<LocalDate>> = dataStore.data.map { preferences ->
-        val recorded = preferences[STUDY_DAYS].orEmpty().mapTo(HashSet()) { LocalDate.parse(it) }
+        val recorded = preferences[STUDY_DAYS].orEmpty().mapNotNullTo(HashSet<LocalDate>()) { parseDateOrNull(it) }
         // Older versions only stored the streak, so its days count as studied too.
-        val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) }
+        val lastStudy = preferences[LAST_STUDY_DATE]?.let(::parseDateOrNull)
         val streak = preferences[STREAK_COUNT] ?: 0
-        if (lastStudy != null) (0 until streak).forEach { recorded += lastStudy.minus(it, DateTimeUnit.DAY) }
+        // No reader looks back further than a month; a streak of any size must not cost more than this.
+        if (lastStudy != null) (0 until minOf(streak, 366)).forEach { recorded += lastStudy.minus(it, DateTimeUnit.DAY) }
         recorded
     }
 
-    override val lastStudyDate: Flow<LocalDate?> = dataStore.data.map { preferences -> preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) } }
+    override val lastStudyDate: Flow<LocalDate?> = dataStore.data.map { preferences -> preferences[LAST_STUDY_DATE]?.let(::parseDateOrNull) }
 
     override val starterTopicsAdded: Flow<Set<String>> = dataStore.data.map { it[STARTER_TOPICS_ADDED].orEmpty() }
 
@@ -346,7 +365,8 @@ class DataStoreSettingsRepository(
     override val reminderSettings: Flow<ReminderSettings> = dataStore.data.map { preferences ->
         ReminderSettings(
             enabled = preferences[REMINDER_ENABLED] ?: true,
-            time = preferences[REMINDER_MINUTE_OF_DAY]?.let { LocalTime.fromSecondOfDay(it * 60) }
+            // A minute outside the day can't be a time; such a value counts as "no fixed time".
+            time = preferences[REMINDER_MINUTE_OF_DAY]?.takeIf { it in MINUTES_OF_DAY }?.let { LocalTime.fromSecondOfDay(it * 60) }
         )
     }
 
@@ -354,13 +374,31 @@ class DataStoreSettingsRepository(
 
     override val weeklyGoal: Flow<Int> = dataStore.data.map { it[WEEKLY_GOAL] ?: SettingsDefaults.WEEKLY_GOAL }
 
-    override val freezeUsedOn: Flow<LocalDate?> = dataStore.data.map { preferences -> preferences[FREEZE_USED_ON]?.let { LocalDate.parse(it) } }
+    override val freezeUsedOn: Flow<LocalDate?> = dataStore.data.map { preferences -> preferences[FREEZE_USED_ON]?.let(::parseDateOrNull) }
 
     override val themeMode: Flow<String> = dataStore.data.map { it[THEME_MODE] ?: SettingsDefaults.THEME_MODE }
 
     override val hapticsEnabled: Flow<Boolean> = dataStore.data.map { it[HAPTICS_ENABLED] ?: true }
 
     override val soundsEnabled: Flow<Boolean> = dataStore.data.map { it[SOUNDS_ENABLED] ?: true }
+
+    override val aiSharingAllowed: Flow<Set<String>> = dataStore.data.map { it[AI_SHARING_ALLOWED].orEmpty() }
+
+    override suspend fun allowAiSharing(provider: TranslationProvider) {
+        if (!provider.isCloud) return
+        dataStore.edit { it[AI_SHARING_ALLOWED] = it[AI_SHARING_ALLOWED].orEmpty() + provider.name }
+    }
+
+    override suspend fun removeApiKey(provider: TranslationProvider) {
+        val key = apiKeyPreference(provider) ?: return
+        dataStore.edit { preferences ->
+            preferences.remove(key)
+            val allowed = preferences[AI_SHARING_ALLOWED].orEmpty() - provider.name
+            if (allowed.isEmpty()) preferences.remove(AI_SHARING_ALLOWED) else preferences[AI_SHARING_ALLOWED] = allowed
+        }
+    }
+
+    override suspend fun isEmpty(): Boolean = dataStore.data.first().asMap().isEmpty()
 
     override suspend fun setNativeLanguage(language: String) = set(NATIVE_LANG, language)
     override suspend fun setStudyReversed(reversed: Boolean) = set(STUDY_REVERSED, reversed)
@@ -370,19 +408,22 @@ class DataStoreSettingsRepository(
     override suspend fun setSoundsEnabled(enabled: Boolean) = set(SOUNDS_ENABLED, enabled)
     override suspend fun setActiveCoastId(coastId: Int) = set(ACTIVE_COAST_ID, coastId)
     override suspend fun setTranslationProvider(provider: TranslationProvider) = set(TRANSLATION_PROVIDER, provider.name)
-    override suspend fun setApiKey(key: String) = set(API_KEY, key)
+    override suspend fun setApiKey(key: String) = setKey(TranslationProvider.Gemini, key)
     override suspend fun setGeminiModel(model: String) = set(GEMINI_MODEL, model)
-    override suspend fun setOpenRouterKey(key: String) = set(OPENROUTER_KEY, key)
+    override suspend fun setOpenRouterKey(key: String) = setKey(TranslationProvider.OpenRouter, key)
     override suspend fun setOpenRouterModel(model: String) = set(OPENROUTER_MODEL, model)
     override suspend fun setLocalAiModel(modelId: String) = set(LOCAL_AI_MODEL, modelId)
-    override suspend fun setOpenAiKey(key: String) = set(OPENAI_KEY, key)
+    override suspend fun setOpenAiKey(key: String) = setKey(TranslationProvider.OpenAI, key)
     override suspend fun setOpenAiModel(model: String) = set(OPENAI_MODEL, model)
-    override suspend fun setClaudeKey(key: String) = set(CLAUDE_KEY, key)
+    override suspend fun setClaudeKey(key: String) = setKey(TranslationProvider.Claude, key)
     override suspend fun setClaudeModel(model: String) = set(CLAUDE_MODEL, model)
-    override suspend fun setGroqKey(key: String) = set(GROQ_KEY, key)
-    override suspend fun setHuggingFaceToken(token: String) = set(HUGGING_FACE_TOKEN, token)
+    override suspend fun setGroqKey(key: String) = setKey(TranslationProvider.Groq, key)
+    override suspend fun setHuggingFaceToken(token: String) {
+        // A blank token is no token: removing it leaves nothing of it behind.
+        dataStore.edit { preferences -> if (token.isBlank()) preferences.remove(HUGGING_FACE_TOKEN) else preferences[HUGGING_FACE_TOKEN] = token }
+    }
     override suspend fun setGroqModel(model: String) = set(GROQ_MODEL, model)
-    override suspend fun setDeepSeekKey(key: String) = set(DEEPSEEK_KEY, key)
+    override suspend fun setDeepSeekKey(key: String) = setKey(TranslationProvider.DeepSeek, key)
     override suspend fun setDeepSeekModel(model: String) = set(DEEPSEEK_MODEL, model)
 
     override fun modelOptions(provider: TranslationProvider): Flow<List<String>> =
@@ -409,21 +450,21 @@ class DataStoreSettingsRepository(
     override suspend fun recordStudySession() {
         dataStore.edit { preferences ->
             val today = clock.todayIn(timeZone)
-            val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) }
-            val freezeUsedOn = preferences[FREEZE_USED_ON]?.let { LocalDate.parse(it) }
+            val lastStudy = preferences[LAST_STUDY_DATE]?.let(::parseDateOrNull)
+            val freezeUsedOn = preferences[FREEZE_USED_ON]?.let(::parseDateOrNull)
             preferences[STREAK_COUNT] = nextStreak(lastStudy, preferences[STREAK_COUNT] ?: 0, today, freezeUsedOn)
             preferences[LAST_STUDY_DATE] = today.toString()
             // Keep a few weeks of study days for the weekly overview.
             val cutoff = today.minus(STUDY_DAYS_KEPT, DateTimeUnit.DAY)
             preferences[STUDY_DAYS] = (preferences[STUDY_DAYS].orEmpty() + today.toString())
-                .filterTo(HashSet()) { LocalDate.parse(it) >= cutoff }
+                .filterTo(HashSet()) { day -> parseDateOrNull(day)?.let { it >= cutoff } == true }
         }
     }
 
     override suspend fun refreshStreak() {
         dataStore.edit { preferences ->
-            val lastStudy = preferences[LAST_STUDY_DATE]?.let { LocalDate.parse(it) } ?: return@edit
-            val freezeUsedOn = preferences[FREEZE_USED_ON]?.let { LocalDate.parse(it) }
+            val lastStudy = preferences[LAST_STUDY_DATE]?.let(::parseDateOrNull) ?: return@edit
+            val freezeUsedOn = preferences[FREEZE_USED_ON]?.let(::parseDateOrNull)
             val refreshed = refreshedStreak(lastStudy, preferences[STREAK_COUNT] ?: 0, freezeUsedOn, clock.todayIn(timeZone))
             preferences[STREAK_COUNT] = refreshed.streak
             if (refreshed.freezeUsedOn == null) preferences.remove(FREEZE_USED_ON) else preferences[FREEZE_USED_ON] = refreshed.freezeUsedOn.toString()
@@ -480,14 +521,15 @@ class DataStoreSettingsRepository(
             put(CLAUDE_MODEL, backup.claudeModel)
             put(GROQ_MODEL, backup.groqModel)
             put(DEEPSEEK_MODEL, backup.deepSeekModel)
-            put(STREAK_COUNT, backup.streakCount)
-            put(LAST_STUDY_DATE, backup.lastStudyDate)
-            put(STUDY_DAYS, backup.studyDays.toSet())
+            // A file can hold anything; only dates and times that can be read back are written (see [isReadable]).
+            put(STREAK_COUNT, backup.streakCount.coerceAtLeast(0))
+            put(LAST_STUDY_DATE, backup.lastStudyDate?.takeIf { parseDateOrNull(it) != null })
+            put(STUDY_DAYS, backup.studyDays.filterTo(HashSet<String>()) { parseDateOrNull(it) != null })
             put(REMINDER_ENABLED, backup.reminderEnabled)
-            put(REMINDER_MINUTE_OF_DAY, backup.reminderMinuteOfDay)
+            put(REMINDER_MINUTE_OF_DAY, backup.reminderMinuteOfDay?.takeIf { it in MINUTES_OF_DAY })
             put(STUDY_REVERSED, backup.studyReversed)
             put(WEEKLY_GOAL, backup.weeklyGoal)
-            put(FREEZE_USED_ON, backup.freezeUsedOn)
+            put(FREEZE_USED_ON, backup.freezeUsedOn?.takeIf { parseDateOrNull(it) != null })
             put(THEME_MODE, backup.themeMode)
             put(HAPTICS_ENABLED, backup.hapticsEnabled)
             put(SOUNDS_ENABLED, backup.soundsEnabled)
@@ -503,6 +545,12 @@ class DataStoreSettingsRepository(
     /** Stores [value] under [key]. */
     private suspend fun <T> set(key: Preferences.Key<T>, value: T) {
         dataStore.edit { it[key] = value }
+    }
+
+    /** Stores [provider]'s API key. A blank one removes the key, and with it the permission to send text there. */
+    private suspend fun setKey(provider: TranslationProvider, key: String) {
+        val preference = apiKeyPreference(provider) ?: return
+        if (key.isBlank()) removeApiKey(provider) else set(preference, key)
     }
 
     private fun Preferences.readProfile(): Profile =
@@ -560,7 +608,20 @@ class DataStoreSettingsRepository(
         /** Not part of a backup: after a restore a reached level is simply congratulated on once more. */
         val LEVELS_CELEBRATED = stringSetPreferencesKey("levels_celebrated")
         val ABOUT_YOU_INVITE_DISMISSED = booleanPreferencesKey("about_you_invite_dismissed")
+        /** Not part of a backup, like the keys it goes with: permission is given on the phone that sends the text. */
+        val AI_SHARING_ALLOWED = stringSetPreferencesKey("ai_sharing_allowed")
         const val STUDY_DAYS_KEPT = 28
+
+        /** The preference holding [provider]'s API key; null for the providers that need none. */
+        fun apiKeyPreference(provider: TranslationProvider): Preferences.Key<String>? = when (provider) {
+            TranslationProvider.Gemini -> API_KEY
+            TranslationProvider.OpenAI -> OPENAI_KEY
+            TranslationProvider.Claude -> CLAUDE_KEY
+            TranslationProvider.Groq -> GROQ_KEY
+            TranslationProvider.DeepSeek -> DEEPSEEK_KEY
+            TranslationProvider.OpenRouter -> OPENROUTER_KEY
+            TranslationProvider.OnDevice, TranslationProvider.LocalAi -> null
+        }
     }
 }
 
@@ -570,9 +631,28 @@ fun personalIslandKey(coastId: Int, islandId: String): String = "$coastId:$islan
 /** The entry in [SettingsRepository.starterTopicsAdded] for [topic] on coast [coastId]. */
 fun starterTopicKey(coastId: Int, topic: String): String = "$coastId:$topic"
 
-/** The DataStore holding the settings, stored in the file at [path]. Only one may exist per file. */
+/**
+ * The DataStore holding the settings, stored in the file at [path]. Only one may exist per file. A file that
+ * can't be read any more is replaced by an empty one: the cards are in the database, and the app must still start.
+ */
 fun createSettingsDataStore(path: String): DataStore<Preferences> =
-    PreferenceDataStoreFactory.createWithPath(produceFile = { path.toPath() })
+    PreferenceDataStoreFactory.createWithPath(
+        corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+        produceFile = { path.toPath() }
+    )
+
+/** The minutes of a day, which a reminder's fixed time is stored as. */
+internal val MINUTES_OF_DAY = 0..1439
+
+/**
+ * [text] as a date, or null if it isn't one. A stored value that can't be read (from a hand-edited backup,
+ * say) then counts as missing, instead of stopping the app at every start.
+ */
+internal fun parseDateOrNull(text: String): LocalDate? = try {
+    LocalDate.parse(text)
+} catch (e: IllegalArgumentException) {
+    null
+}
 
 /**
  * The single target language from before coasts existed. Only read by [AppDatabase.migration2To3]
@@ -582,14 +662,16 @@ internal suspend fun DataStore<Preferences>.readLegacyTargetLanguage(): String =
     data.first()[stringPreferencesKey("target_language")] ?: "Spanish"
 
 /**
- * Streak after completing a session [today]: unchanged if already studied today, incremented if the
+ * Streak after completing a session [today]: unchanged if already studied today (or, after the phone's
+ * clock was set back, on a day yet to come), incremented if the
  * last session was yesterday (or the day before, with a streak freeze on yesterday), otherwise restarted at 1.
  */
 internal fun nextStreak(lastStudy: LocalDate?, currentStreak: Int, today: LocalDate, freezeUsedOn: LocalDate? = null): Int {
     val yesterday = today.minus(1, DateTimeUnit.DAY)
     return when {
         lastStudy == null -> 1
-        lastStudy == today -> currentStreak
+        // Today, or a day that hasn't come yet (the clock was set back, or a flight went west): nothing was missed.
+        lastStudy >= today -> currentStreak
         lastStudy == yesterday -> currentStreak + 1
         lastStudy == yesterday.minus(1, DateTimeUnit.DAY) && freezeUsedOn == yesterday -> currentStreak + 1
         else -> 1

@@ -37,6 +37,25 @@ class ProfileTest {
     }
 
     @Test
+    fun aJobThatStartsWithAVowelTakesAn() {
+        assertEquals("an", indefiniteArticle("engineer"))
+        assertEquals("an", indefiniteArticle(" Architect"))
+        assertEquals("a", indefiniteArticle("nurse"))
+        // "A university lecturer", "a UX designer": u is left alone.
+        assertEquals("a", indefiniteArticle("university lecturer"))
+        assertEquals("a", indefiniteArticle(""))
+
+        assertEquals("I work as an engineer.", profilePreview(Profile(job = "engineer")))
+        assertEquals("I work as a nurse.", profilePreview(Profile(job = "nurse")))
+        assertEquals("I work as an engineer.", PhraseBank.fill("I work as a [job].", mapOf("job" to "engineer")))
+        assertEquals("I work as an Accountant.", PhraseBank.fill("I work as a [job].", mapOf("job" to " Accountant ")))
+        assertEquals("I work as a teacher.", PhraseBank.fill("I work as a [job].", mapOf("job" to "teacher")))
+        // Without a job the sentence stays unusable, and other blanks are not touched.
+        assertEquals(null, PhraseBank.fill("I work as a [job].", emptyMap()))
+        assertEquals("I live in Oslo.", PhraseBank.fill("I live in [city].", mapOf("city" to "Oslo")))
+    }
+
+    @Test
     fun theProfileFillsTheAboutMeTopicExceptPerSentenceBlanks() {
         val aboutMe = PhraseBank.theme("About Me")!!
         val profile = Profile(name = "Anna", city = "Oslo", country = "Norway", homeCountry = "Italy", hometown = "Bologna", job = "nurse")

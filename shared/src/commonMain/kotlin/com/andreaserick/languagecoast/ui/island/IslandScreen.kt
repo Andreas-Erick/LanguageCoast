@@ -11,12 +11,11 @@ import androidx.compose.material.icons.filled.Waves
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.ui.components.CardListRow
 import com.andreaserick.languagecoast.ui.components.EditCardSheet
 import com.andreaserick.languagecoast.ui.components.EmptyState
@@ -37,9 +36,10 @@ import org.koin.compose.viewmodel.koinViewModel
 fun IslandScreen(onNavigateBack: () -> Unit, viewModel: IslandViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current
-    var editingCard by remember { mutableStateOf<Flashcard?>(null) }
+    // Kept as the card's id, so the open sheet survives a rotation; the card itself is looked up in the list.
+    var editingCardId by rememberSaveable { mutableStateOf<Int?>(null) }
 
-    editingCard?.let { card ->
+    uiState.cards.firstOrNull { it.cardId == editingCardId }?.let { card ->
         EditCardSheet(
             card = card,
             islands = uiState.coastIslands,
@@ -47,9 +47,9 @@ fun IslandScreen(onNavigateBack: () -> Unit, viewModel: IslandViewModel = koinVi
             targetLanguage = uiState.targetLanguage,
             onSave = { edit ->
                 viewModel.editCard(card.cardId, edit)
-                editingCard = null
+                editingCardId = null
             },
-            onDismiss = { editingCard = null }
+            onDismiss = { editingCardId = null }
         )
     }
 
@@ -63,7 +63,7 @@ fun IslandScreen(onNavigateBack: () -> Unit, viewModel: IslandViewModel = koinVi
         when {
             // Show nothing while loading to avoid flashing the empty state.
             uiState.isLoading -> Unit
-            uiState.cards.isEmpty() -> EmptyState(icon = Icons.Default.Waves, title = "No flashcards on this island")
+            uiState.cards.isEmpty() -> EmptyState(icon = Icons.Default.Waves, title = "No cards on this island yet")
             else -> LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),
@@ -73,7 +73,8 @@ fun IslandScreen(onNavigateBack: () -> Unit, viewModel: IslandViewModel = koinVi
                     CardListRow(
                         card = card,
                         now = uiState.now,
-                        onEdit = { editingCard = card },
+                        language = uiState.targetLanguage,
+                        onEdit = { editingCardId = card.cardId },
                         onDelete = {
                             viewModel.deleteCard(card) { deleted ->
                                 undoMessenger.show("Card deleted") { viewModel.restore(deleted) }

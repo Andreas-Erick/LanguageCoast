@@ -1,11 +1,12 @@
 package com.andreaserick.languagecoast.ui.study
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +25,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.PlacedCard
@@ -35,8 +38,9 @@ import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.Pill
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
+import com.andreaserick.languagecoast.ui.components.inLanguage
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
-import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
@@ -46,6 +50,7 @@ import com.andreaserick.languagecoast.ui.theme.TextSecondary
  *
  * @param index Which of the session's [total] new sentences this is, from 1.
  * @param onSpeak Reads the translation aloud; null hides the speaker button.
+ * @param targetLanguage The language of the translation, and [nativeLanguage] the user's own (English names).
  */
 @Composable
 internal fun LearnView(
@@ -54,7 +59,9 @@ internal fun LearnView(
     total: Int,
     onKeep: () -> Unit,
     onSkip: () -> Unit,
-    onSpeak: (() -> Unit)?
+    onSpeak: (() -> Unit)?,
+    targetLanguage: String = "",
+    nativeLanguage: String = ""
 ) = LearnStep(
     heading = "New sentence · $index of $total",
     category = "${sentence.emoji ?: emojiForCategory(sentence.category)} ${sentence.category}",
@@ -65,7 +72,9 @@ internal fun LearnView(
     secondary = "Skip",
     onPrimary = onKeep,
     onSecondary = onSkip,
-    onSpeak = onSpeak
+    onSpeak = onSpeak,
+    targetLanguage = targetLanguage,
+    nativeLanguage = nativeLanguage
 )
 
 /**
@@ -81,7 +90,9 @@ internal fun IntroduceView(
     total: Int,
     onLearn: () -> Unit,
     onKnow: () -> Unit,
-    onSpeak: (() -> Unit)?
+    onSpeak: (() -> Unit)?,
+    targetLanguage: String = "",
+    nativeLanguage: String = ""
 ) = LearnStep(
     heading = "New card · $index of $total",
     category = "${card.emoji} ${card.islandName}",
@@ -92,7 +103,9 @@ internal fun IntroduceView(
     secondary = "I know this",
     onPrimary = onLearn,
     onSecondary = onKnow,
-    onSpeak = onSpeak
+    onSpeak = onSpeak,
+    targetLanguage = targetLanguage,
+    nativeLanguage = nativeLanguage
 )
 
 /** A new sentence or card with both sides shown and two ways on. */
@@ -107,7 +120,9 @@ private fun LearnStep(
     secondary: String,
     onPrimary: () -> Unit,
     onSecondary: () -> Unit,
-    onSpeak: (() -> Unit)?
+    onSpeak: (() -> Unit)?,
+    targetLanguage: String,
+    nativeLanguage: String
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -119,44 +134,47 @@ private fun LearnStep(
         Text(
             text = heading,
             style = MaterialTheme.typography.labelMedium,
-            color = Sunlit
+            color = SunlitText,
+            modifier = Modifier.asHeading()
         )
         Spacer(modifier = Modifier.height(12.dp))
 
-        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            ContentCard(padding = PaddingValues(horizontal = 20.dp, vertical = 24.dp)) {
-                Pill(
-                    text = category,
-                    container = SurfaceRaised,
-                    content = TextSecondary,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
+        // The card sits in the middle of the room that is left. Where there is none (a phone on its side,
+        // large text) the two spacers give way and the screen scrolls, instead of the card being squeezed.
+        Spacer(modifier = Modifier.weight(1f))
+        ContentCard(padding = PaddingValues(horizontal = 20.dp, vertical = 24.dp)) {
+            Pill(
+                text = category,
+                container = SurfaceRaised,
+                content = TextSecondary,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = inLanguage(targetText, targetLanguage),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = TextPrimary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.height(20.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = targetText,
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = TextPrimary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (onSpeak != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        IconButton(onClick = onSpeak) {
-                            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = Sunlit)
-                        }
+                if (onSpeak != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = onSpeak) {
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Read aloud", tint = SunlitText)
                     }
                 }
-                HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 16.dp))
-                Text(
-                    text = nativeText,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
+            HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 16.dp))
+            Text(
+                text = inLanguage(nativeText, nativeLanguage),
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
+        Spacer(modifier = Modifier.weight(1f))
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
@@ -166,13 +184,23 @@ private fun LearnStep(
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            CoastSecondaryButton(onClick = onSecondary, modifier = Modifier.weight(1f).heightIn(min = ButtonHeight)) {
-                Text(secondary, maxLines = 1)
+        // A label that doesn't fit its half (a large font size) wraps instead of losing a word, and both
+        // buttons grow to the taller one.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+        ) {
+            CoastSecondaryButton(onClick = onSecondary, modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = ButtonHeight)) {
+                Text(secondary, textAlign = TextAlign.Center)
             }
-            CoastButton(onClick = onPrimary, modifier = Modifier.weight(1f).heightIn(min = ButtonHeight)) {
-                Text(primary, maxLines = 1)
+            CoastButton(onClick = onPrimary, modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = ButtonHeight)) {
+                Text(primary, textAlign = TextAlign.Center)
             }
         }
     }
 }
+
+/** Marks a title as a heading for screen readers. A function of its own, as [LearnStep] has a text called "heading". */
+private fun Modifier.asHeading(): Modifier = semantics { heading() }

@@ -3,6 +3,7 @@ package com.andreaserick.languagecoast.data
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -20,6 +21,13 @@ class StreakTest {
     @Test
     fun secondSessionOnSameDayDoesNotIncrement() {
         assertEquals(4, nextStreak(lastStudy = today, currentStreak = 4, today = today))
+    }
+
+    // The phone's clock was set back, or the user flew west after a session past midnight: nothing was missed.
+    @Test
+    fun aLastSessionOnADayYetToComeKeepsTheStreak() {
+        assertEquals(4, nextStreak(lastStudy = today.plus(1, DateTimeUnit.DAY), currentStreak = 4, today = today))
+        assertEquals(RefreshedStreak(4, null), refreshedStreak(today.plus(1, DateTimeUnit.DAY), streak = 4, freezeUsedOn = null, today = today))
     }
 
     @Test

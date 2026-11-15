@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Sailing
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -30,10 +31,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,11 +63,13 @@ import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.dayOfWeekName
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
+import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.StreakToday
 import com.andreaserick.languagecoast.ui.theme.SurfBlue
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import kotlinx.datetime.DateTimeUnit
@@ -96,11 +101,27 @@ fun MyCoastScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current
 
-    var showNewCoastDialog by remember { mutableStateOf(false) }
+    // Saved, so turning or unfolding the phone doesn't close an open dialog.
+    var showNewCoastDialog by rememberSaveable { mutableStateOf(false) }
+    // The coast the user asked to delete, until they confirm or back out.
+    var pendingDeleteId by rememberSaveable { mutableStateOf<Int?>(null) }
+
+    uiState.coasts.firstOrNull { it.coast.coastId == pendingDeleteId }?.let { summary ->
+        DeleteCoastDialog(
+            summary = summary,
+            onConfirm = {
+                pendingDeleteId = null
+                viewModel.deleteCoast(summary.coast) { deleted ->
+                    undoMessenger.show("${summary.coast.displayName} deleted") { viewModel.restore(deleted) }
+                }
+            },
+            onDismiss = { pendingDeleteId = null }
+        )
+    }
 
     if (showNewCoastDialog) {
         LanguagePickerDialog(
-            title = "New Coast",
+            title = "New coast",
             subtitle = "Which language do you want to study?",
             languages = uiState.availableLanguages,
             onPick = { language ->
@@ -141,7 +162,7 @@ fun MyCoastScreen(
                             .heightIn(min = ButtonHeight)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                        Text("Start a Coast")
+                        Text("Start a coast")
                     }
                 }
             )
@@ -171,11 +192,8 @@ fun MyCoastScreen(
                         level = uiState.levels[summary.coast.coastId],
                         today = uiState.today ?: return@items,
                         onClick = { onCoastClick(summary.coast.coastId, summary.coast.displayName) },
-                        onDeleteClick = {
-                            viewModel.deleteCoast(summary.coast) { deleted ->
-                                undoMessenger.show("${summary.coast.displayName} deleted") { viewModel.restore(deleted) }
-                            }
-                        },
+                        // A whole coast isn't deleted on one tap: the dialog above asks first, and Undo follows as before.
+                        onDeleteClick = { pendingDeleteId = summary.coast.coastId },
                         modifier = Modifier.animateItem()
                     )
                 }
@@ -189,13 +207,41 @@ fun MyCoastScreen(
                                 .animateItem()
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                            Text("New Coast")
+                            Text("New coast")
                         }
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * Asks before a whole coast is deleted. A coast can hold months of progress, and the Undo that follows is
+ * only there for a few seconds; cards and small islands keep their one-tap delete.
+ */
+@Composable
+private fun DeleteCoastDialog(summary: CoastSummary, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete ${summary.coast.displayName}?") },
+        text = {
+            Text(
+                if (summary.cardCount == 0) "It has no cards yet."
+                else "Its ${plural(summary.islandCount, "island")} and ${plural(summary.cardCount, "card")} will be removed, with your progress on them."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Delete", color = CoralText, style = MaterialTheme.typography.labelMedium)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    )
 }
 
 /**
@@ -219,7 +265,7 @@ fun StreakCard(
     ContentCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.Bottom) {
             if (streakCount > 0) {
-                Text("$streakCount", style = MaterialTheme.typography.headlineMedium, color = Sunlit)
+                Text("$streakCount", style = MaterialTheme.typography.headlineMedium, color = SunlitText)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "day streak",
@@ -229,7 +275,7 @@ fun StreakCard(
             } else {
                 Column {
                     Text("Start your streak today", style = MaterialTheme.typography.titleMedium)
-                    Text("Finish an island to light the fire.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text("Finish today's session to light the fire.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                 }
             }
         }
@@ -268,7 +314,7 @@ fun StreakCard(
 /** The cards that keep slipping away, with a session that goes over just those. */
 @Composable
 private fun LeakyCard(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    ContentCard(onClick = onClick, modifier = modifier, padding = PaddingValues(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 16.dp)) {
+    ContentCard(onClick = onClick, onClickLabel = "study them", modifier = modifier, padding = PaddingValues(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconTile { Text("💧", fontSize = 22.sp) }
             Spacer(modifier = Modifier.width(12.dp))
@@ -345,6 +391,7 @@ fun CoastCard(
 
     ContentCard(
         onClick = onClick,
+        onClickLabel = "open",
         modifier = modifier,
         padding = PaddingValues(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 4.dp)
     ) {

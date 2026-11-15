@@ -9,8 +9,10 @@ import com.andreaserick.languagecoast.data.BackupSummary
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.decodeBackup
 import com.andreaserick.languagecoast.data.encodeBackup
+import com.andreaserick.languagecoast.data.logError
 import com.andreaserick.languagecoast.data.summary
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -88,12 +90,43 @@ class BackupViewModel(
         val backup = state.value.restorePreview ?: return
         state.update { it.copy(isRestoring = true) }
         viewModelScope.launch {
-            val previous = backups.createBackup()
-            backups.restore(backup)
-            // The backup may turn reminders on or off, or move them to another time.
+            var previous: Backup? = null
+            val restored = try {
+                previous = backups.createBackup()
+                backups.restore(backup)
+                // The backup may turn reminders on or off, or move them to another time.
+                reminderScheduler.reschedule()
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logError(TAG, "The backup couldn't be restored", e)
+                false
+            }
+            val before = previous
+            if (restored && before != null) {
+                state.update { it.copy(restorePreview = null, isRestoring = false) }
+                onRestored(before)
+            } else {
+                // The cards are replaced all at once or not at all, but the settings follow them: put back
+                // what was there, so that a restore that failed halfway leaves nothing changed.
+                if (before != null) putBack(before)
+                state.update {
+                    it.copy(restorePreview = null, isRestoring = false, message = "This backup couldn't be restored. Nothing was changed.")
+                }
+            }
+        }
+    }
+
+    /** Restores [previous] after a restore that failed. If that fails too, it is only logged: there is nothing left to try. */
+    private suspend fun putBack(previous: Backup) {
+        try {
+            backups.restore(previous)
             reminderScheduler.reschedule()
-            state.update { it.copy(restorePreview = null, isRestoring = false) }
-            onRestored(previous)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logError(TAG, "What was there before the restore couldn't be put back", e)
         }
     }
 
@@ -108,4 +141,8 @@ class BackupViewModel(
 
     /** Shows [message] to the user once. */
     private fun showMessage(message: String) = state.update { it.copy(message = message) }
+
+    private companion object {
+        const val TAG = "BackupViewModel"
+    }
 }

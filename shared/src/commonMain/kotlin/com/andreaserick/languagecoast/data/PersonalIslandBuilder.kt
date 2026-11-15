@@ -1,6 +1,8 @@
 package com.andreaserick.languagecoast.data
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -137,11 +139,16 @@ class PersonalIslandBuilder(
                     _progress.value = progress
                     continue
                 }
-                replaceable.forEach { flashcards.deleteFlashcard(it) }
-                val added = sentences.map { sentence ->
-                    flashcards.addFlashcard(coastId, sentence.nativeText, sentence.targetText, island.name, island.emoji, sentence.alternatives, sentence.note).card.cardId
+                // Saved whole or not at all: a Stop that lands here waits until the island's old cards are replaced
+                // by the new ones and the island is marked as written, so it is never left half-written.
+                val added = withContext(NonCancellable) {
+                    replaceable.forEach { flashcards.deleteFlashcard(it) }
+                    val cards = sentences.map { sentence ->
+                        flashcards.addFlashcard(coastId, sentence.nativeText, sentence.targetText, island.name, island.emoji, sentence.alternatives, sentence.note).card.cardId
+                    }
+                    settings.markPersonalIslandBuilt(coastId, key, island.fingerprint(profile, answers))
+                    cards
                 }
-                settings.markPersonalIslandBuilt(coastId, key, island.fingerprint(profile, answers))
                 progress = progress.copy(
                     done = progress.done + 1,
                     added = progress.added + added.size,
@@ -189,11 +196,12 @@ class PersonalIslandBuilder(
             val prompt = buildPersonalIslandPrompt(
                 island, facts, nativeLanguage, coast.language, coast.region, coast.goal, wanted, taken.takeLast(AVOID_LIMIT), level, wording
             )
-            val completion = translator.complete(engine, prompt)
+            // Several islands are many requests in a row; a provider's per-minute limit is waited out instead of ending the run.
+            val completion = translator.completeWaiting(engine, prompt)
             val text = completion.text
             if (text == null) {
                 logError(TAG, "No sentences for ${island.name}: ${completion.errorMessage}")
-                if (sentences.isEmpty()) return Written.Failed(completion.errorMessage ?: "The AI provider didn't answer.")
+                if (sentences.isEmpty()) return Written.Failed(completion.errorMessage ?: "The AI provider didn't answer. Try again.")
                 break
             }
             val fresh = parsePersonalIslandResponse(text, island, wanted, taken)

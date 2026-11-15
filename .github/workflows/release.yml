@@ -1,9 +1,16 @@
 name: Release
 
 # Builds a signed APK and app bundle and publishes them as a GitHub Release when a version tag is pushed:
-#   git tag v1.0 && git push origin v1.0
+#   git tag v3.1.0 && git push origin v3.1.0
 # Requires the repository secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD.
 # The .aab is for Google Play (required for new apps); the .apk is for direct/sideloaded installs.
+# The R8 mapping file of the build is attached as well, to read a stack trace from the APK (README > Releases).
+#
+# The tag must be a plain version, vMAJOR.MINOR.PATCH. Pre-release tags such as v3.1.0-rc1 are refused, see
+# "Check the tag" below. A test build is the next patch release.
+#
+# This workflow does not start the app. The "device" job in ci.yml builds the minified release variant on every
+# push to main, starts it on an emulator and runs the instrumented tests, so tag a commit whose CI run passed.
 
 on:
   push:
@@ -19,6 +26,18 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # The versionCode is computed from the tag (see the build step), and Google Play accepts each versionCode
+      # only once. A suffix would be dropped, so v3.1.0-rc1 would use up the code of the final v3.1.0. A minor or
+      # patch number of 100 or more would run into the next field (v3.100.0 and v4.0.0 are both 40000), and a
+      # leading zero (v3.01.0) would repeat the code of v3.1.0. Such a tag fails here, before anything is built.
+      - name: Check the tag
+        run: |
+          PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$'
+          if [[ ! "$GITHUB_REF_NAME" =~ $PATTERN ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not a release version. Use vMAJOR.MINOR.PATCH with minor and patch from 0 to 99, no leading zeros and no suffix (v3.1.0, not v3.1.0-rc1): Google Play accepts each versionCode once, and a pre-release tag would use up the code of the final release. Tag a test build as the next patch release."
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v6
@@ -49,19 +68,25 @@ jobs:
         # number (at most 25), which every tag from v1.8.0 on is above.
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          IFS=. read -r MAJOR MINOR PATCH <<< "${VERSION%%-*}"
-          VERSION_CODE=$(( MAJOR * 10000 + ${MINOR:-0} * 100 + ${PATCH:-0} ))
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
           echo "versionName $VERSION, versionCode $VERSION_CODE"
-          ./gradlew testDebugUnitTest :shared:testAndroidHostTest assembleRelease bundleRelease             -PversionName="$VERSION" -PversionCode="$VERSION_CODE"
+          ./gradlew testDebugUnitTest :shared:testAndroidHostTest assembleRelease bundleRelease \
+            -PversionName="$VERSION" -PversionCode="$VERSION_CODE"
 
-      - name: Rename APK and AAB
+      # mapping.txt turns the shortened names in a stack trace of this build back into the real ones. The app
+      # bundle carries a copy for Google Play; the APK does not, so the file is kept with the release. It is
+      # about 80 MB of text, so it is attached compressed.
+      - name: Rename the APK, the AAB and the R8 mapping file
         run: |
           cp app/build/outputs/apk/release/app-release.apk "LanguageCoast-${GITHUB_REF_NAME}.apk"
           cp app/build/outputs/bundle/release/app-release.aab "LanguageCoast-${GITHUB_REF_NAME}.aab"
+          gzip -9 -c app/build/outputs/mapping/release/mapping.txt > "LanguageCoast-${GITHUB_REF_NAME}-mapping.txt.gz"
 
       - uses: softprops/action-gh-release@v3
         with:
           files: |
             LanguageCoast-*.apk
             LanguageCoast-*.aab
+            LanguageCoast-*-mapping.txt.gz
           generate_release_notes: true

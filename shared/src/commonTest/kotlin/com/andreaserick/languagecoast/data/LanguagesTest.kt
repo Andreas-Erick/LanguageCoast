@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.data
 
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.Test
 
@@ -62,6 +63,35 @@ class LanguagesTest {
         Languages.ALL.mapNotNull { it.flagCountry }.forEach { country ->
             assertTrue(country.length == 2 && country.all { it in 'A'..'Z' }, country)
         }
+    }
+
+    @Test
+    fun languagesNotWrittenInLatinLettersAreMarked() {
+        // Reading text from a photo only knows Latin letters, so it is offered for the others only.
+        assertEquals(
+            listOf("Bulgarian", "Greek", "Japanese", "Korean", "Russian", "Serbian", "Ukrainian"),
+            Languages.ALL.filterNot { it.latinScript }.map { it.name }
+        )
+        assertFalse(Languages.isLatinScript("Russian"))
+        assertTrue(Languages.isLatinScript("German"))
+        // Every one of them shows it in its own name.
+        Languages.ALL.filterNot { it.latinScript }.forEach { language ->
+            assertTrue(language.nativeName.none { it in 'a'..'z' || it in 'A'..'Z' }, language.name)
+        }
+    }
+
+    @Test
+    fun onlyJapaneseIsWrittenWithoutSpacesBetweenWords() {
+        // The gap exercise and tapping a word cut a sentence at its spaces.
+        assertEquals(listOf("Japanese"), Languages.ALL.filterNot { it.spaceSeparated }.map { it.name })
+        assertFalse(Languages.isSpaceSeparated("Japanese"))
+        assertTrue(Languages.isSpaceSeparated("Korean"))
+    }
+
+    @Test
+    fun aLanguageTheAppDoesNotKnowCountsAsLatinAndSpaced() {
+        assertTrue(Languages.isLatinScript("Klingon"))
+        assertTrue(Languages.isSpaceSeparated("Klingon"))
     }
 
     @Test

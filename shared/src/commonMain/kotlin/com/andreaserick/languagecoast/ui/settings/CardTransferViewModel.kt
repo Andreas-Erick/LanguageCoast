@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.AnkiNote
+import com.andreaserick.languagecoast.data.logError
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.ExportFormat
@@ -15,6 +16,7 @@ import com.andreaserick.languagecoast.data.ankiNoteCards
 import com.andreaserick.languagecoast.data.exportCards
 import com.andreaserick.languagecoast.data.importFileKind
 import com.andreaserick.languagecoast.data.parseCardFile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -96,26 +98,50 @@ class CardTransferViewModel(
         return "language-coast$suffix.${format.extension}"
     }
 
+    /*
+     * Reading the cards out of a large file takes a moment (a shared Anki deck easily has 20,000 notes), so the
+     * screen does that part away from the main thread and hands over the cards: [acceptsImportText] and
+     * [parseCardFile] for a text file, then [onTextCardsRead]; [ankiNoteCards] for a package, then
+     * [onAnkiCardsRead]. [onImportFileRead] and [onAnkiPackageRead] do both steps in one, on the caller's thread.
+     */
+
     /**
      * Reads the cards in [text], a CSV or tab-separated file, and opens the import preview, or explains why
      * there is nothing to import. A file that isn't text is turned away: an Anki package has to come through
      * [onAnkiPackageRead], and a spreadsheet's own format can't be read at all.
      */
     fun onImportFileRead(text: String) {
-        when (importFileKind(text)) {
-            ImportFileKind.Archive -> return showMessage("That file is packed, not text. Pick a CSV or tab-separated file, or an Anki package (.apkg).")
-            ImportFileKind.Binary -> return showMessage("That file isn't plain text. Pick a CSV or tab-separated file saved as UTF-8.")
-            ImportFileKind.Text -> Unit
+        if (acceptsImportText(text)) onTextCardsRead(parseCardFile(text))
+    }
+
+    /**
+     * Whether [text] is a file of text that cards can be read from. If it isn't, the user is told what to
+     * pick instead. It only looks at the start of the file, so it is quick whatever the file's size.
+     */
+    fun acceptsImportText(text: String): Boolean {
+        val refusal = when (importFileKind(text)) {
+            ImportFileKind.Archive -> "That is a zip file, not a card file. Pick a CSV or tab-separated file, or an Anki package (.apkg)."
+            ImportFileKind.Binary -> "That file isn't plain text. Pick a CSV or tab-separated file saved as UTF-8."
+            ImportFileKind.Text -> return true
         }
-        preview(parseCardFile(text), mayHaveHeader = true, noCards = "No cards found. The file needs a column for each side of the card.")
+        showMessage(refusal)
+        return false
+    }
+
+    /** Opens the import preview for [cards], read from a CSV or tab-separated file with [parseCardFile]. */
+    fun onTextCardsRead(cards: List<ImportedCard>) {
+        preview(cards, mayHaveHeader = true, noCards = "No cards found. The file needs a column for each side of the card.")
     }
 
     /**
      * Opens the import preview for [notes], read from an Anki package (.apkg): each note's first two fields
      * with text become a card, and its deck names the island.
      */
-    fun onAnkiPackageRead(notes: List<AnkiNote>) {
-        preview(ankiNoteCards(notes), mayHaveHeader = false, noCards = "No cards found in that package. Its notes need two fields with text.")
+    fun onAnkiPackageRead(notes: List<AnkiNote>) = onAnkiCardsRead(ankiNoteCards(notes))
+
+    /** Opens the import preview for [cards], made from an Anki package's notes with [ankiNoteCards]. */
+    fun onAnkiCardsRead(cards: List<ImportedCard>) {
+        preview(cards, mayHaveHeader = false, noCards = "No cards found in that package. Its notes need two fields with text.")
     }
 
     /** Opens the import preview for [cards] into the active coast, or says why not: [noCards] when there are none. */
@@ -162,12 +188,14 @@ class CardTransferViewModel(
             val existing = flashcards.getAllContent().firstOrNull { it.coast.coastId == preview.coastId }?.cards.orEmpty()
                 .associateByTo(HashMap()) { duplicateKey(it.nativeText, it.targetText) }
             val seen = existing.keys.toHashSet()
-            val added = mutableListOf<AddedCard>()
+            val newCards = mutableListOf<ImportedCard>()
             var duplicates = 0
             var reformatted = 0
             preview.cardsToImport.forEach { card ->
                 val key = duplicateKey(card.nativeText, card.targetText)
-                if (!seen.add(key)) {
+                if (seen.add(key)) {
+                    newCards += card
+                } else {
                     duplicates++
                     // Once per card: the file may have it twice.
                     val old = existing.remove(key)
@@ -175,16 +203,18 @@ class CardTransferViewModel(
                         flashcards.editCard(old.cardId, CardEdit(card.nativeText, card.targetText, old.alternatives, old.note, old.islandId))
                         reformatted++
                     }
-                } else {
-                    added += flashcards.addFlashcard(
-                        coastId = preview.coastId,
-                        nativeText = card.nativeText,
-                        targetText = card.targetText,
-                        category = card.island ?: DEFAULT_IMPORT_ISLAND,
-                        alternatives = card.alternatives,
-                        note = card.note
-                    )
                 }
+            }
+            // All the new cards in one go: saved together or not at all, and the rest of the app hears of it
+            // once instead of once per card, which is what made a large deck slow to import.
+            val added = try {
+                flashcards.addFlashcards(preview.coastId, newCards, DEFAULT_IMPORT_ISLAND)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logError(TAG, "The imported cards couldn't be saved", e)
+                state.update { it.copy(importPreview = null, isImporting = false, message = "The cards couldn't be saved. Nothing was added.") }
+                return@launch
             }
             state.update { it.copy(importPreview = null, isImporting = false) }
             onImported(ImportResult(added, duplicates, reformatted))
@@ -192,10 +222,7 @@ class CardTransferViewModel(
     }
 
     /** Removes what an import added. Not tied to this ViewModel's scope, so undo works after leaving the screen. */
-    suspend fun undoImport(result: ImportResult) {
-        // Newest first, so each island created by the import is empty (and removed) when its first card is undone.
-        result.added.asReversed().forEach { flashcards.undoAdd(it) }
-    }
+    suspend fun undoImport(result: ImportResult) = flashcards.undoAddAll(result.added)
 
     /** Clears the message once it has been shown. */
     fun messageShown() = state.update { it.copy(message = null) }
@@ -222,6 +249,7 @@ class CardTransferViewModel(
     private fun hasNewLines(old: String, imported: String) = imported.lines().size > old.lines().size
 
     private companion object {
+        const val TAG = "CardTransferViewModel"
         val WHITESPACE = Regex("\\s+")
     }
 }

@@ -25,13 +25,16 @@ class CheckForNewModelsTest {
 
     private val settings = FakeSettingsRepository()
 
-    /** What Anthropic offers in this test: one model the app knows (as a dated copy) and three it doesn't. */
+    /**
+     * What Anthropic offers in this test, a generation after the app's own list: one model the app knows (as a
+     * dated copy) and three it doesn't.
+     */
     private val claudeToday = ModelListing.Found(
         listOf(
-            LiveModel("claude-opus-5-5", created = 400),
-            LiveModel("claude-sonnet-5-5", created = 300),
-            LiveModel("claude-haiku-5-5", created = 200),
-            LiveModel("claude-haiku-4-5-20251001", created = 100)
+            LiveModel("claude-opus-6", created = 400),
+            LiveModel("claude-sonnet-6", created = 300),
+            LiveModel("claude-haiku-6", created = 200),
+            LiveModel("claude-haiku-5-5-20260915", created = 100)
         )
     )
 
@@ -49,13 +52,14 @@ class CheckForNewModelsTest {
 
         assertEquals(listOf(TranslationProvider.Claude to "sk-ant-key"), asked)
         assertFalse(outcome.failed)
-        assertEquals("Added 3 models and removed 3 models that Claude no longer offers.", outcome.message)
+        // Gone: the four other models of the app's list (SettingsDefaults.CLAUDE_MODELS).
+        assertEquals("Added 3 models and removed 4 models that Claude no longer offers.", outcome.message)
         assertEquals(
-            listOf("claude-haiku-4-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"),
+            listOf("claude-haiku-5-5", "claude-opus-6", "claude-sonnet-6", "claude-haiku-6"),
             settings.modelOptions(TranslationProvider.Claude).first()
         )
         // The model in use is still offered, so it stays.
-        assertEquals("claude-haiku-4-5", settings.claudeModel.value)
+        assertEquals("claude-haiku-5-5", settings.claudeModel.value)
         // The other providers keep their lists.
         assertEquals(SettingsDefaults.OPENAI_MODELS, settings.modelOptions(TranslationProvider.OpenAI).first())
 
@@ -70,8 +74,8 @@ class CheckForNewModelsTest {
 
         val outcome = checkForNewModels(TranslationProvider.Claude, settings, lister(claudeToday))
 
-        assertEquals("claude-haiku-4-5", settings.claudeModel.value)
-        assertTrue("Your model claude-3-7-sonnet-latest is gone, so claude-haiku-4-5 is selected now." in outcome.message)
+        assertEquals("claude-haiku-5-5", settings.claudeModel.value)
+        assertTrue("Your model claude-3-7-sonnet-latest is gone, so claude-haiku-5-5 is selected now." in outcome.message)
     }
 
     @Test
@@ -92,6 +96,33 @@ class CheckForNewModelsTest {
 
         // A provider whose model isn't picked from a list has nothing to check.
         assertTrue(checkForNewModels(TranslationProvider.OpenRouter, settings, lister(claudeToday)).failed)
+    }
+
+    @Test
+    fun aKeyTheUserHasNotAllowedYetIsNotSentToTheProvider() = runTest {
+        // A key saved before the app asked for permission, and the user answered "Not now".
+        settings.aiSharingAllowed.value = emptySet()
+        settings.claudeKey.value = "sk-ant-key"
+
+        val outcome = checkForNewModels(TranslationProvider.Claude, settings, lister(claudeToday))
+
+        assertTrue(outcome.failed)
+        assertEquals("Allow Language Coast to send text to Claude first. You can do that under Settings.", outcome.message)
+        assertTrue(asked.isEmpty())
+        assertEquals(SettingsDefaults.CLAUDE_MODELS, settings.modelOptions(TranslationProvider.Claude).first())
+
+        // Without a key there is nothing to allow yet, so the check still says to save one first.
+        settings.claudeKey.value = ""
+        assertEquals(
+            "Save your Claude API key first, then check again.",
+            checkForNewModels(TranslationProvider.Claude, settings, turnsAnEmptyKeyAway).message
+        )
+
+        // Once the user allows it, the provider is asked.
+        settings.claudeKey.value = "sk-ant-key"
+        settings.allowAiSharing(TranslationProvider.Claude)
+        assertFalse(checkForNewModels(TranslationProvider.Claude, settings, lister(claudeToday)).failed)
+        assertEquals(listOf(TranslationProvider.Claude to "sk-ant-key"), asked)
     }
 
     @Test
@@ -136,10 +167,10 @@ class CheckForNewModelsTest {
         val state = viewModel.uiState.value
         assertEquals(null, state.modelCheck.checking)
         assertEquals(TranslationProvider.Claude, state.modelCheck.provider)
-        assertEquals("Added 3 models and removed 3 models that Claude no longer offers.", state.modelCheck.message)
+        assertEquals("Added 3 models and removed 4 models that Claude no longer offers.", state.modelCheck.message)
         assertFalse(state.modelCheck.failed)
-        assertEquals(listOf("claude-haiku-4-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"), state.modelOptions[TranslationProvider.Claude])
-        assertEquals("claude-haiku-4-5", state.claudeModel)
+        assertEquals(listOf("claude-haiku-5-5", "claude-opus-6", "claude-sonnet-6", "claude-haiku-6"), state.modelOptions[TranslationProvider.Claude])
+        assertEquals("claude-haiku-5-5", state.claudeModel)
     }
 
     /** Stands in for [ProviderModelLister] where no key is saved: the same message, and no network. */

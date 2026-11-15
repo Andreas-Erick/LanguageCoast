@@ -14,8 +14,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -25,12 +28,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,6 +43,8 @@ import com.andreaserick.languagecoast.data.AnkiNote
 import com.andreaserick.languagecoast.data.AnkiPackageContent
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.ExportFormat
+import com.andreaserick.languagecoast.data.ankiNoteCards
+import com.andreaserick.languagecoast.data.parseCardFile
 import com.andreaserick.languagecoast.data.readAnkiPackage
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
@@ -46,7 +53,7 @@ import com.andreaserick.languagecoast.ui.components.SelectionDropdown
 import com.andreaserick.languagecoast.ui.components.coastChipBorder
 import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.plural
-import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import java.io.File
@@ -92,10 +99,13 @@ actual fun CardTransferSection() {
     // Writes the export chosen in the dialog to the file picked in the system "save as" screen, if any.
     fun writeExport(uri: Uri?) {
         uri ?: return
+        val coastId = exportCoastId
+        val format = exportFormat
         scope.launch {
-            val file = viewModel.buildExport(exportCoastId, exportFormat)
+            // Writing out a large coast takes a moment, so it is put together away from the main thread.
+            val file = withContext(Dispatchers.Default) { viewModel.buildExport(coastId, format) }
             val written = withContext(Dispatchers.IO) { writeText(context.contentResolver, uri, file.text) }
-            toast(if (written) "Exported ${plural(file.cardCount, "card")}" else "The file couldn't be saved")
+            toast(if (written) "Exported ${plural(file.cardCount, "card")}" else "The file couldn't be saved.")
         }
     }
 
@@ -107,9 +117,13 @@ actual fun CardTransferSection() {
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
+            // A deck can hold tens of thousands of notes, so its cards are read out away from the main thread too.
             when (val file = withContext(Dispatchers.IO) { readImportFile(context, uri) }) {
-                is ImportFile.Text -> viewModel.onImportFileRead(file.text)
-                is ImportFile.AnkiPackage -> viewModel.onAnkiPackageRead(file.notes)
+                is ImportFile.Text ->
+                    if (viewModel.acceptsImportText(file.text)) {
+                        viewModel.onTextCardsRead(withContext(Dispatchers.Default) { parseCardFile(file.text) })
+                    }
+                is ImportFile.AnkiPackage -> viewModel.onAnkiCardsRead(withContext(Dispatchers.Default) { ankiNoteCards(file.notes) })
                 is ImportFile.Unreadable -> viewModel.onImportFileUnreadable(file.reason)
             }
         }
@@ -131,7 +145,7 @@ actual fun CardTransferSection() {
         enabled = uiState.coasts.isNotEmpty(),
         modifier = Modifier
             .fillMaxWidth()
-            .height(ButtonHeight)
+            .heightIn(min = ButtonHeight)
     ) {
         Text("Export cards")
     }
@@ -145,7 +159,7 @@ actual fun CardTransferSection() {
         onClick = { importLauncher.launch(IMPORT_MIME_TYPES) },
         modifier = Modifier
             .fillMaxWidth()
-            .height(ButtonHeight)
+            .heightIn(min = ButtonHeight)
     ) {
         Text("Import cards")
     }
@@ -176,7 +190,7 @@ actual fun CardTransferSection() {
             onImport = {
                 viewModel.confirmImport { result ->
                     val skipped = when {
-                        result.reformatted > 0 -> " (${result.duplicates} already there, ${result.reformatted} given their line breaks)"
+                        result.reformatted > 0 -> " (${result.duplicates} already there, ${result.reformatted} of them now with their line breaks)"
                         result.duplicates > 0 -> " (${result.duplicates} already there)"
                         else -> ""
                     }
@@ -242,7 +256,11 @@ private fun ExportDialog(
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onExport) { Text("Export", style = MaterialTheme.typography.titleSmall) } },
+        confirmButton = {
+            TextButton(onClick = onExport, colors = ButtonDefaults.textButtonColors(contentColor = SunlitText)) {
+                Text("Export", style = MaterialTheme.typography.titleSmall)
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = TextPrimary, style = MaterialTheme.typography.labelMedium) } }
     )
 }
@@ -264,7 +282,8 @@ private fun ImportDialog(
     onImport: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val cards = preview.cardsToImport
+    // Worked out once per change of the options: with a large deck the list is long.
+    val cards = remember(preview) { preview.cardsToImport }
     val coast = coasts.firstOrNull { it.coastId == preview.coastId }
     AlertDialog(
         onDismissRequest = { if (!isImporting) onDismiss() },
@@ -302,7 +321,7 @@ private fun ImportDialog(
         },
         confirmButton = {
             TextButton(onClick = onImport, enabled = cards.isNotEmpty() && !isImporting) {
-                Text(if (isImporting) "Importing…" else "Import", color = Sunlit, style = MaterialTheme.typography.labelMedium)
+                Text(if (isImporting) "Importing…" else "Import", color = SunlitText, style = MaterialTheme.typography.labelMedium)
             }
         },
         dismissButton = {
@@ -311,12 +330,21 @@ private fun ImportDialog(
     )
 }
 
-/** A label with a switch at the end of the row. */
+/**
+ * A label with a switch at the end of the row. The whole row is the switch: a tap anywhere on it flips it,
+ * and a screen reader says the label with the state.
+ */
 @Composable
 private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+    ) {
         Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

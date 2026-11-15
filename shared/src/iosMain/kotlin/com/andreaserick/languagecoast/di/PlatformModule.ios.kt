@@ -9,6 +9,7 @@ import com.andreaserick.languagecoast.data.NoWorksheetPrinter
 import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.buildAppDatabase
 import com.andreaserick.languagecoast.data.createSettingsDataStore
+import com.andreaserick.languagecoast.data.logError
 import com.andreaserick.languagecoast.notifications.IosReminderScheduler
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import com.andreaserick.languagecoast.speech.IosSpeaker
@@ -33,6 +34,7 @@ actual val platformModule = module {
         buildAppDatabase(builder, settings = get())
     }
 
+    /** A settings file that can no longer be read is replaced by an empty one (see [createSettingsDataStore]). */
     single { createSettingsDataStore(settingsPath()) }
 
     /** Text is read aloud with iOS's speech synthesizer. */
@@ -59,10 +61,11 @@ private fun documentsUrl(): NSURL =
     }
 
 /**
- * The settings file, which holds the user's Gemini and OpenRouter API keys. It lives in a folder in
- * Application Support that is excluded from iCloud backup, so keys never leave the device (Android
- * excludes it the same way in its backup rules). The flag is set on the folder because DataStore
- * replaces the file on every write. Earlier versions kept the file in Documents; it is moved over once.
+ * The settings file, which holds the user's API keys. It lives in a folder in Application Support that is
+ * excluded from iPhone backups, so keys never leave the device (Android excludes it the same way in its
+ * backup rules). The flag is set on the folder because DataStore replaces the file on every write. Earlier
+ * versions kept the file in Documents; it is moved over once. What a backup should carry of the settings
+ * travels as a copy without the keys (see IosSettingsSnapshot).
  */
 @OptIn(ExperimentalForeignApi::class)
 private fun settingsPath(): String {
@@ -71,15 +74,29 @@ private fun settingsPath(): String {
         fileManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)
     ) { "No Application Support folder" }
     val folder = requireNotNull(supportUrl.URLByAppendingPathComponent("datastore")) { "No settings folder" }
-    fileManager.createDirectoryAtURL(folder, withIntermediateDirectories = true, attributes = null, error = null)
-    folder.setResourceValue(NSNumber(bool = true), forKey = NSURLIsExcludedFromBackupKey, error = null)
+    if (!fileManager.createDirectoryAtURL(folder, withIntermediateDirectories = true, attributes = null, error = null)) {
+        logError(TAG, "The settings folder could not be created")
+    }
+    // The privacy policy promises that API keys stay out of backups, so a failure here must leave a trace.
+    if (!folder.setResourceValue(NSNumber(bool = true), forKey = NSURLIsExcludedFromBackupKey, error = null)) {
+        logError(TAG, "The settings folder could not be excluded from backups")
+    }
 
     val file = requireNotNull(folder.URLByAppendingPathComponent(SETTINGS_FILE)) { "No settings file" }
     val legacyFile = documentsUrl().URLByAppendingPathComponent(SETTINGS_FILE)
     if (legacyFile != null && fileManager.fileExistsAtPath(legacyFile.path!!) && !fileManager.fileExistsAtPath(file.path!!)) {
-        fileManager.moveItemAtURL(legacyFile, toURL = file, error = null)
+        if (!fileManager.moveItemAtURL(legacyFile, toURL = file, error = null)) {
+            logError(TAG, "The settings file could not be moved out of Documents")
+        }
     }
     return requireNotNull(file.path) { "No settings file" }
 }
 
+/**
+ * Whether the settings file exists. It doesn't the first time the app starts, also on an iPhone restored from
+ * a backup, which brings the cards back but leaves this file out (see IosSettingsSnapshot).
+ */
+internal fun settingsFileExists(): Boolean = NSFileManager.defaultManager.fileExistsAtPath(settingsPath())
+
 private const val SETTINGS_FILE = "settings.preferences_pb"
+private const val TAG = "PlatformModule"

@@ -28,11 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.ui.components.CardListRow
 import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.EditCardSheet
@@ -54,7 +56,8 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
     val undoMessenger = LocalUndoMessenger.current
     // Kept here rather than in the ViewModel so typing never waits for the results.
     var query by rememberSaveable { mutableStateOf("") }
-    var editing by remember { mutableStateOf<PlacedCard?>(null) }
+    // Kept as the card's id, so the open sheet survives a rotation; the card itself is looked up in the results.
+    var editingCardId by rememberSaveable { mutableStateOf<Int?>(null) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -64,7 +67,13 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
         if (query.isEmpty()) focusRequester.requestFocus()
     }
 
-    editing?.let { placed ->
+    // The results lag the field, so a card tapped just before they change can drop out of them. Forget it then,
+    // or its sheet would open by itself the next time the card is found.
+    LaunchedEffect(uiState.results, uiState.hasQuery) {
+        if (editingCardId != null && !uiState.isLoading && uiState.hasQuery && uiState.results.none { it.card.cardId == editingCardId }) editingCardId = null
+    }
+
+    uiState.results.firstOrNull { it.card.cardId == editingCardId }?.let { placed ->
         EditCardSheet(
             card = placed.card,
             islands = uiState.islandsByCoast[placed.coastId].orEmpty(),
@@ -72,9 +81,9 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
             targetLanguage = placed.language,
             onSave = { edit ->
                 viewModel.editCard(placed.card.cardId, edit)
-                editing = null
+                editingCardId = null
             },
-            onDismiss = { editing = null }
+            onDismiss = { editingCardId = null }
         )
     }
 
@@ -111,11 +120,13 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
 
         val message = when {
             uiState.isLoading -> null
-            !uiState.hasCards -> "No cards yet. Create some first!"
+            !uiState.hasCards -> "No cards yet. Add some on Today, and you can find them here."
             !uiState.hasQuery -> "Find a card on any coast by its native text, translation or alternatives."
             uiState.results.isEmpty() -> "No cards found."
             else -> null
         }
+        // What a search gave arrives while the keyboard has the focus: a screen reader reads it out.
+        val announced = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
         if (message != null) {
             Text(
                 message,
@@ -124,6 +135,7 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp)
+                    .then(announced)
             )
         } else if (!uiState.isLoading) {
             LazyColumn(
@@ -132,14 +144,15 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
                 modifier = Modifier.fillMaxSize()
             ) {
                 item(key = "count") {
-                    Text(plural(uiState.results.size, "card") + " found", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 8.dp))
+                    Text(plural(uiState.results.size, "card") + " found", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 8.dp).then(announced))
                 }
                 items(uiState.results, key = { it.card.cardId }) { placed ->
                     CardListRow(
                         card = placed.card,
                         now = uiState.now,
                         place = "${placed.language} · ${placed.emoji} ${placed.islandName}",
-                        onEdit = { editing = placed },
+                        language = placed.language,
+                        onEdit = { editingCardId = placed.card.cardId },
                         onDelete = {
                             viewModel.deleteCard(placed.card) { deleted ->
                                 undoMessenger.show("Card deleted") { viewModel.restore(deleted) }

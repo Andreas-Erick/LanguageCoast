@@ -3,6 +3,8 @@ package com.andreaserick.languagecoast.ui.settings
 import com.andreaserick.languagecoast.data.AnkiNote
 import com.andreaserick.languagecoast.data.ExportFormat
 import com.andreaserick.languagecoast.data.ankiNote
+import com.andreaserick.languagecoast.data.ankiNoteCards
+import com.andreaserick.languagecoast.data.parseCardFile
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeSettingsRepository
 import com.andreaserick.languagecoast.testing.MainDispatcherRule
@@ -213,12 +215,39 @@ class CardTransferViewModelTest {
         viewModel.onImportFileRead("PK\u0003\u0004\u0014\u0000collection.anki2,x\ny,z\n")
 
         assertNull(viewModel.preview)
-        assertTrue("packed, not text" in viewModel.uiState.value.message.orEmpty())
+        assertTrue("zip file, not a card file" in viewModel.uiState.value.message.orEmpty())
 
         viewModel.messageShown()
         viewModel.onImportFileRead("SQLite format 3\u0000,a\nb,c\n")
         assertNull(viewModel.preview)
         assertTrue("isn't plain text" in viewModel.uiState.value.message.orEmpty())
+    }
+
+    @Test
+    fun cardsReadOutElsewhereOpenTheSamePreview() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "German")
+        val viewModel = createViewModel()
+
+        // What the screen does with a text file: check it, read its cards out on another thread, hand them over.
+        val text = "German,English\nHallo,Hello\n"
+        assertTrue(viewModel.acceptsImportText(text))
+        viewModel.onTextCardsRead(parseCardFile(text))
+        assertTrue(viewModel.preview!!.mayHaveHeader)
+        assertTrue(viewModel.preview!!.skipFirstRow)
+        assertEquals(listOf("Hallo"), viewModel.preview!!.cardsToImport.map { it.nativeText })
+
+        // And with an Anki package, which has no header row.
+        viewModel.cancelImport()
+        viewModel.onAnkiCardsRead(ankiNoteCards(listOf(AnkiNote(listOf("dog", "der Hund"), "German::Animals"))))
+        assertFalse(viewModel.preview!!.mayHaveHeader)
+        assertEquals(listOf("dog" to "der Hund"), viewModel.preview!!.cardsToImport.map { it.nativeText to it.targetText })
+
+        // A file that isn't text is turned away before anything is read out of it.
+        viewModel.cancelImport()
+        assertFalse(viewModel.acceptsImportText("PK${Char(3)}${Char(4)}collection.anki2,x\ny,z\n"))
+        assertNull(viewModel.preview)
+        assertTrue("zip file, not a card file" in viewModel.uiState.value.message.orEmpty())
+        assertTrue(viewModel.acceptsImportText("Hello,Hallo\n"))
     }
 
     @Test

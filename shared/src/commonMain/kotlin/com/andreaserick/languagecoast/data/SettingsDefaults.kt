@@ -5,7 +5,7 @@ object SettingsDefaults {
     const val NATIVE_LANGUAGE = "English"
     const val GEMINI_MODEL = "gemini-3.5-flash-lite"
     const val OPENAI_MODEL = "gpt-4.1-mini"
-    const val CLAUDE_MODEL = "claude-haiku-4-5"
+    const val CLAUDE_MODEL = "claude-haiku-5-5"
     const val GROQ_MODEL = "llama-3.3-70b-versatile"
     const val DEEPSEEK_MODEL = "deepseek-chat"
     const val LOCAL_AI_MODEL = LocalAiCatalog.DEFAULT_MODEL_ID
@@ -40,11 +40,17 @@ object SettingsDefaults {
         "gpt-4o"
     )
 
+    /**
+     * The current Claude models, smallest first, then the earlier small one for those who had it picked.
+     * Taken from Anthropic's model reference as it stood on 2026-11-03, not tried with a key; "Check for
+     * new models" in Settings asks Anthropic itself and keeps the list current after that.
+     */
     val CLAUDE_MODELS = listOf(
-        "claude-haiku-4-5",
-        "claude-sonnet-4-5",
-        "claude-3-5-haiku-latest",
-        "claude-3-7-sonnet-latest"
+        "claude-haiku-5-5",
+        "claude-sonnet-5-5",
+        "claude-opus-5-5",
+        "claude-fable-5-2",
+        "claude-haiku-4-5"
     )
 
     val GROQ_MODELS = listOf(

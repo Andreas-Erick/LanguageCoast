@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,7 +83,9 @@ fun ScreenHeader(
                     maxLines = 1,
                     // Shrinks before cutting off, so "Language Coast" fits next to the streak on small phones.
                     autoSize = TextAutoSize.StepBased(minFontSize = 20.sp, maxFontSize = titleStyle.fontSize),
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    // Screen readers can jump from heading to heading; this is the one every screen has.
+                    modifier = Modifier.semantics { heading() }
                 )
                 if (subtitle != null) {
                     Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)

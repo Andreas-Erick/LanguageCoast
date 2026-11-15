@@ -125,8 +125,23 @@ private val backupJson = Json {
 fun encodeBackup(backup: Backup): String = backupJson.encodeToString(Backup.serializer(), backup)
 
 /**
+ * Whether every date and time in these settings can be read back, and the streak is a count. The app writes
+ * them itself, but a file can be edited by hand or made by another tool, and one value that can't be read
+ * must not end up in the settings.
+ */
+internal fun BackupSettings.isReadable(): Boolean =
+    // A hundred years of days: more than that is not a streak anyone studied.
+    streakCount in 0..36_500 &&
+        (lastStudyDate == null || parseDateOrNull(lastStudyDate) != null) &&
+        (freezeUsedOn == null || parseDateOrNull(freezeUsedOn) != null) &&
+        studyDays.all { parseDateOrNull(it) != null } &&
+        (reminderMinuteOfDay == null || reminderMinuteOfDay in MINUTES_OF_DAY)
+
+/**
  * The backup in [text]. Throws [BackupException] if it isn't a Language Coast backup, was made by a newer
- * version of the app, or has islands or cards whose coast or island is missing.
+ * version of the app, has islands or cards whose coast or island is missing, has two coasts for one
+ * language, or has a date or reminder time that can't be read ([isReadable]). Nothing is restored from such
+ * a file, so what is in the app stays as it is.
  */
 fun decodeBackup(text: String): Backup {
     val backup = try {
@@ -142,6 +157,9 @@ fun decodeBackup(text: String): Backup {
     val coastIds = backup.coasts.mapTo(HashSet()) { it.coastId }
     val islandIds = backup.islands.mapTo(HashSet()) { it.islandId }
     val isComplete = coastIds.size == backup.coasts.size &&
+        // The app keeps one coast per language; two would push each other out while being restored.
+        backup.coasts.distinctBy { it.language }.size == backup.coasts.size &&
+        backup.settings.isReadable() &&
         islandIds.size == backup.islands.size &&
         backup.cards.distinctBy { it.cardId }.size == backup.cards.size &&
         backup.islands.all { it.coastId in coastIds } &&

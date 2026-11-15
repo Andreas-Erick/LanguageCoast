@@ -27,11 +27,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.daysToLearn
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
@@ -73,7 +76,7 @@ fun PaceOptions(pace: Pace, waiting: Int, onPick: (Pace) -> Unit, modifier: Modi
                             color = TextSecondary
                         )
                     }
-                    if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = Sunlit, modifier = Modifier.size(20.dp))
+                    if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = SunlitText, modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -95,7 +98,7 @@ fun PaceSheet(pace: Pace, waiting: Int, onPick: (Pace) -> Unit, onDismiss: () ->
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text("How fast do you want to go?", style = MaterialTheme.typography.titleLarge)
+            Text("How fast do you want to go?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
             Text(
                 text = "The pace sets how many new cards a day's session brings. Everything new comes back for review, so a faster pace means longer sessions for weeks, not just today.",
                 style = MaterialTheme.typography.bodyMedium,

@@ -2,7 +2,9 @@
     <string name="app_name">Language Coast</string>
     <string name="widget_description">Cards due today and your study streak</string>
     <string name="widget_streak_label">day streak</string>
-    <!-- Shown in the widget picker and until the widget first loads its numbers. -->
+    <!-- Stands in the widget's tiles for a number that has not been loaded yet. -->
+    <string name="widget_no_number">–</string>
+    <!-- Sample numbers for the widget picker (widget_study_preview). -->
     <string name="widget_preview_streak">🔥 5</string>
     <string name="widget_preview_due">12</string>
     <string name="widget_preview_due_label">cards due</string>

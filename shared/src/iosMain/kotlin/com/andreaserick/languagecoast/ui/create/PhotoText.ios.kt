@@ -4,4 +4,4 @@ import androidx.compose.runtime.Composable
 
 /** Reading text from photos isn't built for iPhone yet. */
 @Composable
-actual fun rememberPhotoTextReader(onText: (String) -> Unit, onError: (String) -> Unit): (() -> Unit)? = null
+actual fun rememberPhotoTextReader(onText: (String) -> Unit, onError: (String) -> Unit, onReading: (Boolean) -> Unit): (() -> Unit)? = null

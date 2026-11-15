@@ -1,10 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Auto Backup rules for API 30 and below.
-    The DataStore file holds the user's Gemini and OpenRouter API keys; exclude it
-    so keys are never backed up to or restored from Google Drive automatically.
+    Auto Backup rules for API 30 and below. Everything not excluded here is backed up: the cards (the
+    database) and files/settings-snapshot.json, a copy of the settings without any key, written each time
+    the app is left (see SettingsSnapshotFile), from which the settings are brought back after a restore.
+
+    Left out:
+    - datastore/: the settings file, which also holds the cloud providers' API keys and the Hugging Face
+      token. Keys are never backed up to or restored from Google Drive.
+    - local_models/: downloaded Local AI models, in the app's external files folder (and, for old installs,
+      the internal one or files/model.litertlm). They are hundreds of megabytes each, and a backup larger
+      than 25 MB is not made at all, so one model would stop the backup of the cards. A model can be
+      downloaded again.
     See https://developer.android.com/guide/topics/data/autobackup
 -->
 <full-backup-content>
     <exclude domain="file" path="datastore/" />
+    <exclude domain="external" path="local_models/" />
+    <exclude domain="file" path="local_models/" />
+    <exclude domain="file" path="model.litertlm" />
 </full-backup-content>

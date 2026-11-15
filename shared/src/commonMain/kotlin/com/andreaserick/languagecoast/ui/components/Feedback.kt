@@ -17,6 +17,9 @@ fun interface Feedback {
 /** The app's [Feedback]; silent until [LanguageCoastApp] provides one from the settings. */
 val LocalFeedback = staticCompositionLocalOf<Feedback> { Feedback {} }
 
+/** Whether Vibration is on in Settings. A sheet or dialog gets the phone's own haptics again, so a control that buzzes by itself asks here. */
+val LocalHapticsEnabled = staticCompositionLocalOf { true }
+
 /** A [Feedback] that buzzes if [hapticsEnabled] and plays a short sound if [soundsEnabled]. */
 @Composable
 fun rememberFeedback(hapticsEnabled: Boolean, soundsEnabled: Boolean): Feedback {
@@ -32,7 +35,8 @@ fun rememberFeedback(hapticsEnabled: Boolean, soundsEnabled: Boolean): Feedback 
                     }
                 )
             }
-            if (soundsEnabled) playFeedbackSound(kind)
+            // Tones are for right and wrong answers, as Settings says; a flip only buzzes.
+            if (soundsEnabled && kind != FeedbackKind.Tap) playFeedbackSound(kind)
         }
     }
 }

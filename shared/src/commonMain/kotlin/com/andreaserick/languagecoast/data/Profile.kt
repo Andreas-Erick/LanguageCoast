@@ -88,10 +88,19 @@ fun profilePreview(profile: Profile): String? {
     }
     return listOfNotNull(
         f["name"]?.let { "My name is $it." },
-        f["job"]?.let { "I work as a $it." },
+        f["job"]?.let { "I work as ${indefiniteArticle(it)} $it." },
         lives.takeIf { it.isNotEmpty() }?.let { "I live in $it." },
         from
     ).joinToString(" ")
+}
+
+/**
+ * "a" or "an" before [word], going by its first letter: "an engineer", "a nurse". A word that starts with u
+ * keeps "a" ("a university lecturer"), which is right more often than not.
+ */
+fun indefiniteArticle(word: String): String {
+    val first = word.trim().firstOrNull()?.lowercaseChar() ?: return "a"
+    return if (first in "aeio") "an" else "a"
 }
 
 /** An example for a profile blank's field. */

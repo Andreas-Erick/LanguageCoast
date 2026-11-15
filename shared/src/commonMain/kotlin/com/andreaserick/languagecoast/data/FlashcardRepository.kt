@@ -2,6 +2,7 @@ package com.andreaserick.languagecoast.data
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 /** Everything removed by one delete, so it can be put back with [FlashcardRepository.restore]. */
 data class DeletedContent(
@@ -98,6 +99,20 @@ interface FlashcardRepository {
     /** Removes a card added by [addFlashcard], and its island if that was created for it and is now empty. */
     suspend fun undoAdd(added: AddedCard)
 
+    /**
+     * Saves [cards] on coast [coastId] in one go, each on the island it names (or [defaultIsland]), creating
+     * the islands that don't exist yet. For an import of many cards: the database saves them all or none, and
+     * tells its observers once instead of once per card.
+     */
+    suspend fun addFlashcards(coastId: Int, cards: List<ImportedCard>, defaultIsland: String): List<AddedCard> =
+        cards.map { addFlashcard(coastId, it.nativeText, it.targetText, it.island ?: defaultIsland, alternatives = it.alternatives, note = it.note) }
+
+    /** Removes the cards [added] by [addFlashcards] in one go, and the islands created for them that are empty afterwards. */
+    suspend fun undoAddAll(added: List<AddedCard>) {
+        // Newest first, so each island created with them is empty (and removed) when its first card is undone.
+        added.asReversed().forEach { undoAdd(it) }
+    }
+
     /** Deletes [island] with its cards, returning them for [restore]. */
     suspend fun deleteIsland(island: LanguageIsland): DeletedContent
     /** Deletes [card], returning it for [restore]. */
@@ -133,6 +148,17 @@ interface FlashcardRepository {
 
     /** Every card with its island and coast, by coast (oldest first), then island name. */
     fun observeAllCards(): Flow<List<PlacedCard>>
+
+    /**
+     * The cards of coast [coastId] with their island and coast, by island name. What a screen about one coast
+     * observes: [observeAllCards] reads every card of every coast again whenever one of them changes.
+     */
+    fun getPlacedCardsForCoast(coastId: Int): Flow<List<PlacedCard>> =
+        observeAllCards().map { cards -> cards.filter { it.coastId == coastId } }
+
+    /** The cards of island [islandId] with their island and coast, in the order they were added. */
+    fun getPlacedCardsForIsland(islandId: Int): Flow<List<PlacedCard>> =
+        observeAllCards().map { cards -> cards.filter { it.card.islandId == islandId } }
 
     /** The cards of coast [coastId] as a practice sheet needs them, by island name, then the order cards were added. */
     suspend fun getWorksheetCards(coastId: Int): List<WorksheetSourceCard>
@@ -226,6 +252,14 @@ class OfflineFlashcardRepository(
         if (dao.countCardsInIsland(island.islandId) == 0) dao.deleteIsland(island)
     }
 
+    override suspend fun addFlashcards(coastId: Int, cards: List<ImportedCard>, defaultIsland: String): List<AddedCard> =
+        if (cards.isEmpty()) emptyList() else dao.insertImportedCards(coastId, cards, defaultIsland)
+
+    override suspend fun undoAddAll(added: List<AddedCard>) {
+        if (added.isEmpty()) return
+        dao.deleteImportedCards(added.map { it.card.cardId }, added.mapNotNull { it.createdIsland?.islandId })
+    }
+
     override suspend fun deleteIsland(island: LanguageIsland): DeletedContent {
         val content = DeletedContent(islands = listOf(island), cards = dao.getCardsForIslandsOnce(listOf(island.islandId)))
         dao.deleteIsland(island) // Cascades to cards.
@@ -237,7 +271,8 @@ class OfflineFlashcardRepository(
         return DeletedContent(cards = listOf(card))
     }
 
-    override suspend fun saveReview(card: Flashcard) = dao.updateFlashcard(card)
+    override suspend fun saveReview(card: Flashcard) =
+        dao.setReview(card.cardId, card.stability, card.difficulty, card.lastReviewed, card.due, card.lapses)
 
     override suspend fun updateTranslation(cardId: Int, targetText: String, alternatives: List<String>) =
         dao.setTranslation(cardId, targetText, alternatives)
@@ -260,6 +295,10 @@ class OfflineFlashcardRepository(
     override fun observeRecentCards(coastId: Int, limit: Int): Flow<List<RecentCard>> = dao.getRecentCards(coastId, limit)
 
     override fun observeAllCards(): Flow<List<PlacedCard>> = dao.getAllPlacedCards()
+
+    override fun getPlacedCardsForCoast(coastId: Int): Flow<List<PlacedCard>> = dao.getPlacedCardsForCoast(coastId)
+
+    override fun getPlacedCardsForIsland(islandId: Int): Flow<List<PlacedCard>> = dao.getPlacedCardsForIsland(islandId)
 
     override suspend fun getWorksheetCards(coastId: Int): List<WorksheetSourceCard> = dao.getWorksheetCards(coastId)
 

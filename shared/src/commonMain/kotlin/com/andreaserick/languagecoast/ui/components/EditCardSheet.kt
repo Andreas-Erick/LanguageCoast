@@ -25,6 +25,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.Flashcard
@@ -71,7 +73,7 @@ fun EditCardSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text("Edit card", style = MaterialTheme.typography.titleLarge)
+            Text("Edit card", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
             CoastTextField(
                 value = nativeText,
                 onValueChange = { nativeText = it },
@@ -81,13 +83,13 @@ fun EditCardSheet(
             CoastTextField(
                 value = targetText,
                 onValueChange = { targetText = it },
-                label = { Text("$targetLanguage Translation") },
+                label = { Text("$targetLanguage translation") },
                 modifier = Modifier.fillMaxWidth()
             )
             CoastTextField(
                 value = alternatives,
                 onValueChange = { alternatives = it },
-                label = { Text("Alternatives (Optional)") },
+                label = { Text("Alternatives (optional)") },
                 supportingText = { Text("Other correct translations, one per line", color = TextSecondary) },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2

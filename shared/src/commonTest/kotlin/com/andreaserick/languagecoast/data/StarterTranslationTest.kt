@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.data
 
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -91,5 +92,113 @@ class StarterTranslationTest {
         val parsed = parseStarterTranslations("1 || Hello || Hallo || Hallo, wie geht's?", count = 1, bothSides = true)
 
         assertEquals(listOf("Hallo", "Hallo, wie geht's?"), parsed[1])
+    }
+
+    /** A [Translator] whose answers a test sets, and which counts what it was asked. */
+    private class ScriptedTranslator(
+        private val completion: (String) -> Completion = { Completion.failure("no answer") },
+        private val translation: (TranslationRequest) -> TranslationResult = { TranslationResult.FAILURE }
+    ) : Translator {
+        val prompts = mutableListOf<String>()
+        var requests = 0
+            private set
+
+        override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
+            requests++
+            return translation(request)
+        }
+
+        override suspend fun complete(engine: TranslationEngine, prompt: String): Completion {
+            prompts += prompt
+            return completion(prompt)
+        }
+    }
+
+    private val gemini = TranslationEngine.Gemini("key", SettingsDefaults.GEMINI_MODEL)
+    private val fortySentences = (1..40).map { "Sentence number $it of the test." }
+
+    @Test
+    fun aBatchTheProviderTurnsDownIsNotSentAgainSentenceBySentence() = runTest {
+        val refusal = "Gemini didn't accept the API key. Check your key in Settings."
+        val translator = ScriptedTranslator(completion = { Completion.failure(refusal) })
+        val starter = StarterTranslator(translator)
+
+        val translated = starter.translate(gemini, greetings, "English", "German", null, fortySentences)
+
+        assertTrue(translated.isEmpty())
+        // Not one of the forty went out on its own, and after two refused batches the third wasn't sent at all.
+        assertEquals(0, translator.requests)
+        assertEquals(StarterTranslator.GIVE_UP_AFTER, translator.prompts.size)
+        assertEquals(refusal, starter.lastError)
+    }
+
+    @Test
+    fun onlyTheLinesAnAnsweredBatchLeftOutAreAskedForOneByOne() = runTest {
+        val translator = ScriptedTranslator(
+            completion = { prompt -> if ("reviewing a learner's phrasebook" in prompt) Completion("NONE") else Completion("1 || Hallo!") },
+            translation = { TranslationResult("einzeln übersetzt", "Greetings", isSuccess = true) }
+        )
+        val starter = StarterTranslator(translator)
+
+        val translated = starter.translate(gemini, greetings, "English", "German", null, listOf("Hello!", "Good morning!", "Good night."))
+
+        assertEquals(listOf("Hallo!", "einzeln übersetzt", "einzeln übersetzt"), translated.map { it.targetText })
+        assertEquals(listOf("Hello!", "Good morning!", "Good night."), translated.map { it.nativeText })
+        assertEquals(2, translator.requests)
+        assertNull(starter.lastError)
+    }
+
+    @Test
+    fun onTheDeviceTwoFailuresInARowEndTheCallAndGiveTheReason() = runTest {
+        val reason = "The German language pack couldn't be downloaded. Check your internet connection and try again."
+        val translator = ScriptedTranslator(translation = { TranslationResult.failure(reason) })
+        val starter = StarterTranslator(translator)
+
+        val translated = starter.translate(TranslationEngine.OnDevice, greetings, "English", "German", null, fortySentences)
+
+        assertTrue(translated.isEmpty())
+        // Each sentence would wait for the same missing language pack.
+        assertEquals(StarterTranslator.GIVE_UP_AFTER, translator.requests)
+        assertTrue(translator.prompts.isEmpty())
+        assertEquals(reason, starter.lastError)
+    }
+
+    @Test
+    fun aRateLimitIsWaitedOutAndTheBatchStillComesThrough() = runTest {
+        var asked = 0
+        val translator = ScriptedTranslator(
+            completion = { prompt ->
+                asked++
+                when {
+                    asked == 1 -> Completion.busy("Gemini rate limit or quota reached. Wait a moment or switch to another provider.", retryAfterSeconds = 20)
+                    "reviewing a learner's phrasebook" in prompt -> Completion("NONE")
+                    else -> Completion("1 || Hallo!\n2 || Guten Morgen!")
+                }
+            }
+        )
+        val starter = StarterTranslator(translator)
+
+        val translated = starter.translate(gemini, greetings, "English", "German", null, listOf("Hello!", "Good morning!"))
+
+        assertEquals(listOf("Hallo!", "Guten Morgen!"), translated.map { it.targetText })
+        // The refused request, the same one again, and the natural-speech check.
+        assertEquals(3, translator.prompts.size)
+        assertEquals(translator.prompts[0], translator.prompts[1])
+        assertNull(starter.lastError)
+    }
+
+    @Test
+    fun aProviderThatStaysBusyIsAskedAFewTimesAndThenReported() = runTest {
+        val busy = Completion.busy("Claude is busy or rate-limited. Wait a moment and try again.", retryAfterSeconds = 300)
+        val translator = ScriptedTranslator(completion = { busy })
+
+        val answer = translator.completeWaiting(TranslationEngine.Claude("key", SettingsDefaults.CLAUDE_MODEL), "prompt")
+
+        assertEquals(busy, answer)
+        assertEquals(1 + BUSY_MAX_WAITS, translator.prompts.size)
+        // A failure that waiting can't fix is not waited on.
+        val refused = ScriptedTranslator(completion = { Completion.failure("Claude didn't accept the API key. Check your Anthropic key in Settings.") })
+        assertNull(refused.completeWaiting(TranslationEngine.Claude("key", SettingsDefaults.CLAUDE_MODEL), "prompt").text)
+        assertEquals(1, refused.prompts.size)
     }
 }

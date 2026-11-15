@@ -202,7 +202,13 @@ class FakeFlashcardRepository : FlashcardRepository {
     }
 
     override suspend fun saveReview(card: Flashcard) {
-        cards.update { all -> all.map { if (it.cardId == card.cardId) card else it } }
+        // Like the database: only the scheduling fields are written, so the card's texts stay as they are stored.
+        cards.update { all ->
+            all.map {
+                if (it.cardId != card.cardId) it
+                else it.copy(stability = card.stability, difficulty = card.difficulty, lastReviewed = card.lastReviewed, due = card.due, lapses = card.lapses)
+            }
+        }
     }
 
     override suspend fun updateTranslation(cardId: Int, targetText: String, alternatives: List<String>) {
@@ -262,6 +268,12 @@ class FakeFlashcardRepository : FlashcardRepository {
                 PlacedCard(card, island.name, island.emoji, coast.coastId, coast.language)
             }.sortedWith(compareBy({ it.coastId }, { it.islandName }, { it.card.cardId }))
         }
+
+    override fun getPlacedCardsForCoast(coastId: Int): Flow<List<PlacedCard>> =
+        observeAllCards().map { all -> all.filter { it.coastId == coastId } }
+
+    override fun getPlacedCardsForIsland(islandId: Int): Flow<List<PlacedCard>> =
+        observeAllCards().map { all -> all.filter { it.card.islandId == islandId } }
 
     override suspend fun getWorksheetCards(coastId: Int): List<WorksheetSourceCard> {
         val names = islands.value.filter { it.coastId == coastId }.associate { it.islandId to it.name }
@@ -351,6 +363,15 @@ class FakeSettingsRepository : SettingsRepository {
     override val hapticsEnabled = MutableStateFlow(true)
     override val soundsEnabled = MutableStateFlow(true)
 
+    /**
+     * The cloud providers the user allowed sending text to. All of them to begin with, so a test that sets a
+     * key gets a ready engine; a test about the permission itself sets this to `emptySet()` first.
+     */
+    override val aiSharingAllowed = MutableStateFlow<Set<String>>(TranslationProvider.entries.filter { it.isCloud }.map { it.name }.toSet())
+
+    /** What [isEmpty] answers: true acts as a fresh install, or a phone restored without its settings. */
+    var empty = false
+
     var studySessionsRecorded = 0
         private set
     var streakRefreshes = 0
@@ -372,6 +393,25 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setGroqModel(model: String) { groqModel.value = model }
     override suspend fun setDeepSeekKey(key: String) { deepSeekKey.value = key }
     override suspend fun setDeepSeekModel(model: String) { deepSeekModel.value = model }
+
+    override suspend fun allowAiSharing(provider: TranslationProvider) {
+        if (provider.isCloud) aiSharingAllowed.update { it + provider.name }
+    }
+
+    override suspend fun removeApiKey(provider: TranslationProvider) {
+        when (provider) {
+            TranslationProvider.Gemini -> apiKey.value = ""
+            TranslationProvider.OpenAI -> openAiKey.value = ""
+            TranslationProvider.Claude -> claudeKey.value = ""
+            TranslationProvider.Groq -> groqKey.value = ""
+            TranslationProvider.DeepSeek -> deepSeekKey.value = ""
+            TranslationProvider.OpenRouter -> openRouterKey.value = ""
+            TranslationProvider.OnDevice, TranslationProvider.LocalAi -> return
+        }
+        aiSharingAllowed.update { it - provider.name }
+    }
+
+    override suspend fun isEmpty(): Boolean = empty
 
     /** The model lists a check for new models stored; a provider without one has the app's own list. */
     val storedModelOptions = MutableStateFlow<Map<TranslationProvider, List<String>>>(emptyMap())

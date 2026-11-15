@@ -62,9 +62,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
@@ -96,6 +103,7 @@ import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
@@ -176,7 +184,7 @@ private fun ColumnScope.WorksheetOptionsForm(
     val picked = islands.filter { options.includes(it.island.islandId) }
     val allPicked = picked.size == islands.size
     // What the number field says, which while typing can be no number or one outside the limits.
-    var countText by remember(options.count) { mutableStateOf("${options.count}") }
+    var countText by rememberSaveable(options.count) { mutableStateOf("${options.count}") }
     val countIsValid = countText.toIntOrNull() in WORKSHEET_COUNT_RANGE
     // What stands in the way, if anything: said here, before a request is spent on finding out.
     val blocker = when {
@@ -189,16 +197,16 @@ private fun ColumnScope.WorksheetOptionsForm(
         else -> null
     }
 
-    Text("Practice sheet", style = MaterialTheme.typography.titleLarge)
+    Text("Practice sheet", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
     Text(
-        text = "New sentences to translate, built from the words on ${
+        text = "New sentences to translate, each built from one of ${
             when {
                 allPicked -> "this coast's ${plural(cardCount, "card")}"
-                picked.isEmpty() -> "the islands you pick"
-                else -> "the ${plural(cardCount, "card")} of the islands you picked"
+                picked.isEmpty() -> "the cards on the islands you pick"
+                else -> "the ${plural(cardCount, "card")} on the islands you picked"
             }
-        }, one island's topic at a time, " +
-            "as a PDF to print or fill in. A sentence may bring one new word where it needs it. The answers come on a page of their own.",
+        }, as a PDF to print or fill in. A sentence may bring a new word or two where it needs them; " +
+            "with a cloud AI provider they are explained under it. The answers come on a page of their own.",
         style = MaterialTheme.typography.bodyMedium,
         color = TextSecondary,
         modifier = Modifier.padding(top = 4.dp)
@@ -239,7 +247,8 @@ private fun ColumnScope.WorksheetOptionsForm(
         Column(modifier = Modifier.weight(1f)) {
             Text("Sentences", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
             Text(
-                text = "${WORKSHEET_COUNT_RANGE.first} to ${WORKSHEET_COUNT_RANGE.last}",
+                // A number outside the limits is said in words too, not by the colour alone.
+                text = (if (countIsValid) "" else "Enter ") + "${WORKSHEET_COUNT_RANGE.first} to ${WORKSHEET_COUNT_RANGE.last}",
                 style = MaterialTheme.typography.bodySmall,
                 color = if (countIsValid) TextSecondary else CoralText
             )
@@ -264,7 +273,8 @@ private fun ColumnScope.WorksheetOptionsForm(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = if (blocker != null) TextSecondary else CoralText,
-            modifier = Modifier.padding(top = 14.dp)
+            // Why there is no sheet arrives after the wait, without a tap: a screen reader reads it out.
+            modifier = Modifier.padding(top = 14.dp).semantics { liveRegion = LiveRegionMode.Polite }
         )
     }
     CoastButton(
@@ -333,10 +343,10 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
             Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp)) {
                 Row(modifier = Modifier.padding(start = 4.dp)) {
                     TextButton(onClick = { onChange(all) }, enabled = picked.size < islands.size, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                        Text("All", style = MaterialTheme.typography.labelMedium, color = if (picked.size < islands.size) Sunlit else TextSecondary)
+                        Text("All", style = MaterialTheme.typography.labelMedium, color = if (picked.size < islands.size) SunlitText else TextSecondary)
                     }
                     TextButton(onClick = { onChange(emptySet()) }, enabled = picked.isNotEmpty(), contentPadding = PaddingValues(horizontal = 8.dp)) {
-                        Text("None", style = MaterialTheme.typography.labelMedium, color = if (picked.isNotEmpty()) Sunlit else TextSecondary)
+                        Text("None", style = MaterialTheme.typography.labelMedium, color = if (picked.isNotEmpty()) SunlitText else TextSecondary)
                     }
                 }
                 islands.forEach { summary ->
@@ -348,7 +358,8 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
                             .fillMaxWidth()
                             .clip(MaterialTheme.shapes.small)
                             .toggleable(value = ticked, role = Role.Checkbox) { onChange(if (ticked) picked - id else picked + id) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            // 48dp high with the tick box: the rows touch, so each has to be a full touch target by itself.
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
                     ) {
                         Checkbox(
                             checked = ticked,
@@ -391,7 +402,12 @@ private fun DirectionSwitch(direction: WorksheetDirection, coastLanguage: String
         contentColor = TextPrimary,
         modifier = Modifier
             .fillMaxWidth()
-            .semantics { contentDescription = "Translating from $from to $to. Tap to swap." }
+            // A screen reader says what a tap does by itself; the action only needs its name. The surface's own click stays.
+            .semantics {
+                contentDescription = "Translating from $from to $to"
+                role = Role.Button
+                onClick(label = "swap the languages", action = null)
+            }
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 60.dp).padding(start = 16.dp, end = 14.dp, top = 10.dp, bottom = 10.dp)) {
             Column(modifier = Modifier.weight(1f)) {
@@ -468,12 +484,17 @@ private fun CountStepper(count: Int, text: String, isValid: Boolean, onTextChang
             interactionSource = interactions,
             modifier = Modifier
                 .padding(horizontal = 6.dp)
-                // Wide enough for three digits, so the buttons don't shift between 99 and 100.
-                .width(68.dp)
-                .height(44.dp)
+                // A definite width: a text field without one takes room for ten letters. Wider with large text, so the
+                // number isn't cut, but only as wide as three digits need: the label beside it needs the room too.
+                .width((44.dp * LocalDensity.current.fontScale).coerceAtLeast(68.dp))
+                .heightIn(min = 44.dp)
                 .background(ChipContainer, shape)
                 .then(if (focused || !isValid) Modifier.border(1.5.dp, if (isValid) Sunlit else CoralText, shape) else Modifier)
-                .semantics { contentDescription = "Number of sentences" },
+                .semantics {
+                    contentDescription = "Number of sentences"
+                    // What is wrong with the number, for a screen reader; sighted users get it from the text beside the field.
+                    if (!isValid) this[SemanticsProperties.Error] = "Enter a number from ${WORKSHEET_COUNT_RANGE.first} to ${WORKSHEET_COUNT_RANGE.last}"
+                },
             decorationBox = { field -> Box(contentAlignment = Alignment.Center) { field() } }
         )
         StepButton(Icons.Default.Add, "One sentence more", enabled = count < WORKSHEET_COUNT_RANGE.last) { onChange(count + 1) }
@@ -499,7 +520,7 @@ private fun StepButton(icon: ImageVector, description: String, enabled: Boolean,
 /** The wait while the AI provider writes the sentences, with a way out. */
 @Composable
 private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: Int, provider: TranslationProvider, onCancel: () -> Unit) {
-    Text("Writing your practice sheet", style = MaterialTheme.typography.titleLarge)
+    Text("Writing your practice sheet", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 16.dp)) {
         CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(10.dp))
@@ -524,7 +545,7 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
         )
     }
     Text(
-        text = "It keeps going if you close this sheet, as long as you stay on this coast.",
+        text = "It keeps going if you close this sheet, as long as you stay on this coast and keep the app open.",
         style = MaterialTheme.typography.bodySmall,
         color = TextSecondary,
         modifier = Modifier.padding(top = 6.dp)
@@ -550,15 +571,23 @@ private fun ColumnScope.WorksheetReady(
     var noViewer by remember(pdf) { mutableStateOf(false) }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconTile(size = 48.dp) { Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Sunlit) }
+        IconTile(size = 48.dp) { Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = SunlitText) }
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text("Your practice sheet is ready", style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = "Your practice sheet is ready",
+                style = MaterialTheme.typography.titleLarge,
+                // It arrives after the wait, without a tap: a screen reader reads it out.
+                modifier = Modifier.semantics {
+                    heading()
+                    liveRegion = LiveRegionMode.Polite
+                }
+            )
             Text(pdf.fileName, style = MaterialTheme.typography.bodySmall, color = TextSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
         }
     }
     Text(
-        text = "${plural(sentenceCount, "sentence")} to translate into $toLanguage on ${plural(pdf.pageCount, "page")}, the last one with the answers.",
+        text = "${plural(sentenceCount, "sentence")} to translate into $toLanguage on ${plural(pdf.pageCount, "page")}, with the answers at the end.",
         style = MaterialTheme.typography.bodyLarge,
         modifier = Modifier.padding(top = 16.dp)
     )
@@ -610,8 +639,8 @@ private fun ColumnScope.WorksheetReady(
             Text("Open")
         }
         val problem = when {
-            download == WorksheetDownload.Failed -> "The file couldn't be saved. Check that the phone has storage left and try again."
-            noViewer -> "No app on this phone opens PDFs. Download the file to open it elsewhere."
+            download == WorksheetDownload.Failed -> "The file couldn't be saved. Check that your device has storage left and try again."
+            noViewer -> "No app on this device opens PDFs. Download the file to open it elsewhere."
             else -> null
         }
         if (problem != null) {

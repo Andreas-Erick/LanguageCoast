@@ -41,8 +41,8 @@ private const val MAX_NOTES = 100_000
 fun readAnkiPackage(input: InputStream, workFolder: File): AnkiPackageContent {
     workFolder.deleteRecursively()
     workFolder.mkdirs()
+    val found = HashMap<String, File>()
     return try {
-        val found = HashMap<String, File>()
         ZipInputStream(input).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
@@ -75,6 +75,13 @@ fun readAnkiPackage(input: InputStream, workFolder: File): AnkiPackageContent {
         // The zstd library is native code; a phone it can't be loaded on can still read the older format.
         logError(TAG, "zstd isn't available on this device", e)
         AnkiPackageContent.Unreadable
+    } catch (e: RuntimeException) {
+        // Whatever else a file that isn't what it claims to be sets off. The zip reader refuses an entry whose
+        // name isn't UTF-8 (IllegalArgumentException), as older Windows tools wrote them: before any collection
+        // was found, that is some other archive. A row too large for the phone's cursor (IllegalStateException)
+        // is a package that can't be read. Either way the user gets a message, not a closed app.
+        logError(TAG, "The file couldn't be read as a package", e)
+        if (found.isEmpty()) AnkiPackageContent.NotAPackage else AnkiPackageContent.Unreadable
     } finally {
         workFolder.deleteRecursively()
     }

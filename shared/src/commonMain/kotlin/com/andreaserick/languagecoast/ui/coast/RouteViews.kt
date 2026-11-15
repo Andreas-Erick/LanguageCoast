@@ -41,14 +41,18 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,12 +67,15 @@ import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.IconTile
+import com.andreaserick.languagecoast.ui.components.inLanguage
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.components.roughDuration
+import com.andreaserick.languagecoast.ui.theme.OnSeafoam
 import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import kotlin.math.roundToInt
@@ -96,8 +103,10 @@ private fun ProgressBar(share: Float, modifier: Modifier = Modifier, color: Colo
  *
  * @param waiting Cards on the coast that were never studied, to say how long they take at [pace].
  * @param busy Whether islands are being added or written right now, so the next one has to wait.
+ * @param canWrite Whether an AI model is set up that can write islands; without one the card says why the route stops at the starter topics.
  * @param onNext Takes the [Route.next] stop.
  * @param onOpen Opens the whole route.
+ * @param busyElsewhere Whether that run is on another coast, where its progress shows; the card then says why the next island waits.
  */
 @Composable
 internal fun RouteCard(
@@ -105,25 +114,45 @@ internal fun RouteCard(
     waiting: Int,
     pace: Pace,
     busy: Boolean,
+    canWrite: Boolean,
     onNext: (RouteStop) -> Unit,
     onOpen: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    busyElsewhere: Boolean = false
 ) {
     val current = route.current
     val next = route.next
-    ContentCard(modifier = modifier, onClick = onOpen, onClickLabel = "See the whole route", padding = PaddingValues(16.dp)) {
+    ContentCard(modifier = modifier, onClick = onOpen, onClickLabel = "see the whole route", padding = PaddingValues(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Level ${current.level.label} · ${current.level.title}", style = MaterialTheme.typography.titleMedium)
                 Text(current.level.can, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(percent(current.progress), style = MaterialTheme.typography.headlineSmall, color = Sunlit)
+            Text(percent(current.progress), style = MaterialTheme.typography.headlineSmall, color = SunlitText)
         }
         LevelStepper(route = route, modifier = Modifier.padding(top = 16.dp))
         if (waiting > 0) {
             Text(
                 text = "${plural(waiting, "new card")} waiting on your islands: ${roughDuration(daysToLearn(waiting, pace))} at the ${pace.label.lowercase()} pace.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+        }
+        // With on-device translation the level stops growing once its starter topics are learned: say why, and what helps.
+        if (!canWrite && next != null && next.kind != RouteStop.Kind.Topic) {
+            Text(
+                text = "The next islands are written by an AI model, which on-device translation can't do. Pick an AI provider under Settings › Translation to go on.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+        }
+        // A run on another coast greys the button below, and its progress card is over there: say why this one waits.
+        if (busyElsewhere && next != null) {
+            Text(
+                text = "Islands are being added on another coast. Take the next one when that is done.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
                 modifier = Modifier.padding(top = 12.dp)
@@ -146,7 +175,7 @@ internal fun RouteCard(
             } else {
                 Text("Every island of ${current.level.label} is on your coast.", style = MaterialTheme.typography.bodySmall, color = TextSecondary, modifier = Modifier.weight(1f))
             }
-            TextButton(onClick = onOpen) { Text("Route", style = MaterialTheme.typography.labelMedium, color = Sunlit) }
+            TextButton(onClick = onOpen) { Text("Route", style = MaterialTheme.typography.labelMedium, color = SunlitText) }
         }
     }
 }
@@ -207,14 +236,15 @@ internal fun LevelMarker(level: Level, reached: Boolean, current: Boolean, modif
                 shape = CircleShape
             )
     ) {
-        if (reached) Icon(Icons.Default.Check, contentDescription = "${level.label} reached", tint = OnSunlit, modifier = Modifier.size(18.dp))
+        if (reached) Icon(Icons.Default.Check, contentDescription = "${level.label} reached", tint = OnSeafoam, modifier = Modifier.size(18.dp))
         else Text(level.label, style = MaterialTheme.typography.labelSmall, color = if (current) OnSunlit else TextSecondary)
     }
 }
 
 /**
- * The moment a level is reached, at the top of the coast until it is acknowledged: what the user can now
- * do, and what comes next.
+ * The moment a level's islands are learned, at the top of the coast until it is acknowledged: what the user
+ * now has the sentences for, and what comes next. It speaks of the islands and their sentences, not of having
+ * reached the level: the app counts cards studied, it doesn't test what the user can do.
  *
  * @param next The level after it, or null when it was the last.
  */
@@ -223,12 +253,17 @@ internal fun LevelReachedCard(level: Level, next: Level?, onDismiss: () -> Unit,
     ContentCard(modifier = modifier, padding = PaddingValues(start = 16.dp, top = 16.dp, end = 8.dp, bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp).background(Seafoam, CircleShape)) {
-                Text(level.label, style = MaterialTheme.typography.titleMedium, color = OnSunlit)
+                Text(level.label, style = MaterialTheme.typography.titleMedium, color = OnSeafoam)
             }
             Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text("You've reached ${level.label} 🎉", style = MaterialTheme.typography.titleLarge)
-                Text("${level.title}. You can now: ${level.can.replaceFirstChar { it.lowercase() }}", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            // Read out by a screen reader when the card appears: nothing was tapped to bring it up.
+            Column(modifier = Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }) {
+                Text("You've learned the ${level.label} islands 🎉", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    text = "${level.title}. You now have the sentences to ${level.can.replaceFirstChar { it.lowercase() }}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
             }
         }
         Text(
@@ -238,33 +273,39 @@ internal fun LevelReachedCard(level: Level, next: Level?, onDismiss: () -> Unit,
             modifier = Modifier.padding(top = 12.dp, end = 8.dp)
         )
         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-            TextButton(onClick = onDismiss) { Text(if (next != null) "On to ${next.label}" else "Done", style = MaterialTheme.typography.labelMedium, color = Sunlit) }
+            TextButton(onClick = onDismiss) { Text(if (next != null) "On to ${next.label}" else "Done", style = MaterialTheme.typography.labelMedium, color = SunlitText) }
         }
     }
 }
 
-/** What a stop's row says under its name. */
-private fun stopStatus(stop: RouteStop): String = when (stop.state) {
-    RouteStop.State.Added -> when {
-        stop.cards == 0 -> "On your coast"
-        stop.learned >= stop.cards -> "${plural(stop.cards, "card")}, all learned"
-        else -> "${stop.learned} of ${plural(stop.cards, "card")} learned"
+/**
+ * What a stop's row says under its name. Without an AI model ([canWrite] false) an island that has to be
+ * written says that it needs one, so the route shows which of its stops on-device translation can't take.
+ */
+private fun stopStatus(stop: RouteStop, canWrite: Boolean): String =
+    if (!canWrite && stop.kind != RouteStop.Kind.Topic && stop.state != RouteStop.State.Added) "Needs an AI provider"
+    else when (stop.state) {
+        RouteStop.State.Added -> when {
+            stop.cards == 0 -> "On your coast"
+            stop.learned >= stop.cards -> "${plural(stop.cards, "card")}, all learned"
+            else -> "${stop.learned} of ${plural(stop.cards, "card")} learned"
+        }
+        RouteStop.State.Changed -> "Your answers changed: write it again"
+        RouteStop.State.Ready -> when (stop.kind) {
+            RouteStop.Kind.Topic -> "Starter topic, translated for you"
+            RouteStop.Kind.About -> "Written from your answers"
+            RouteStop.Kind.Written -> "Written by your AI provider"
+            RouteStop.Kind.LevelUp -> "The same answers, with more to say"
+        }
+        RouteStop.State.Locked -> if (stop.kind == RouteStop.Kind.LevelUp) "Comes after the island itself" else "Answer its questions first"
     }
-    RouteStop.State.Changed -> "Your answers changed: write it again"
-    RouteStop.State.Ready -> when (stop.kind) {
-        RouteStop.Kind.Topic -> "Starter topic, translated for you"
-        RouteStop.Kind.About -> "Written from your answers"
-        RouteStop.Kind.Written -> "Written by your AI provider"
-        RouteStop.Kind.LevelUp -> "The same answers, with more to say"
-    }
-    RouteStop.State.Locked -> if (stop.kind == RouteStop.Kind.LevelUp) "Comes after the island itself" else "Answer its questions first"
-}
 
 /**
  * The whole route: every level with what it lets you do, how far it is, and its islands, each with where
  * it stands. Tapping one takes it: a topic is added, an island written, or its questions opened.
  *
  * @param busy Whether islands are being added or written right now.
+ * @param canWrite Whether an AI model is set up that can write islands. Without one the sheet says which stops need it.
  * @param onStop Takes [RouteStop]; the sheet closes first.
  * @param onAddTopics Adds every starter topic of a level that isn't on the coast.
  * @param onWriteAll Writes every island of a level that can be written now.
@@ -274,6 +315,7 @@ private fun stopStatus(stop: RouteStop): String = when (stop.state) {
 internal fun RouteSheet(
     route: Route,
     busy: Boolean,
+    canWrite: Boolean,
     onStop: (RouteStop) -> Unit,
     onAddTopics: (RouteLevel) -> Unit,
     onWriteAll: (RouteLevel) -> Unit,
@@ -282,17 +324,30 @@ internal fun RouteSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         LazyColumn(contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 32.dp), modifier = Modifier.fillMaxWidth()) {
             item(key = "title") {
-                Text("Your route", style = MaterialTheme.typography.titleLarge)
+                Text("Your route", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
                 Text(
                     text = "Each level is a set of islands. Add them, learn their cards, and the next level opens up. Nothing stops you from taking an island early.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+                if (!canWrite) {
+                    Text(
+                        text = "Islands about you and all of ${Level.B1.label} are written by an AI model. On-device translation takes you through the starter topics; " +
+                            "for the rest, pick an AI provider under Settings › Translation.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
             route.levels.forEach { level ->
                 item(key = "level-${level.level.name}") { LevelHeader(level, busy = busy, onAddTopics = { onAddTopics(level) }, onWriteAll = { onWriteAll(level) }) }
-                items(level.stops, key = { it.id }) { stop -> StopRow(stop, enabled = !busy || stop.state == RouteStop.State.Locked, onClick = { onStop(stop) }) }
+                items(level.stops, key = { it.id }) { stop ->
+                    // A locked row only opens its questions, so it stays open during a run; a locked level-up leads to
+                    // its island's write sheet, and waits like the rows that write.
+                    val opensQuestions = stop.state == RouteStop.State.Locked && stop.kind != RouteStop.Kind.LevelUp
+                    StopRow(stop, status = stopStatus(stop, canWrite), enabled = !busy || opensQuestions, onClick = { onStop(stop) })
+                }
             }
         }
     }
@@ -308,11 +363,11 @@ private fun LevelHeader(level: RouteLevel, busy: Boolean, onAddTopics: () -> Uni
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.size(40.dp).background(if (level.isComplete) Seafoam else Sunlit, CircleShape)
             ) {
-                Text(level.level.label, style = MaterialTheme.typography.labelLarge, color = OnSunlit)
+                Text(level.level.label, style = MaterialTheme.typography.labelLarge, color = if (level.isComplete) OnSeafoam else OnSunlit)
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("${level.level.title} · ${percent(level.progress)}", style = MaterialTheme.typography.titleMedium)
+                Text("${level.level.title} · ${percent(level.progress)}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                 Text(level.level.can, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
         }
@@ -321,13 +376,13 @@ private fun LevelHeader(level: RouteLevel, busy: Boolean, onAddTopics: () -> Uni
             Row(modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) {
                 if (topics > 1) {
                     TextButton(onClick = onAddTopics, enabled = !busy, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                        Text("Add ${plural(topics, "topic")}", style = MaterialTheme.typography.labelMedium, color = if (busy) TextSecondary else Sunlit)
+                        Text("Add ${plural(topics, "topic")}", style = MaterialTheme.typography.labelMedium, color = if (busy) TextSecondary else SunlitText)
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                 }
                 if (writable > 1) {
                     TextButton(onClick = onWriteAll, enabled = !busy, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                        Text("Write ${plural(writable, "island")}", style = MaterialTheme.typography.labelMedium, color = if (busy) TextSecondary else Sunlit)
+                        Text("Write ${plural(writable, "island")}", style = MaterialTheme.typography.labelMedium, color = if (busy) TextSecondary else SunlitText)
                     }
                 }
             }
@@ -335,8 +390,9 @@ private fun LevelHeader(level: RouteLevel, busy: Boolean, onAddTopics: () -> Uni
     }
 }
 
+/** One island of a level: its tile and name, [status] under it (see [stopStatus]), and what a tap does as an icon. */
 @Composable
-private fun StopRow(stop: RouteStop, enabled: Boolean, onClick: () -> Unit) {
+private fun StopRow(stop: RouteStop, status: String, enabled: Boolean, onClick: () -> Unit) {
     val done = stop.state == RouteStop.State.Added
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -356,7 +412,7 @@ private fun StopRow(stop: RouteStop, enabled: Boolean, onClick: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(stopStatus(stop), style = MaterialTheme.typography.bodySmall, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(status, style = MaterialTheme.typography.bodySmall, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (done && stop.cards > 0 && stop.learned < stop.cards) {
                 ProgressBar(stop.progress, modifier = Modifier.padding(top = 6.dp, end = 24.dp))
             }
@@ -364,8 +420,8 @@ private fun StopRow(stop: RouteStop, enabled: Boolean, onClick: () -> Unit) {
         Spacer(modifier = Modifier.width(8.dp))
         when (stop.state) {
             RouteStop.State.Added -> Icon(Icons.Default.Check, contentDescription = "On your coast", tint = Seafoam, modifier = Modifier.size(20.dp))
-            RouteStop.State.Changed -> Icon(Icons.Default.Refresh, contentDescription = "Write again", tint = Sunlit, modifier = Modifier.size(20.dp))
-            RouteStop.State.Ready -> Icon(Icons.Default.Add, contentDescription = "Add", tint = if (enabled) Sunlit else TextSecondary, modifier = Modifier.size(22.dp))
+            RouteStop.State.Changed -> Icon(Icons.Default.Refresh, contentDescription = "Write again", tint = SunlitText, modifier = Modifier.size(20.dp))
+            RouteStop.State.Ready -> Icon(Icons.Default.Add, contentDescription = "Add", tint = if (enabled) SunlitText else TextSecondary, modifier = Modifier.size(22.dp))
             RouteStop.State.Locked -> Icon(
                 imageVector = if (stop.kind == RouteStop.Kind.LevelUp) Icons.Default.Lock else Icons.Default.Edit,
                 contentDescription = if (stop.kind == RouteStop.Kind.LevelUp) "Not yet" else "Answer its questions",
@@ -379,21 +435,29 @@ private fun StopRow(stop: RouteStop, enabled: Boolean, onClick: () -> Unit) {
 /**
  * An island as a talk to rehearse aloud: the island's own sentences joined into about a minute of speech.
  * The meaning stays folded until asked for, so the talk is read (or listened to) in the language first.
+ *
+ * @param coastLanguage The language the talk is in, so a screen reader reads it in that language's voice.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TalkSheet(state: TalkUiState, onSpeak: () -> Unit, onAnother: () -> Unit, onDismiss: () -> Unit) {
-    var showMeaning by remember(state.talk) { mutableStateOf(false) }
+internal fun TalkSheet(state: TalkUiState, coastLanguage: String, onSpeak: () -> Unit, onAnother: () -> Unit, onDismiss: () -> Unit) {
+    var showMeaning by rememberSaveable(state.talk) { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             // The whole sheet scrolls: with the meaning shown, a talk is longer than the screen.
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
-            Text("${state.island.emoji ?: "🎙️"} ${state.island.name}, as a talk", style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = "${state.island.emoji ?: "🎙️"} ${state.island.name}, as a talk",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() }
+            )
             val talk = state.talk
+            // What comes of the wait is read out by a screen reader: the reason there is no talk, or that it is there.
+            val arrival = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
             when {
-                state.error != null -> Text(state.error, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                state.error != null -> Text(state.error, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = arrival)
                 talk == null -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 12.dp)) {
                     CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(12.dp))
@@ -403,7 +467,8 @@ internal fun TalkSheet(state: TalkUiState, onSpeak: () -> Unit, onAnother: () ->
                     Text(
                         text = "Your own sentences from this island, joined into about a minute of speech. Read it aloud a few times, then say it without looking.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                        color = TextSecondary,
+                        modifier = arrival
                     )
                     Column(
                         modifier = Modifier
@@ -411,7 +476,7 @@ internal fun TalkSheet(state: TalkUiState, onSpeak: () -> Unit, onAnother: () ->
                             .background(SurfaceRaised, MaterialTheme.shapes.medium)
                             .padding(horizontal = 16.dp, vertical = 14.dp)
                     ) {
-                        Text(talk.targetText, style = MaterialTheme.typography.bodyLarge)
+                        Text(inLanguage(talk.targetText, coastLanguage), style = MaterialTheme.typography.bodyLarge)
                         if (showMeaning) {
                             HorizontalDivider(color = TextSecondary.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 12.dp))
                             Text(talk.nativeText, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
@@ -420,14 +485,14 @@ internal fun TalkSheet(state: TalkUiState, onSpeak: () -> Unit, onAnother: () ->
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         if (state.canSpeak) {
                             TextButton(onClick = onSpeak, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = Sunlit, modifier = Modifier.size(20.dp))
+                                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = SunlitText, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Listen", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                                Text("Listen", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                         }
                         TextButton(onClick = { showMeaning = !showMeaning }, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                            Text(if (showMeaning) "Hide the meaning" else "Show the meaning", style = MaterialTheme.typography.labelMedium, color = Sunlit)
+                            Text(if (showMeaning) "Hide the meaning" else "Show the meaning", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                         }
                     }
                 }

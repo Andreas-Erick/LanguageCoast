@@ -1,5 +1,7 @@
 package com.andreaserick.languagecoast.data
 
+import kotlinx.coroutines.delay
+
 /** Translates sentences and assigns them to a category (island). */
 interface Translator {
     /**
@@ -37,6 +39,43 @@ data class Completion(val text: String?, val errorMessage: String? = null, val r
     }
 }
 
+/** How often in a row [completeWaiting] waits for a provider that turns a request away for now. */
+const val BUSY_MAX_WAITS = 4
+
+/** The longest [completeWaiting] waits each time, whatever the provider asks for. */
+const val BUSY_MAX_WAIT_SECONDS = 60
+
+/**
+ * How long to wait after a rate limit that doesn't say: the providers count requests per minute, so a
+ * short wait is usually enough.
+ */
+const val BUSY_RETRY_SECONDS = 10
+
+/**
+ * The seconds a provider's `retry-after` header asks for, rounded up and at least one, or [BUSY_RETRY_SECONDS]
+ * when [header] is missing or isn't a number.
+ */
+internal fun retryAfterHeaderSeconds(header: String?): Int =
+    (header?.trim()?.toDoubleOrNull()?.takeIf { it >= 0 }?.let { (it + 0.999).toInt() } ?: BUSY_RETRY_SECONDS).coerceAtLeast(1)
+
+/**
+ * [Translator.complete] for work that sends many requests in a row (a starter topic, an island): when the
+ * provider turns the request away only for now ([Completion.retryAfterSeconds]: a per-minute limit, or it is
+ * overloaded), the same request is sent again after the wait it names, up to [maxWaits] times. Any other
+ * failure, and a wait that didn't help, comes back as it is.
+ */
+suspend fun Translator.completeWaiting(engine: TranslationEngine, prompt: String, maxWaits: Int = BUSY_MAX_WAITS): Completion {
+    var completion = complete(engine, prompt)
+    var waits = 0
+    while (completion.text == null && waits < maxWaits) {
+        val seconds = completion.retryAfterSeconds ?: break
+        waits++
+        delay(seconds.coerceIn(1, BUSY_MAX_WAIT_SECONDS) * 1_000L)
+        completion = complete(engine, prompt)
+    }
+    return completion
+}
+
 /**
  * The prompt that explains [word] as used in [sentence] (in [targetLanguage]) to a learner whose language is
  * [nativeLanguage]: meaning, grammar and one more example, kept short enough for a sheet.
@@ -58,21 +97,21 @@ enum class TranslationProvider(
     val isCloud: Boolean
 ) {
     /** Google ML Kit on the phone: free and offline, but it only translates and can't pick a category. */
-    OnDevice("On-device", "Google ML Kit · Fast basic translation", "Offline", isCloud = false),
+    OnDevice("On-device", "Translates on the phone, without a network", "Offline", isCloud = false),
     /** Local `.litertlm` LLM on the phone: free, private and offline with full categorization and alternatives. */
-    LocalAi("Local AI", "On-device LLM · Full AI categorization offline", "Private AI", isCloud = false),
+    LocalAi("Local AI", "A language model on the phone, without a network", "Offline", isCloud = false),
     /** Google Gemini API. */
-    Gemini("Gemini", "Google AI Studio · Fast & accurate", "Google", isCloud = true),
+    Gemini("Gemini", "Google's models, with your own API key", "Google", isCloud = true),
     /** OpenAI ChatGPT / GPT-4.1 / GPT-4o API. */
-    OpenAI("OpenAI", "GPT-4.1 & GPT-4o · High precision", "OpenAI", isCloud = true),
+    OpenAI("OpenAI", "The GPT models, with your own API key", "OpenAI", isCloud = true),
     /** Anthropic Claude API. */
-    Claude("Claude", "Anthropic Claude · Natural phrasing & nuance", "Anthropic", isCloud = true),
-    /** Groq Cloud ultra-fast LPU inference. */
-    Groq("Groq", "Ultra-fast LPU · Llama & Qwen cloud models", "Ultra-Fast", isCloud = true),
+    Claude("Claude", "Anthropic's models, with your own API key", "Anthropic", isCloud = true),
+    /** Groq Cloud, which runs open models such as Llama and Qwen. */
+    Groq("Groq", "Llama and Qwen models, with your own API key", "Groq", isCloud = true),
     /** DeepSeek API. */
-    DeepSeek("DeepSeek", "DeepSeek V3 · Cost-effective multilingual AI", "DeepSeek", isCloud = true),
+    DeepSeek("DeepSeek", "The DeepSeek models, with your own API key", "DeepSeek", isCloud = true),
     /** One API key for many cloud models (GPT, Claude, Llama, …) through openrouter.ai. */
-    OpenRouter("OpenRouter", "All cloud models with one API key", "Multi-Model", isCloud = true)
+    OpenRouter("OpenRouter", "Many cloud models with one API key", "OpenRouter", isCloud = true)
 }
 
 /** The provider for one translation, with what it needs to run. */
@@ -217,9 +256,19 @@ private fun buildReversePrompt(request: TranslationRequest): String = with(reque
 /** Inputs with at least this many words get alternative translations (see [buildTranslationPrompt]). */
 const val ALTERNATIVES_MIN_WORDS = 6
 
+/**
+ * Japanese is written without spaces, so its words can't be counted: an input with at least this many kana
+ * and kanji gets alternatives. That is about the length of a six-word sentence.
+ */
+const val ALTERNATIVES_MIN_UNSPACED_LETTERS = 15
+
 /** Whether [sentence] is long enough to ask for alternative translations. */
 internal fun wantsAlternatives(sentence: String): Boolean =
-    sentence.split(Regex("\\s+")).count { it.isNotBlank() } >= ALTERNATIVES_MIN_WORDS
+    sentence.split(Regex("\\s+")).count { it.isNotBlank() } >= ALTERNATIVES_MIN_WORDS ||
+        sentence.count { isUnspacedLetter(it) } >= ALTERNATIVES_MIN_UNSPACED_LETTERS
+
+/** Whether [char] is a letter of a script written without spaces between words: kana (U+3040 to U+30FF) or a CJK ideograph (U+4E00 to U+9FFF). */
+internal fun isUnspacedLetter(char: Char): Boolean = char.code in 0x3040..0x30FF || char.code in 0x4E00..0x9FFF
 
 private val KNOWN_LABELS = listOf("TRANSLATION", "CATEGORY", "EMOJI", "ALTERNATIVES", "NOTE", "CORRECTED")
 

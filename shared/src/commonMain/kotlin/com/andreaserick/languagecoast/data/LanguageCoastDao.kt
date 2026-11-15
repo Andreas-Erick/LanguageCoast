@@ -6,7 +6,6 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
-import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 /** SQL for [isDue]: new cards, and reviewed cards whose due time has passed at `:now`. */
@@ -171,6 +170,34 @@ interface LanguageCoastDao {
     )
     fun getAllPlacedCards(): Flow<List<PlacedCard>>
 
+    /** The cards of coast [coastId] with their island and coast, by island name, then the order cards were added. */
+    @Query(
+        """
+        SELECT flashcards.*, language_islands.name AS islandName, language_islands.emoji AS islandEmoji,
+            coasts.coastId AS coastId, coasts.language AS language
+        FROM flashcards
+            INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
+            INNER JOIN coasts ON language_islands.coastId = coasts.coastId
+        WHERE coasts.coastId = :coastId
+        ORDER BY language_islands.name, flashcards.cardId
+        """
+    )
+    fun getPlacedCardsForCoast(coastId: Int): Flow<List<PlacedCard>>
+
+    /** The cards of island [islandId] with their island and coast, in the order they were added. */
+    @Query(
+        """
+        SELECT flashcards.*, language_islands.name AS islandName, language_islands.emoji AS islandEmoji,
+            coasts.coastId AS coastId, coasts.language AS language
+        FROM flashcards
+            INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
+            INNER JOIN coasts ON language_islands.coastId = coasts.coastId
+        WHERE flashcards.islandId = :islandId
+        ORDER BY flashcards.cardId
+        """
+    )
+    fun getPlacedCardsForIsland(islandId: Int): Flow<List<PlacedCard>>
+
     /** The cards of coast [coastId] as a practice sheet needs them, by island name, then the order cards were added. */
     @Query(
         """
@@ -193,9 +220,15 @@ interface LanguageCoastDao {
     @Query("SELECT COUNT(*) FROM flashcards WHERE islandId = :islandId")
     suspend fun countCardsInIsland(islandId: Int): Int
 
-    /** Saves every field of [flashcard] over the stored card with the same ID. */
-    @Update
-    suspend fun updateFlashcard(flashcard: Flashcard)
+    /**
+     * Saves the scheduling fields of card [cardId] after it was graded, leaving its texts as they are: a
+     * correction made a moment before the grade must not be written over with the session's older copy.
+     */
+    @Query(
+        "UPDATE flashcards SET stability = :stability, difficulty = :difficulty, lastReviewed = :lastReviewed, " +
+            "due = :due, lapses = :lapses WHERE cardId = :cardId"
+    )
+    suspend fun setReview(cardId: Int, stability: Double?, difficulty: Double?, lastReviewed: Long?, due: Long?, lapses: Int)
 
     /** Replaces the translation and alternatives of card [cardId], leaving its other fields as they are. */
     @Query("UPDATE flashcards SET targetText = :targetText, alternatives = :alternatives WHERE cardId = :cardId")
@@ -263,4 +296,56 @@ interface LanguageCoastDao {
         insertIslands(content.islands)
         insertFlashcards(content.cards)
     }
+
+    // --- Importing many cards at once ---
+    /**
+     * Saves [cards] on coast [coastId], each on the island it names (or [defaultIsland]), creating the islands
+     * that don't exist yet. One transaction: all or nothing, far quicker than a write per card, and a single
+     * change for everything that observes the tables.
+     */
+    @Transaction
+    suspend fun insertImportedCards(coastId: Int, cards: List<ImportedCard>, defaultIsland: String): List<AddedCard> {
+        val islands = HashMap<String, LanguageIsland>()
+        getIslandsForCoastOnce(coastId).forEach { islands[it.name] = it }
+        val created = HashSet<Int>()
+        return cards.map { card ->
+            val name = card.island ?: defaultIsland
+            val island = islands[name] ?: LanguageIsland(coastId = coastId, name = name, emoji = emojiForCategory(name))
+                .let { it.copy(islandId = insertIsland(it).toInt()) }
+                .also {
+                    islands[name] = it
+                    created += it.islandId
+                }
+            val flashcard = Flashcard(
+                islandId = island.islandId,
+                nativeText = card.nativeText,
+                targetText = card.targetText,
+                alternatives = card.alternatives,
+                note = card.note
+            )
+            // Like a card added on its own: the first card of a new island carries that island, so undoing can remove it.
+            AddedCard(flashcard.copy(cardId = insertFlashcard(flashcard).toInt()), createdIsland = island.takeIf { created.remove(it.islandId) })
+        }
+    }
+
+    /** Deletes the cards with [cardIds]: at most [DELETE_CHUNK] at a time, which is what one statement takes. */
+    @Query("DELETE FROM flashcards WHERE cardId IN (:cardIds)")
+    suspend fun deleteFlashcardsById(cardIds: List<Int>)
+
+    /** Deletes the islands with [islandIds] that have no cards (left). */
+    @Query(
+        "DELETE FROM language_islands WHERE islandId IN (:islandIds) " +
+            "AND NOT EXISTS (SELECT 1 FROM flashcards WHERE flashcards.islandId = language_islands.islandId)"
+    )
+    suspend fun deleteEmptyIslands(islandIds: List<Int>)
+
+    /** Removes the cards with [cardIds], and those of [createdIslandIds] that are empty afterwards; all or nothing. */
+    @Transaction
+    suspend fun deleteImportedCards(cardIds: List<Int>, createdIslandIds: List<Int>) {
+        cardIds.chunked(DELETE_CHUNK).forEach { deleteFlashcardsById(it) }
+        createdIslandIds.chunked(DELETE_CHUNK).forEach { deleteEmptyIslands(it) }
+    }
 }
+
+/** How many values one SQL statement is given at most; SQLite's own limit was 999 for a long time. */
+private const val DELETE_CHUNK = 900

@@ -1,6 +1,5 @@
 package com.andreaserick.languagecoast.ui.create
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -31,10 +31,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.PhraseBank
@@ -51,10 +56,23 @@ import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
 /** A starter sentence picked in the sheet, with its placeholders filled in and the topic (and its emoji) it comes from. */
 data class StarterSentence(val text: String, val category: String, val emoji: String? = null)
+
+/** Keeps the ticks when the phone is turned: saved as the list of ticked sentences. */
+private val TickSaver = listSaver<SnapshotStateMap<String, Boolean>, String>(
+    save = { ticks -> ticks.filterValues { it }.keys.toList() },
+    restore = { sentences -> mutableStateMapOf<String, Boolean>().apply { sentences.forEach { put(it, true) } } }
+)
+
+/** Keeps what was typed into the blanks when the phone is turned: saved as keys and values in turn. */
+private val FillerSaver = listSaver<SnapshotStateMap<String, String>, String>(
+    save = { fillers -> fillers.flatMap { listOf(it.key, it.value) } },
+    restore = { flat -> mutableStateMapOf<String, String>().apply { flat.chunked(2).forEach { pair -> if (pair.size == 2) put(pair[0], pair[1]) } } }
+)
 
 /**
  * The starter sentences of the [PhraseBank], by topic, to tick and turn into cards on the coast. A ticked
@@ -76,10 +94,10 @@ internal fun StarterSentencesSheet(
     onAdd: (List<StarterSentence>) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var topic by remember { mutableStateOf(PhraseBank.THEMES.first().category) }
-    // Ticks and fill-ins survive switching topics, so a selection can span several.
-    val ticked = remember { mutableStateMapOf<String, Boolean>() }
-    val fillers = remember { mutableStateMapOf<String, String>() }
+    var topic by rememberSaveable { mutableStateOf(PhraseBank.THEMES.first().category) }
+    // Ticks and fill-ins survive switching topics, so a selection can span several, and turning the phone.
+    val ticked = rememberSaveable(saver = TickSaver) { mutableStateMapOf<String, Boolean>() }
+    val fillers = rememberSaveable(saver = FillerSaver) { mutableStateMapOf<String, String>() }
     val automatic = mapOf(PhraseBank.LANGUAGE_PLACEHOLDER to coastLanguage)
 
     // A blank's value: what was typed for this sentence, else the profile's.
@@ -96,7 +114,7 @@ internal fun StarterSentencesSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
             Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-                Text("Starter sentences", style = MaterialTheme.typography.titleLarge)
+                Text("Starter sentences", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
                 Text(
                     text = "Sentences everyone needs. Tick what you'd say, fill in the blanks, and they're translated into $coastLanguage and filed on islands.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -142,7 +160,12 @@ internal fun StarterSentencesSheet(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable(enabled = !onCoast) { ticked[sentence] = !isTicked }
+                                // The row is the tick box: one stop for a screen reader, which hears the sentence and whether it is ticked.
+                                // A sentence the coast has is no tick box at all.
+                                .then(
+                                    if (onCoast) Modifier
+                                    else Modifier.toggleable(value = isTicked, role = Role.Checkbox) { ticked[sentence] = it }
+                                )
                                 .padding(end = 12.dp)
                         ) {
                             if (onCoast) {
@@ -155,7 +178,9 @@ internal fun StarterSentencesSheet(
                             } else {
                                 Checkbox(
                                     checked = isTicked,
-                                    onCheckedChange = { ticked[sentence] = it },
+                                    onCheckedChange = null,
+                                    // Without a handler of its own the box is small; the padding keeps the row as tall as before.
+                                    modifier = Modifier.padding(12.dp),
                                     colors = CheckboxDefaults.colors(checkedColor = Sunlit, checkmarkColor = OnSunlit, uncheckedColor = TextSecondary)
                                 )
                             }
@@ -194,7 +219,7 @@ internal fun StarterSentencesSheet(
                     Text(
                         text = "${plural(tickedCount - picked.size, "sentence")} still ${if (tickedCount - picked.size == 1) "has" else "have"} a blank to fill in.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Sunlit,
+                        color = SunlitText,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 6.dp)
                     )

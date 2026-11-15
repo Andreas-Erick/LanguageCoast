@@ -77,12 +77,35 @@ class WorksheetPrinterTest {
 
     @Test
     fun tenShortSentencesFitOnePageWithTheAnswersOnTheNext() {
-        val (pdf, pages) = print(sheet(EVERYDAY))
+        // As a sheet comes out of the app: every sentence built from a card, so the first page says which islands
+        // the sheet practises and every answer has its card under it.
+        val (pdf, pages) = print(sheet(FROM_CARDS.map { it.copy(newWords = emptyList(), hint = null) }))
 
         assertEquals("german-coast-practice-2026-11-05.pdf", pdf.fileName)
         assertEquals(File(context.cacheDir, "shared"), File(pdf.path).parentFile)
         assertEquals(2, pdf.pageCount)
         assertEquals(2, pages)
+    }
+
+    @Test
+    fun aSheetBuiltFromCardsPrintsItsWordHelpItsHintsAndTheCards() {
+        // Dated another day than the plain sheet, so that with keepPdfs every file stays to be looked at.
+        val written = sheet(FROM_CARDS).copy(date = LocalDate(2026, 11, 6))
+        assertEquals("Built from your cards on Small Talk (5), Directions (2), Restaurant (2) and Making Plans (1).", written.focusLine)
+        assertEquals("Can you help me, please? (formal)", written.question(FROM_CARDS[3]))
+        assertEquals("wohnen = to live · Zürich = Zurich", written.wordHelp(FROM_CARDS[4]))
+
+        // Word help under a sentence and the card under every answer take room: how many pages that makes depends on the paper.
+        val (pdf, pages) = print(written)
+        assertTrue("A sheet and its answer key are two pages at least, got ${pdf.pageCount}", pdf.pageCount >= 2)
+        assertEquals(pdf.pageCount, pages)
+
+        // Read the other way, the sentences are the German ones: the word help stands under them, and no hint is needed.
+        val read = written.copy(options = written.options.copy(direction = WorksheetDirection.ToNative), date = LocalDate(2026, 11, 7))
+        assertEquals("Können Sie mir bitte helfen?", read.question(FROM_CARDS[3]))
+        val (readPdf, readPages) = print(read)
+        assertTrue(readPdf.pageCount >= 2)
+        assertEquals(readPdf.pageCount, readPages)
     }
 
     @Test
@@ -126,6 +149,26 @@ class WorksheetPrinterTest {
             WorksheetSentence("Ich verstehe das nicht.", "I don't understand that."),
             WorksheetSentence("Wo sind die Toiletten?", "Where are the toilets?"),
             WorksheetSentence("Wir treffen uns morgen um acht Uhr.", "We are meeting tomorrow at eight o'clock.")
+        )
+
+        /**
+         * The same ten sentences as a sheet has them now: each built from one of the learner's cards, three with
+         * words that are on no card, and two with a hint at which "you" is meant.
+         */
+        val FROM_CARDS = listOf(
+            EVERYDAY[0].copy(card = WorksheetCard("Directions", "Wo ist der Bahnhof?", "Where is the station?"), newWords = listOf(WordHelp("nächste", "nearest"))),
+            EVERYDAY[1].copy(card = WorksheetCard("Restaurant", "Einen Kaffee, bitte.", "A coffee, please.")),
+            EVERYDAY[2].copy(card = WorksheetCard("Directions", "Ich gehe zu Fuß.", "I am going on foot."), newWords = listOf(WordHelp("dauern", "to take (time)"))),
+            EVERYDAY[3].copy(card = WorksheetCard("Small Talk", "Kannst du mir helfen?", "Can you help me?"), hint = "formal"),
+            EVERYDAY[4].copy(
+                card = WorksheetCard("Small Talk", "Ich komme aus Österreich.", "I come from Austria."),
+                newWords = listOf(WordHelp("wohnen", "to live"), WordHelp("Zürich", "Zurich"))
+            ),
+            EVERYDAY[5].copy(card = WorksheetCard("Small Talk", "Das Wetter ist schön.", "The weather is nice.")),
+            EVERYDAY[6].copy(card = WorksheetCard("Small Talk", "Ich spreche ein bisschen Deutsch.", "I speak a little German."), hint = "formal"),
+            EVERYDAY[7].copy(card = WorksheetCard("Small Talk", "Ich verstehe.", "I understand.")),
+            EVERYDAY[8].copy(card = WorksheetCard("Restaurant", "Wo ist die Toilette?", "Where is the toilet?")),
+            EVERYDAY[9].copy(card = WorksheetCard("Making Plans", "Treffen wir uns morgen?", "Shall we meet tomorrow?"))
         )
 
         val EVERYDAY_LONG = listOf(

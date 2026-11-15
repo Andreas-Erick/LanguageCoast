@@ -21,10 +21,13 @@ import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Profile
 import com.andreaserick.languagecoast.data.checkForNewModels
+import com.andreaserick.languagecoast.data.keyOf
 import com.andreaserick.languagecoast.data.nativeLanguageOptions
 import com.andreaserick.languagecoast.data.recommendModelsForHardware
+import com.andreaserick.languagecoast.data.sharingNotAllowedMessage
 import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import com.andreaserick.languagecoast.ui.theme.ThemeMode
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
@@ -83,8 +86,36 @@ data class SettingsUiState(
     val meteredWarningModelId: String? = null,
     /** The models offered for each cloud provider that has a list of them. */
     val modelOptions: Map<TranslationProvider, List<String>> = MODEL_LIST_PROVIDERS.associateWith(SettingsDefaults::models),
-    val modelCheck: ModelCheckState = ModelCheckState()
-)
+    val modelCheck: ModelCheckState = ModelCheckState(),
+    /** The cloud providers the user allowed text to be sent to, by [TranslationProvider.name]. */
+    val aiSharingAllowed: Set<String> = emptySet(),
+    val keyCheck: KeyCheckState = KeyCheckState()
+) {
+    /** The saved API key of cloud [provider], or "" if it has none. */
+    fun savedKey(provider: TranslationProvider): String = when (provider) {
+        TranslationProvider.Gemini -> savedApiKey
+        TranslationProvider.OpenAI -> savedOpenAiKey
+        TranslationProvider.Claude -> savedClaudeKey
+        TranslationProvider.Groq -> savedGroqKey
+        TranslationProvider.DeepSeek -> savedDeepSeekKey
+        TranslationProvider.OpenRouter -> savedOpenRouterKey
+        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> ""
+    }
+
+    /** Whether [provider]'s key was saved in this visit and not edited since. */
+    fun keyJustSaved(provider: TranslationProvider): Boolean = when (provider) {
+        TranslationProvider.Gemini -> apiKeySaved
+        TranslationProvider.OpenAI -> openAiSaved
+        TranslationProvider.Claude -> claudeSaved
+        TranslationProvider.Groq -> groqSaved
+        TranslationProvider.DeepSeek -> deepSeekSaved
+        TranslationProvider.OpenRouter -> openRouterSaved
+        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> false
+    }
+
+    /** Whether the user allowed text to be sent to [provider]. What runs on the phone needs no permission. */
+    fun sharingAllowed(provider: TranslationProvider): Boolean = !provider.isCloud || provider.name in aiSharingAllowed
+}
 
 /**
  * "Check for new models" in Settings.
@@ -92,10 +123,27 @@ data class SettingsUiState(
  * @property checking The provider being asked for its models right now, or null.
  * @property provider The provider the last check was for, whose model picker shows [message].
  * @property message What the last check found, or why it couldn't.
+ * @property needsPermission Whether [message] asks to allow sending to [provider] first; it goes once that is allowed.
  */
 data class ModelCheckState(
     val checking: TranslationProvider? = null,
     val provider: TranslationProvider? = null,
+    val message: String? = null,
+    val failed: Boolean = false,
+    val needsPermission: Boolean = false
+)
+
+/**
+ * Whether the key just saved for a provider works: saving one asks the provider, so that a mistyped key
+ * shows here and not later, in the middle of a translation.
+ *
+ * @property provider The provider whose key was checked last, or is being checked.
+ * @property checking Whether the provider is being asked right now.
+ * @property message What came of it, once it is known: the key works, it was refused, or it couldn't be checked.
+ */
+data class KeyCheckState(
+    val provider: TranslationProvider? = null,
+    val checking: Boolean = false,
     val message: String? = null,
     val failed: Boolean = false
 )
@@ -107,7 +155,7 @@ private fun defaultRecommendations(): List<ModelRecommendation> =
             fitLevel = if (index == 0) ModelFitLevel.BEST_MATCH else ModelFitLevel.GREAT_FIT,
             fitScore = 95 - index * 5,
             reason = model.summary,
-            recommendedBackend = "GPU / CPU",
+            recommendedBackend = "CPU",
             hasEnoughStorage = true
         )
     }
@@ -138,18 +186,29 @@ class SettingsViewModel(
     private val huggingFaceTokenSaved = MutableStateFlow(false)
     private val meteredWarning = MutableStateFlow<String?>(null)
     private val modelCheck = MutableStateFlow(ModelCheckState())
+    private val keyCheck = MutableStateFlow(KeyCheckState())
 
-    /** The model lists of the cloud providers, and how checking them for new models is going. */
-    private data class ModelLists(val options: Map<TranslationProvider, List<String>>, val check: ModelCheckState)
+    /** The check of the key saved last; a newer save or a removal ends it. */
+    private var keyCheckJob: Job? = null
+
+    /** The model lists of the cloud providers, and how checking them for new models and checking a saved key are going. */
+    private data class ModelLists(val options: Map<TranslationProvider, List<String>>, val check: ModelCheckState, val keyCheck: KeyCheckState)
 
     private val modelLists = combine(
         combine(MODEL_LIST_PROVIDERS.map { provider -> settings.modelOptions(provider).map { provider to it } }) { it.toMap() },
         modelCheck,
+        keyCheck,
         ::ModelLists
     )
 
-    /** The provider, the reminder, the profile and the model lists: what doesn't belong to one provider. */
-    private data class General(val provider: TranslationProvider, val reminder: ReminderSettings, val profile: Profile, val models: ModelLists)
+    /** The provider, the reminder, the profile, the model lists and the permissions: what doesn't belong to one provider. */
+    private data class General(
+        val provider: TranslationProvider,
+        val reminder: ReminderSettings,
+        val profile: Profile,
+        val models: ModelLists,
+        val sharingAllowed: Set<String>
+    )
 
     /** The look-and-feel and goal preferences. */
     private data class Preferences(
@@ -246,9 +305,9 @@ class SettingsViewModel(
         combine(settings.nativeLanguage, flashcards.observeCoasts(), ::Pair),
         cloudState,
         localAiState,
-        combine(settings.translationProvider, settings.reminderSettings, settings.profile, modelLists, ::General),
+        combine(settings.translationProvider, settings.reminderSettings, settings.profile, modelLists, settings.aiSharingAllowed, ::General),
         preferences
-    ) { (native, coasts), cloud, local, (provider, reminder, profile, models), prefs ->
+    ) { (native, coasts), cloud, local, (provider, reminder, profile, models, sharingAllowed), prefs ->
         val recommendations = local.hardwareProfile?.let(::recommendModelsForHardware) ?: defaultRecommendations()
         SettingsUiState(
             nativeLanguage = native,
@@ -287,7 +346,10 @@ class SettingsViewModel(
             meteredWarningModelId = prefs.meteredWarningModelId,
             profile = profile,
             modelOptions = models.options,
-            modelCheck = models.check
+            // "Allow it first" has nothing left to say once the provider is allowed.
+            modelCheck = models.check.takeUnless { it.needsPermission && it.provider?.name.orEmpty() in sharingAllowed } ?: ModelCheckState(),
+            aiSharingAllowed = sharingAllowed,
+            keyCheck = models.keyCheck
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -302,12 +364,20 @@ class SettingsViewModel(
     /**
      * Asks the provider picked for translations which models it offers now, adds the new ones to its list and
      * removes the ones it no longer has. Does nothing while a check is running. What came of it arrives in
-     * [SettingsUiState.modelCheck].
+     * [SettingsUiState.modelCheck]. A provider the user hasn't allowed sending to is not asked: the request
+     * would carry the saved key.
      */
     fun checkForNewModels() {
         if (modelCheck.value.checking != null) return
         viewModelScope.launch {
             val provider = settings.translationProvider.first()
+            // A key saved before the app asked for permission: until the user allows it the provider gets nothing, not even the key.
+            // Without a key the check itself says to save one first, and saving is the step that asks for the permission.
+            if (settings.keyOf(provider).first().isNotBlank() && provider.name !in settings.aiSharingAllowed.first()) {
+                modelCheck.value =
+                    ModelCheckState(provider = provider, message = sharingNotAllowedMessage(provider), failed = true, needsPermission = true)
+                return@launch
+            }
             modelCheck.value = ModelCheckState(checking = provider)
             val outcome = checkForNewModels(provider, settings, modelLister)
             modelCheck.value = ModelCheckState(provider = provider, message = outcome.message, failed = outcome.failed)
@@ -369,6 +439,8 @@ class SettingsViewModel(
     /**
      * Downloads and installs a local `.litertlm` model and sets it as the active Local AI model. Over mobile
      * data a large download first asks (see [SettingsUiState.meteredWarningModelId]), unless [allowMetered].
+     * A download the user didn't agree to have on mobile data never uses it: one started on Wi-Fi waits for
+     * Wi-Fi to come back when it drops.
      */
     fun installLocalModel(modelId: String, allowMetered: Boolean = false) {
         val size = LocalAiCatalog.byId(modelId)?.sizeMb ?: 0L
@@ -378,7 +450,12 @@ class SettingsViewModel(
         }
         meteredWarning.value = null
         viewModelScope.launch {
-            localModels.installModel(modelId, settings.huggingFaceToken.first().trim().ifEmpty { null })
+            localModels.installModel(
+                modelId,
+                settings.huggingFaceToken.first().trim().ifEmpty { null },
+                // A download too small to ask about may go over any connection.
+                allowMetered = allowMetered || size < METERED_WARNING_MB
+            )
             settings.setLocalAiModel(modelId)
         }
     }
@@ -391,8 +468,16 @@ class SettingsViewModel(
     /** Saves the Hugging Face token that gated local models are downloaded with. */
     fun saveHuggingFaceToken(token: String) {
         viewModelScope.launch {
-            settings.setHuggingFaceToken(token.trim())
+            settings.setHuggingFaceToken(withoutWhitespace(token))
             huggingFaceTokenSaved.value = true
+        }
+    }
+
+    /** Takes the Hugging Face token off the phone. */
+    fun removeHuggingFaceToken() {
+        viewModelScope.launch {
+            settings.setHuggingFaceToken("")
+            huggingFaceTokenSaved.value = false
         }
     }
 
@@ -420,18 +505,105 @@ class SettingsViewModel(
         viewModelScope.launch { settings.setOpenRouterModel(model) }
     }
 
-    /** Saves the OpenRouter API key and shows the "saved" confirmation. */
-    fun saveOpenRouterKey(key: String) {
+    /**
+     * Saves [key] as cloud [provider]'s API key, shows the "saved" confirmation and asks the provider whether
+     * the key works (see [SettingsUiState.keyCheck]). The key is stored even if that check fails: it may only
+     * be the connection. A provider the user hasn't allowed sending to is not asked, since asking sends the key.
+     *
+     * @param allowSharing The user has just allowed text to be sent to [provider]; stored along with the key.
+     */
+    fun saveKey(provider: TranslationProvider, key: String, allowSharing: Boolean = false) {
+        val cleaned = withoutWhitespace(key)
         viewModelScope.launch {
-            settings.setOpenRouterKey(key.trim())
-            openRouterSaved.value = true
+            // The permission goes first: a key stored without it would make the app ask for it once more.
+            if (allowSharing) settings.allowAiSharing(provider)
+            storeKey(provider, cleaned)
+            savedFlag(provider)?.value = true
+            if (provider.name in settings.aiSharingAllowed.first()) checkKey(provider, cleaned) else forgetKeyCheck(provider)
         }
     }
 
-    /** Hides the "saved" confirmation once the user edits the OpenRouter key again. */
-    fun onOpenRouterKeyEdited() {
-        openRouterSaved.value = false
+    /** Takes [provider]'s key off the phone, and with it the permission to send text there. */
+    fun removeKey(provider: TranslationProvider) {
+        forgetKeyCheck(provider)
+        // "Allow sending first" under the model list is advice for a saved key; without one it would point at nothing.
+        if (modelCheck.value.needsPermission && modelCheck.value.provider == provider) modelCheck.value = ModelCheckState()
+        viewModelScope.launch {
+            settings.removeApiKey(provider)
+            savedFlag(provider)?.value = false
+        }
     }
+
+    /** Stores that the user allowed text to be sent to [provider], whose key is saved already. */
+    fun allowSharing(provider: TranslationProvider) {
+        viewModelScope.launch { settings.allowAiSharing(provider) }
+    }
+
+    /** Hides the "saved" confirmation and the result of the key's check once the user edits [provider]'s key again. */
+    fun onKeyEdited(provider: TranslationProvider) {
+        savedFlag(provider)?.value = false
+        forgetKeyCheck(provider)
+    }
+
+    /**
+     * Asks [provider] whether it accepts [key], by listing its models with it. OpenRouter has no such list,
+     * so its key shows only when translating.
+     */
+    private fun checkKey(provider: TranslationProvider, key: String) {
+        keyCheckJob?.cancel()
+        if (provider !in MODEL_LIST_PROVIDERS || key.isEmpty()) {
+            keyCheck.value = KeyCheckState()
+            return
+        }
+        keyCheck.value = KeyCheckState(provider = provider, checking = true)
+        keyCheckJob = viewModelScope.launch {
+            keyCheck.value = when (val listing = modelLister.list(provider, key)) {
+                is ModelListing.Found -> KeyCheckState(provider = provider, message = "${provider.label} accepted the key.")
+                // The lister's own words: the key was refused, or the provider couldn't be reached.
+                is ModelListing.Failed -> KeyCheckState(provider = provider, message = listing.message, failed = true)
+            }
+        }
+    }
+
+    /** Drops what is shown about [provider]'s key check, and stops one that is still running. */
+    private fun forgetKeyCheck(provider: TranslationProvider) {
+        if (keyCheck.value.provider != provider) return
+        keyCheckJob?.cancel()
+        keyCheck.value = KeyCheckState()
+    }
+
+    private suspend fun storeKey(provider: TranslationProvider, key: String) = when (provider) {
+        TranslationProvider.Gemini -> settings.setApiKey(key)
+        TranslationProvider.OpenAI -> settings.setOpenAiKey(key)
+        TranslationProvider.Claude -> settings.setClaudeKey(key)
+        TranslationProvider.Groq -> settings.setGroqKey(key)
+        TranslationProvider.DeepSeek -> settings.setDeepSeekKey(key)
+        TranslationProvider.OpenRouter -> settings.setOpenRouterKey(key)
+        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> Unit
+    }
+
+    /** The "saved" confirmation of cloud [provider]'s key. */
+    private fun savedFlag(provider: TranslationProvider): MutableStateFlow<Boolean>? = when (provider) {
+        TranslationProvider.Gemini -> apiKeySaved
+        TranslationProvider.OpenAI -> openAiSaved
+        TranslationProvider.Claude -> claudeSaved
+        TranslationProvider.Groq -> groqSaved
+        TranslationProvider.DeepSeek -> deepSeekSaved
+        TranslationProvider.OpenRouter -> openRouterSaved
+        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> null
+    }
+
+    /**
+     * A pasted key or token without the spaces and line breaks that come along from a web page or a mail:
+     * a key has none of its own, and one inside it makes the request fail before it is sent.
+     */
+    private fun withoutWhitespace(secret: String): String = secret.filterNot { it.isWhitespace() || it.isISOControl() }
+
+    /** Saves the OpenRouter API key and shows the "saved" confirmation. */
+    fun saveOpenRouterKey(key: String) = saveKey(TranslationProvider.OpenRouter, key)
+
+    /** Hides the "saved" confirmation once the user edits the OpenRouter key again. */
+    fun onOpenRouterKeyEdited() = onKeyEdited(TranslationProvider.OpenRouter)
 
     /** Changes the Gemini model used for translations. */
     fun setGeminiModel(model: String) {
@@ -439,33 +611,14 @@ class SettingsViewModel(
     }
 
     /** Saves the Gemini API key and shows the "saved" confirmation. */
-    fun saveApiKey(key: String) {
-        viewModelScope.launch {
-            settings.setApiKey(key.trim())
-            apiKeySaved.value = true
-        }
-    }
+    fun saveApiKey(key: String) = saveKey(TranslationProvider.Gemini, key)
 
     /** Hides the "saved" confirmation once the user edits the key again. */
-    fun onApiKeyEdited() {
-        apiKeySaved.value = false
-    }
+    fun onApiKeyEdited() = onKeyEdited(TranslationProvider.Gemini)
 
     /** Changes the OpenAI model used for translations. */
     fun setOpenAiModel(model: String) {
         viewModelScope.launch { settings.setOpenAiModel(model) }
-    }
-
-    /** Saves the OpenAI API key. */
-    fun saveOpenAiKey(key: String) {
-        viewModelScope.launch {
-            settings.setOpenAiKey(key.trim())
-            openAiSaved.value = true
-        }
-    }
-
-    fun onOpenAiKeyEdited() {
-        openAiSaved.value = false
     }
 
     /** Changes the Anthropic Claude model used for translations. */
@@ -473,50 +626,14 @@ class SettingsViewModel(
         viewModelScope.launch { settings.setClaudeModel(model) }
     }
 
-    /** Saves the Anthropic Claude API key. */
-    fun saveClaudeKey(key: String) {
-        viewModelScope.launch {
-            settings.setClaudeKey(key.trim())
-            claudeSaved.value = true
-        }
-    }
-
-    fun onClaudeKeyEdited() {
-        claudeSaved.value = false
-    }
-
     /** Changes the Groq model used for translations. */
     fun setGroqModel(model: String) {
         viewModelScope.launch { settings.setGroqModel(model) }
     }
 
-    /** Saves the Groq API key. */
-    fun saveGroqKey(key: String) {
-        viewModelScope.launch {
-            settings.setGroqKey(key.trim())
-            groqSaved.value = true
-        }
-    }
-
-    fun onGroqKeyEdited() {
-        groqSaved.value = false
-    }
-
     /** Changes the DeepSeek model used for translations. */
     fun setDeepSeekModel(model: String) {
         viewModelScope.launch { settings.setDeepSeekModel(model) }
-    }
-
-    /** Saves the DeepSeek API key. */
-    fun saveDeepSeekKey(key: String) {
-        viewModelScope.launch {
-            settings.setDeepSeekKey(key.trim())
-            deepSeekSaved.value = true
-        }
-    }
-
-    fun onDeepSeekKeyEdited() {
-        deepSeekSaved.value = false
     }
 
     /** Turns the daily study reminder on or off. */

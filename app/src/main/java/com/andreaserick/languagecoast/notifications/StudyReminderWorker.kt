@@ -8,9 +8,12 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.andreaserick.languagecoast.data.FlashcardRepository
+import com.andreaserick.languagecoast.data.PersonalIslands
+import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.isDue
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.datetime.toJavaLocalTime
@@ -90,6 +93,20 @@ internal fun delayUntilNextReminder(
 /** This duration, or [min] if it is shorter. */
 private fun Duration.coerceAtLeast(min: Duration): Duration = if (this < min) min else this
 
+/** The names of the islands written from what the user told the app about themselves. */
+private val ISLANDS_ABOUT_USER: Set<String> = PersonalIslands.ALL.filter { it.isAboutUser }.mapTo(HashSet()) { it.name }
+
+/**
+ * The card a reminder may quote on [day], a different one each day (from the same seed as the message), or
+ * null if there is none. It is a card the user has studied before that is due again at [now]: never one they
+ * haven't seen yet, and never one from an island about themselves (their health, their family), whose
+ * sentences don't belong on a lock screen.
+ */
+internal fun teaserCard(cards: List<PlacedCard>, now: Long, day: kotlinx.datetime.LocalDate): PlacedCard? {
+    val quotable = cards.filter { it.card.due != null && isDue(it.card, now) && it.islandName !in ISLANDS_ABOUT_USER }
+    return quotable.getOrNull((day.year * 366 + day.dayOfYear).mod(quotable.size.coerceAtLeast(1)))
+}
+
 /** Shows the study reminder, then schedules the next one. */
 class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams), KoinComponent {
@@ -99,27 +116,48 @@ class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
     private val settings: SettingsRepository by inject()
     private val clock: Clock by inject()
 
-    /** Shows the reminder that fits today (see [reminderMessage]), then queues the next one. */
+    /**
+     * Shows the reminder that fits today, then queues the next one. A run that goes wrong still queues it and
+     * still counts as done: a failed worker would take the reminder queued behind it down with it, and nothing
+     * would remind again until the app is next opened.
+     */
     override suspend fun doWork(): Result {
-        Log.d("StudyReminderWorker", "Showing study reminder")
+        try {
+            showReminder()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Couldn't show the study reminder", e)
+        }
+        reminderScheduler.scheduleNext()
+        return Result.success()
+    }
+
+    /** Shows today's reminder (see [reminderMessage]) unless today has been studied already, and refreshes the widget. */
+    private suspend fun showReminder() {
         val now = clock.millis()
         val today = LocalDate.now(clock).toKotlinLocalDate()
         // A missed day must count as a lost streak, as it would on opening the app.
         settings.refreshStreak()
-        val dueCards = flashcards.observeAllCards().first().filter { isDue(it.card, now) }
-        // A different due card each day, from the same seed as the message.
-        val teaser = dueCards.getOrNull((today.year * 366 + today.dayOfYear).mod(dueCards.size.coerceAtLeast(1)))
-        val message = reminderMessage(
-            dueCount = dueCards.size,
-            streak = settings.streakCount.first(),
-            studiedToday = today in settings.studyDays.first(),
-            teaser = teaser?.let { ReminderCard(it.card.nativeText, it.language, it.islandName, it.emoji, it.card.cardId, it.card.targetText) },
-            day = today
-        )
-        NotificationHelper.showStudyNotification(applicationContext, message)
-        // The widget should show the same count as the reminder.
+        // Someone who has studied today is not asked to again.
+        if (today !in settings.studyDays.first()) {
+            val teaser = teaserCard(flashcards.observeAllCards().first(), now, today)
+            val message = reminderMessage(
+                // The count the widget shows: new cards count only as far as a day takes them on.
+                dueCount = flashcards.countDueCards(now),
+                streak = settings.streakCount.first(),
+                studiedToday = false,
+                teaser = teaser?.let { ReminderCard(it.card.nativeText, it.language, it.islandName, it.emoji, it.card.cardId, it.card.targetText) },
+                day = today
+            )
+            Log.d(TAG, "Showing study reminder")
+            NotificationHelper.showStudyNotification(applicationContext, message)
+        }
+        // The widget's streak and count follow the day as well.
         StudyWidgetProvider.requestUpdate(applicationContext)
-        reminderScheduler.scheduleNext()
-        return Result.success()
+    }
+
+    private companion object {
+        const val TAG = "StudyReminderWorker"
     }
 }

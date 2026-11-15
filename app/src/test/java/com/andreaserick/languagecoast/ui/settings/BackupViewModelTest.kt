@@ -2,7 +2,9 @@ package com.andreaserick.languagecoast.ui.settings
 
 import com.andreaserick.languagecoast.data.Backup
 import com.andreaserick.languagecoast.data.BackupManager
+import com.andreaserick.languagecoast.data.BackupSettings
 import com.andreaserick.languagecoast.data.Grade
+import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.reviewOutcomes
 import com.andreaserick.languagecoast.testing.FakeFlashcardRepository
 import com.andreaserick.languagecoast.testing.FakeReminderScheduler
@@ -18,6 +20,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -104,6 +107,43 @@ class BackupViewModelTest {
         viewModel.undoRestore(previous!!)
         assertEquals(before, newCards.cards.value)
         assertEquals(2, newSettings.streakCount.value)
+    }
+
+    /** Settings that can't be written the first time a backup's settings are stored, as on a phone that is out of space. */
+    private class FailingOnce(private val base: FakeSettingsRepository) : SettingsRepository by base {
+        private var failures = 1
+
+        override suspend fun restoreSettings(backup: BackupSettings) {
+            if (failures > 0) {
+                failures--
+                throw IllegalStateException("The settings couldn't be written")
+            }
+            base.restoreSettings(backup)
+        }
+    }
+
+    @Test
+    fun aRestoreThatFailsHalfwayLeavesEverythingAsItWas() = runTest {
+        seedOldPhone()
+        val file = createViewModel(oldCards, oldSettings).buildBackup()
+        newCards.seed(islandId = 10, cardCount = 1, coastId = 5)
+        newSettings.streakCount.value = 2
+        val before = newCards.cards.value
+        val viewModel = BackupViewModel(BackupManager(newCards, FailingOnce(newSettings), TEST_CLOCK), newCards, reminders, TEST_CLOCK, TEST_TIME_ZONE)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        var restored = false
+
+        viewModel.onRestoreFileRead(file.text)
+        viewModel.confirmRestore { restored = true }
+
+        assertFalse(restored)
+        // The cards had been replaced when the settings failed; what was there before is put back.
+        assertEquals(before, newCards.cards.value)
+        assertEquals(2, newSettings.streakCount.value)
+        val state = viewModel.uiState.value
+        assertNull(state.restorePreview)
+        assertFalse(state.isRestoring)
+        assertEquals("This backup couldn't be restored. Nothing was changed.", state.message)
     }
 
     @Test

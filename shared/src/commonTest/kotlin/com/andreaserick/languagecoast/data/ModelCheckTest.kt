@@ -2,6 +2,7 @@ package com.andreaserick.languagecoast.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ModelCheckTest {
@@ -105,7 +106,9 @@ class ModelCheckTest {
         // Gemini answers a wrong key with 400.
         assertTrue("didn't accept the API key" in message(parseModelListing(TranslationProvider.Gemini, 400, "{}")))
         assertTrue("rate-limited" in message(parseModelListing(TranslationProvider.OpenAI, 429, "")))
-        assertTrue("HTTP 503" in message(parseModelListing(TranslationProvider.Groq, 503, "")))
+        val unavailable = message(parseModelListing(TranslationProvider.Groq, 503, ""))
+        assertTrue("couldn't list its models right now" in unavailable)
+        assertFalse("503" in unavailable || "HTTP" in unavailable)
         assertTrue("couldn't be read" in message(parseModelListing(TranslationProvider.OpenAI, 200, "<html>")))
         assertTrue("couldn't be read" in message(parseModelListing(TranslationProvider.OpenAI, 200, """{"something":"else"}""")))
         // A list without a single model the app can use is no reason to empty the picker.

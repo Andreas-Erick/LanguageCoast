@@ -1,6 +1,7 @@
 package com.andreaserick.languagecoast.data
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -61,7 +62,7 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
         prompt: String
     ): Completion {
         if (apiKey.isBlank()) {
-            return Completion.failure("Please enter a $providerName API key in Settings first!")
+            return Completion.failure("$providerName needs an API key. Add one in Settings.")
         }
         return try {
             val response = client.post(endpoint) {
@@ -69,9 +70,12 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
                 contentType(ContentType.Application.Json)
                 setBody(openRouterRequestBody(model, prompt))
             }
-            cloudChatAnswer(providerName, response.status.value, response.bodyAsText())
+            cloudChatAnswer(providerName, response.status.value, response.bodyAsText(), retryAfter = response.headers["retry-after"])
         } catch (e: CancellationException) {
             throw e
+        } catch (e: HttpRequestTimeoutException) {
+            logError(TAG, "$providerName took too long to answer", e)
+            Completion.failure(tookTooLongMessage(providerName))
         } catch (e: Exception) {
             logError(TAG, "$providerName translation request failed", e)
             Completion.failure("Couldn't reach $providerName. Check your internet connection and try again.")
@@ -84,7 +88,7 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
         prompt: String
     ): Completion {
         if (apiKey.isBlank()) {
-            return Completion.failure("Please enter an Anthropic Claude API key in Settings first!")
+            return Completion.failure("Claude needs an API key. Add one in Settings.")
         }
         return try {
             val response = client.post(CLAUDE_ENDPOINT) {
@@ -97,9 +101,12 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
             claudeAnswer(response.status.value, response.bodyAsText(), retryAfter = response.headers["retry-after"])
         } catch (e: CancellationException) {
             throw e
+        } catch (e: HttpRequestTimeoutException) {
+            logError(TAG, "Claude took too long to answer", e)
+            Completion.failure(tookTooLongMessage("Claude"))
         } catch (e: Exception) {
             logError(TAG, "Claude translation request failed", e)
-            Completion.failure("Couldn't reach Anthropic Claude. Check your internet connection and try again.")
+            Completion.failure("Couldn't reach Claude. Check your internet connection and try again.")
         }
     }
 
@@ -129,8 +136,35 @@ private data class CloudChatMessage(val content: String? = null)
 @Serializable
 private data class CloudApiError(val message: String? = null, val type: String? = null)
 
-/** [parseCloudChatResponse] without reading the answer as a translation. */
-internal fun cloudChatAnswer(providerName: String, status: Int, body: String): Completion {
+/** What the user is told when [providerName] didn't answer within the time a request is given. */
+internal fun tookTooLongMessage(providerName: String): String = "$providerName took too long to answer. Try again or pick a faster model."
+
+/** Words in a provider's own error text that say the account, not the request, is the problem. */
+private val ACCOUNT_WORDS = listOf("credit", "billing", "quota", "balance", "payment")
+
+/**
+ * What the user is told when [providerName] turned a request down for a reason this app has no message of
+ * its own for. The provider's own text ([detail]) is English, technical and often long, so it goes to the
+ * log and not on screen. The one thing read out of it is an account without credit, which only the user can fix.
+ */
+internal fun providerErrorMessage(providerName: String, status: Int, detail: String?): String {
+    logError("CloudTranslators", "$providerName answered $status: ${detail.orEmpty()}")
+    val aboutAccount = detail != null && ACCOUNT_WORDS.any { detail.contains(it, ignoreCase = true) }
+    return when {
+        status == 402 || aboutAccount ->
+            "Your $providerName account is out of credit or over its quota. Check your plan with $providerName, or pick another provider in Settings."
+        status == 403 -> "$providerName didn't allow this request. Check that your key can use the selected model, or pick another model in Settings."
+        status >= 500 -> "$providerName is having trouble right now. Try again in a moment."
+        else -> "$providerName couldn't answer. Try again, or pick another model in Settings."
+    }
+}
+
+/**
+ * [parseCloudChatResponse] without reading the answer as a translation.
+ *
+ * @param retryAfter The response's `retry-after` header (seconds), which a rate-limited answer may carry.
+ */
+internal fun cloudChatAnswer(providerName: String, status: Int, body: String, retryAfter: String? = null): Completion {
     val parsed = try {
         cloudJson.decodeFromString(CloudChatResponse.serializer(), body)
     } catch (e: SerializationException) {
@@ -140,12 +174,17 @@ internal fun cloudChatAnswer(providerName: String, status: Int, body: String): C
     }
     if (status >= 400 || parsed?.error != null) {
         val errMsg = parsed?.error?.message
+        // The requests or tokens per minute are used up, which passes: work that sends many requests waits it out.
+        // OpenAI answers 429 as well when the account has no credit left, which no wait fixes.
+        val outOfCredit = parsed?.error?.type == "insufficient_quota"
+        if (status == 429 && !outOfCredit) {
+            return Completion.busy("$providerName rate limit reached. Wait a moment and try again.", retryAfterHeaderSeconds(retryAfter))
+        }
         val message = when (status) {
             401 -> "$providerName didn't accept the API key. Check your key in Settings."
-            402 -> "Your $providerName account has insufficient quota or credits."
             404 -> "The selected $providerName model wasn't found. Pick another model in Settings."
-            429 -> "$providerName rate limit reached. Wait a moment and try again."
-            else -> "$providerName: ${errMsg ?: "request failed (HTTP $status)"}"
+            429 -> providerErrorMessage(providerName, 402, errMsg)
+            else -> providerErrorMessage(providerName, status, errMsg)
         }
         return Completion.failure(message)
     }
@@ -189,7 +228,7 @@ private data class ClaudeRequest(
  */
 internal const val CLAUDE_MAX_TOKENS = 16_000
 
-/** A model that thinks first can take longer over a batch of sentences than the client's usual minute. */
+/** The same two minutes every request gets (see sharedModule); stated here so Claude keeps them if the client's own limit is ever lowered. */
 internal const val CLAUDE_TIMEOUT_MILLIS = 120_000L
 
 @Serializable
@@ -236,7 +275,7 @@ internal fun claudeAnswer(status: Int, body: String, retryAfter: String? = null)
         val message = when (status) {
             401, 403 -> "Claude didn't accept the API key. Check your Anthropic key in Settings."
             404 -> "The selected Claude model wasn't found. Pick another model in Settings."
-            else -> "Claude: ${errMsg ?: "request failed (HTTP $status)"}"
+            else -> providerErrorMessage("Claude", status, errMsg)
         }
         return Completion.failure(message)
     }
