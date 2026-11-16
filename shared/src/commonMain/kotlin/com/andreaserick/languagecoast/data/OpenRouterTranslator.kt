@@ -34,7 +34,7 @@ class OpenRouterTranslator(private val client: HttpClient) : Translator {
             throw e
         } catch (e: HttpRequestTimeoutException) {
             logError(TAG, "OpenRouter took too long to answer", e)
-            Completion.failure(tookTooLongMessage("OpenRouter"))
+            Completion.tooLarge(tookTooLongMessage("OpenRouter"))
         } catch (e: Exception) {
             // Everything, as the other translators do: this must never throw, and a key pasted with a line break
             // in it, for one, fails before anything is sent.

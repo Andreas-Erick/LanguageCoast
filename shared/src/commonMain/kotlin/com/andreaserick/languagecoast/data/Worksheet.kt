@@ -75,22 +75,49 @@ const val WORKSHEET_DEFAULT_COUNT = 10
 val WORKSHEET_COUNT_RANGE = 3..500
 
 /**
- * Sentences asked for per request. A cloud model's answer holds a few dozen sentence pairs before it is cut
- * off or times out; a local model's holds a handful.
+ * How a sheet is asked of a provider: how many sentences a request ([sentences]), about how long one request
+ * takes ([seconds]), and whether a few sentences more are asked for than the sheet needs, so that the
+ * weakest can be left out ([hasSpares]).
+ *
+ * A local model writes a handful at a time and is too slow for spares. The Claude models think before they
+ * answer, over a dozen hard sentences for a minute or more, so they are asked for a dozen: twice that in one
+ * request took a top model past the time and the room a request has, and the sheet failed. Other cloud
+ * models answer a few dozen sentence pairs in seconds.
  */
-private const val CLOUD_BATCH = 25
-private const val LOCAL_BATCH = 5
+enum class WorksheetBatch(val sentences: Int, val seconds: Int, val hasSpares: Boolean) {
+    Local(5, 40, false),
+    Thinking(12, 90, true),
+    Cloud(25, 10, true);
+
+    companion object {
+        fun of(provider: TranslationProvider): WorksheetBatch = when (provider) {
+            TranslationProvider.LocalAi -> Local
+            TranslationProvider.Claude -> Thinking
+            else -> Cloud
+        }
+    }
+}
+
+/** A request that was too much for the model is tried again with half as many sentences, down to this many. */
+private const val SMALLEST_BATCH = 3
 
 /**
  * How many sentences a sheet of [count] asks a model for in all. A cloud model is asked for a few to spare,
  * so the ones that stray furthest from the cards can be left out; a local model is too slow for that.
  */
-internal fun worksheetSentencesWanted(count: Int, isLocal: Boolean): Int = if (isLocal) count else count + (count / 4).coerceIn(2, 10)
+internal fun worksheetSentencesWanted(count: Int, batch: WorksheetBatch): Int = if (batch.hasSpares) count + (count / 4).coerceIn(2, 10) else count
+
+/**
+ * How many of the [left] sentences the next request asks for: [batch] of them, or all that are left when
+ * that is only a few more. A request for the last two or three would carry every card once more for them.
+ */
+internal fun worksheetAsk(left: Int, batch: Int): Int = if (left <= batch + batch / 4) left else batch
 
 /** How many requests a sheet of [count] sentences takes if every answer comes back complete. */
-fun worksheetRequests(count: Int, isLocal: Boolean): Int {
-    val batch = if (isLocal) LOCAL_BATCH else CLOUD_BATCH
-    return (worksheetSentencesWanted(count, isLocal) + batch - 1) / batch
+fun worksheetRequests(count: Int, batch: WorksheetBatch): Int {
+    val size = batch.sentences
+    // The last few sentences go with the request before them (see worksheetAsk).
+    return maxOf(1, (worksheetSentencesWanted(count, batch) - size / 4 + size - 1) / size)
 }
 
 /** A coast needs this many cards before a sheet can be made from it: fewer leave nothing to recombine. */
@@ -976,8 +1003,10 @@ class WorksheetGenerator(
                 )
             )
         }
-        val wanted = worksheetSentencesWanted(count, isLocal)
-        val perRequest = if (isLocal) LOCAL_BATCH else CLOUD_BATCH
+        val batch = WorksheetBatch.of(provider)
+        val wanted = worksheetSentencesWanted(count, batch)
+        // Fewer after a request that was too much for the model (see below).
+        var perRequest = batch.sentences
 
         val written = ArrayList<WorksheetSentence>()
         var lastError: String? = null
@@ -986,13 +1015,17 @@ class WorksheetGenerator(
         var barren = 0
         // Times in a row the provider said "not now": see MAX_WAITS.
         var waits = 0
-        val planned = worksheetRequests(count, isLocal)
-        // Until the sheet is full, and through the planned requests for the sentences to spare.
-        fun moreNeeded() = written.size < count || (requests < planned && written.size < wanted)
-        while (moreNeeded() && requests < planned + EXTRA_REQUESTS && barren < MAX_BARREN_REQUESTS) {
+        var planned = worksheetRequests(count, batch)
+        // Until the sheet is full, and through the planned requests for the sentences to spare, unless only a
+        // few of those are left: a request for one or two would carry every card once more for them.
+        fun moreNeeded() = written.size < count || (requests < planned && wanted - written.size > perRequest / 4)
+        // The requests to spare are counted in batches: after a halving there are twice as many, of half the size.
+        while (moreNeeded() && requests < planned + EXTRA_REQUESTS * (batch.sentences / perRequest) && barren < MAX_BARREN_REQUESTS) {
             requests++
+            // After a request that was too much, none is made larger than the size that went through.
+            val left = wanted - written.size
+            val asked = if (perRequest < batch.sentences) minOf(perRequest, left) else worksheetAsk(left, perRequest)
             val (prompt, anchors) = withContext(background) {
-                val asked = minOf(perRequest, wanted - written.size)
                 val deal = dealer.next(asked)
                 buildWorksheetPrompt(
                     cards = deal.cards,
@@ -1024,6 +1057,16 @@ class WorksheetGenerator(
             val text = completion.text
             if (text == null) {
                 lastError = completion.errorMessage
+                // The sheet has its sentences: the request was for the ones to spare, which aren't worth another try.
+                if (written.size >= count) break
+                // The model ran out of time or of room over this many sentences (one that thinks first does,
+                // over a batch of hard ones): half as many can go through, in more requests than planned. Half
+                // of what was asked for, which is fewer than a batch on a short sheet and at the end of a long one.
+                if (completion.isTooLarge && asked > SMALLEST_BATCH) {
+                    perRequest = maxOf(SMALLEST_BATCH, minOf(perRequest, asked) / 2)
+                    planned = requests + (wanted - written.size + perRequest - 1) / perRequest
+                    continue
+                }
                 barren++
                 // A provider that can't be reached for the first request won't answer the next one either.
                 if (written.isEmpty()) break else continue
