@@ -66,7 +66,7 @@ class GeminiTranslator(private val client: HttpClient) : Translator {
             throw e
         } catch (e: HttpRequestTimeoutException) {
             logError(TAG, "Gemini took too long to answer", e)
-            Completion.failure(tookTooLongMessage("Gemini"))
+            Completion.tooLarge(tookTooLongMessage("Gemini"))
         } catch (e: Exception) {
             logError(TAG, "Translation request failed", e)
             Completion.failure("Couldn't reach Gemini. Check your internet connection and try again.")

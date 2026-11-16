@@ -86,6 +86,7 @@ import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.data.WORKSHEET_COUNT_RANGE
 import com.andreaserick.languagecoast.data.WORKSHEET_MIN_CARDS
+import com.andreaserick.languagecoast.data.WorksheetBatch
 import com.andreaserick.languagecoast.data.WorksheetDifficulty
 import com.andreaserick.languagecoast.data.WorksheetDirection
 import com.andreaserick.languagecoast.data.WorksheetOptions
@@ -425,12 +426,13 @@ private fun DirectionSwitch(direction: WorksheetDirection, coastLanguage: String
 
 /**
  * How long a sheet of [count] sentences will take with [provider], said before the button is tapped: a
- * model answers a batch of sentences in some seconds, a local one in most of a minute.
+ * model answers a batch of sentences in some seconds, a local one in most of a minute, and one that thinks
+ * before it answers (Claude) in a minute or two.
  */
 internal fun worksheetEstimate(count: Int, provider: TranslationProvider): String {
-    val isLocal = provider == TranslationProvider.LocalAi
-    val requests = worksheetRequests(count, isLocal)
-    val seconds = requests * if (isLocal) 40 else 10
+    val batch = WorksheetBatch.of(provider)
+    val requests = worksheetRequests(count, batch)
+    val seconds = requests * batch.seconds
     val duration = when {
         seconds < 50 -> "less than a minute"
         seconds < 90 -> "about a minute"
@@ -533,7 +535,7 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
         modifier = Modifier.padding(top = 12.dp)
     )
     // A sheet that takes several requests shows how far along it is.
-    if (worksheetRequests(state.options.count, provider == TranslationProvider.LocalAi) > 1) {
+    if (worksheetRequests(state.options.count, WorksheetBatch.of(provider)) > 1) {
         LinearProgressIndicator(
             progress = { state.written.toFloat() / state.options.count },
             color = Sunlit,

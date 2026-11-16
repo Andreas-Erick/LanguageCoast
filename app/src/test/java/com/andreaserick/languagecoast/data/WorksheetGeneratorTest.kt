@@ -323,7 +323,7 @@ class WorksheetGeneratorTest {
         assertEquals(500, sheet.sentences.distinctBy { it.targetText }.size)
         // 510 sentences, ten of them to spare, 25 per request.
         assertEquals(21, translator.prompts.size)
-        assertEquals(worksheetRequests(500, isLocal = false), translator.prompts.size)
+        assertEquals(worksheetRequests(500, WorksheetBatch.Cloud), translator.prompts.size)
         assertEquals(25, anchors(translator.prompts.first()).size)
         assertEquals(10, anchors(translator.prompts.last()).size)
         // Six cards and 510 sentences: the cards come round again and again, and every sentence still has one.
@@ -361,6 +361,79 @@ class WorksheetGeneratorTest {
         assertEquals(1, sheet.sentences.size)
         // It gave up after asking again twice.
         assertEquals(3, translator.prompts.size)
+    }
+
+    @Test
+    fun aModelThatThinksFirstIsAskedForADozenSentencesAtATime() = runTest {
+        settings.translationProvider.value = TranslationProvider.Claude
+        settings.claudeKey.value = "sk-ant-key"
+        var asked = 0
+        translator.completionFor = { prompt ->
+            asked++
+            Completion((1..anchors(prompt).size).joinToString("\n") { "$it || Kind Satz $asked $it || Sentence $asked $it || -" })
+        }
+
+        // The usual sheet, ten sentences and two to spare, is one request.
+        generator.generate(1, WorksheetOptions(count = 10))
+        assertEquals(listOf(12), translator.prompts.map { anchors(it).size })
+
+        // Twenty are 25 with the spares. Not 25 in one request: over that many hard sentences a top model
+        // ran out of time and room, and the sheet failed. And not 12, 12 and one request for the last one:
+        // the last few go with the request before them.
+        translator.prompts.clear()
+        val sheet = (generator.generate(1, WorksheetOptions(count = 20)) as WorksheetResult.Ready).worksheet
+        assertEquals(20, sheet.sentences.size)
+        assertEquals("Claude", sheet.providerLabel)
+        assertEquals(listOf(12, 13), translator.prompts.map { anchors(it).size })
+        assertEquals(2, worksheetRequests(20, WorksheetBatch.Thinking))
+
+        translator.prompts.clear()
+        generator.generate(1, WorksheetOptions(count = 30))
+        assertEquals(listOf(12, 12, 13), translator.prompts.map { anchors(it).size })
+        assertEquals(3, worksheetRequests(30, WorksheetBatch.Thinking))
+    }
+
+    @Test
+    fun aRequestThatIsTooMuchForTheModelIsMadeAgainWithHalfAsManySentences() = runTest {
+        val tooSlow = Completion.tooLarge("Gemini took too long to answer. Try again or pick a faster model.")
+        // A model that can't manage more than six sentences in the time a request has.
+        var answered = 0
+        translator.completionFor = { prompt ->
+            val size = anchors(prompt).size
+            if (size > 6) tooSlow
+            else {
+                answered++
+                Completion((1..size).joinToString("\n") { "$it || Kind Satz $answered $it || Sentence $answered $it || -" })
+            }
+        }
+        val progress = mutableListOf<Int>()
+
+        val sheet = (generator.generate(1, WorksheetOptions(count = 20)) { progress += it } as WorksheetResult.Ready).worksheet
+
+        // 25 at once, then 12, then six at a time until the sheet is written: the sheet is whole, where it used
+        // to end with "took too long" after the first request. The one sentence still to spare gets no request of its own.
+        assertEquals(20, sheet.sentences.size)
+        assertEquals(listOf(25, 12, 6, 6, 6, 6), translator.prompts.map { anchors(it).size })
+        assertEquals(listOf(6, 12, 18, 20), progress)
+
+        // The usual sheet of ten asks for twelve: half of that is six, not twelve again.
+        translator.prompts.clear()
+        assertEquals(10, (generator.generate(1, WorksheetOptions(count = 10)) as WorksheetResult.Ready).worksheet.sentences.size)
+        assertEquals(listOf(12, 6, 6), translator.prompts.map { anchors(it).size })
+
+        // A model that manages nothing at all is given up on once three at a time were too much as well,
+        // and the sheet says what the model said.
+        translator.prompts.clear()
+        translator.completionFor = { tooSlow }
+        val failed = generator.generate(1, WorksheetOptions(count = 20)) as WorksheetResult.Failed
+        assertEquals(tooSlow.errorMessage, failed.message)
+        assertEquals(listOf(25, 12, 6, 3), translator.prompts.map { anchors(it).size })
+
+        // Any other failure of the first request ends the sheet at once, as before: asking for less wouldn't help.
+        translator.prompts.clear()
+        translator.completionFor = { Completion.failure("Couldn't reach Gemini. Check your internet connection and try again.") }
+        assertTrue(generator.generate(1, WorksheetOptions(count = 20)) is WorksheetResult.Failed)
+        assertEquals(1, translator.prompts.size)
     }
 
     @Test

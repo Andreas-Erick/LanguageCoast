@@ -28,11 +28,23 @@ interface Translator {
  *     it is overloaded): how long to wait before asking again. Work that sends many requests in a row, like
  *     a long practice sheet, waits that long instead of giving up.
  */
-data class Completion(val text: String?, val errorMessage: String? = null, val retryAfterSeconds: Int? = null) {
+data class Completion(
+    val text: String?,
+    val errorMessage: String? = null,
+    val retryAfterSeconds: Int? = null,
+    /** The request was more than the model could answer in the time or the room it has; see [tooLarge]. */
+    val isTooLarge: Boolean = false
+) {
     val isSuccess: Boolean get() = text != null
 
     companion object {
         fun failure(message: String) = Completion(null, message)
+
+        /**
+         * The model ran out of time or of room before it had answered. The same request would fail the same
+         * way; one that asks for less (fewer sentences at a time) can go through.
+         */
+        fun tooLarge(message: String) = Completion(null, message, isTooLarge = true)
 
         /** The provider is rate-limiting or overloaded; the same request can succeed after [retryAfterSeconds]. */
         fun busy(message: String, retryAfterSeconds: Int) = Completion(null, message, retryAfterSeconds)
