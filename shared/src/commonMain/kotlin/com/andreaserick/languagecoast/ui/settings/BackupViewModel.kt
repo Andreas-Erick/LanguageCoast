@@ -87,6 +87,7 @@ class BackupViewModel(
      * was there before, so the restore can be undone with [undoRestore].
      */
     fun confirmRestore(onRestored: (previous: Backup) -> Unit) {
+        if (state.value.isRestoring) return
         val backup = state.value.restorePreview ?: return
         state.update { it.copy(isRestoring = true) }
         viewModelScope.launch {

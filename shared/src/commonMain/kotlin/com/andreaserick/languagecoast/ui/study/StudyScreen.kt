@@ -164,12 +164,16 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
     val currentCard = uiState.currentCard
     val currentPlaced = uiState.currentPlaced
     val undoMessenger = LocalUndoMessenger.current
-    var editingCard by remember { mutableStateOf<Flashcard?>(null) }
+    var editingCardId by rememberSaveable { mutableStateOf<Int?>(null) }
+    val editingCard = editingCardId?.let { id ->
+        if (currentCard?.cardId == id) currentCard else null
+    }
 
     uiState.explanation?.let { explanation ->
         WordSheet(
             explanation = explanation,
             dictionaryUrl = dictCcSearchUrl(explanation.word, uiState.nativeLanguage, uiState.targetLanguage),
+            onRetry = { viewModel.explainWord(explanation.word) },
             onDismiss = viewModel::dismissExplanation
         )
     }
@@ -180,6 +184,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
             onApply = viewModel::applyCardCheck,
             onAskAlternative = viewModel::askAlternative,
             onSaveAlternative = viewModel::saveAlternative,
+            onRetry = viewModel::checkCard,
             onDismiss = viewModel::dismissCardCheck
         )
     }
@@ -196,9 +201,9 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
             targetLanguage = uiState.targetLanguage,
             onSave = { edit ->
                 viewModel.editCard(card.cardId, edit)
-                editingCard = null
+                editingCardId = null
             },
-            onDismiss = { editingCard = null }
+            onDismiss = { editingCardId = null }
         )
     }
 
@@ -217,7 +222,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                 onSkip = viewModel::next,
                 onCheck = viewModel::checkCard,
                 onAsk = viewModel::openCardQuestions,
-                onEdit = { editingCard = currentCard },
+                onEdit = { editingCardId = currentCard?.cardId },
                 onDelete = {
                     viewModel.deleteCurrentCard { deleted ->
                         undoMessenger.show("Card deleted") { viewModel.restore(deleted) }
@@ -541,12 +546,19 @@ fun FlipStudyView(
     // Reversed, the translation is the question, so explaining its words would give the answer away.
     val hasDictionary = !isReversed && onExplain != null
 
+    val reducedMotion = com.andreaserick.languagecoast.ui.components.LocalReducedMotion.current
     // A new card settles into place rather than just appearing, which makes the change easy to notice.
-    val arrival = remember(currentCard.cardId) { Animatable(0f) }
-    LaunchedEffect(currentCard.cardId) { arrival.animateTo(1f, tween(durationMillis = 220)) }
+    val arrival = remember(currentCard.cardId) { Animatable(if (reducedMotion) 1f else 0f) }
+    var gradedCardId by remember(currentCard.cardId) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(currentCard.cardId, reducedMotion) {
+        if (reducedMotion) arrival.snapTo(1f) else arrival.animateTo(1f, tween(durationMillis = 220))
+    }
 
     // Again re-queues the card, so with one card left the same card comes back: reset it explicitly.
+    // Guard against rapid double-taps grading the next card before recomposition settles.
     fun grade(grade: Grade) {
+        if (gradedCardId == currentCard.cardId) return
+        gradedCardId = currentCard.cardId
         feedback.play(if (grade == Grade.Again) FeedbackKind.Failure else FeedbackKind.Success)
         scope.launch {
             offsetX.snapTo(0f)
@@ -560,10 +572,10 @@ fun FlipStudyView(
         isFlipped = !isFlipped
     }
 
-    // Animate the card rotation
+    // Animate the card rotation (snap immediately when OS reduced-motion is enabled).
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
-        animationSpec = tween(durationMillis = FLIP_MILLIS),
+        animationSpec = tween(durationMillis = if (reducedMotion) 0 else FLIP_MILLIS),
         label = "flip"
     )
 
@@ -600,7 +612,7 @@ fun FlipStudyView(
                         if (isFlipped && hasDictionary) {
                             customActions = lookupWords(answer).take(31).map { word ->
                                 CustomAccessibilityAction("Explain $word") {
-                                    onExplain?.invoke(word)
+                                    onExplain(word)
                                     true
                                 }
                             }
@@ -1109,13 +1121,15 @@ fun SessionCompleteView(
     isCounted: Boolean = true,
     canPracticeAll: Boolean = true
 ) {
-    val markScale = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        markScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
+    val reducedMotion = com.andreaserick.languagecoast.ui.components.LocalReducedMotion.current
+    val markScale = remember { Animatable(if (reducedMotion) 1f else 0f) }
+    LaunchedEffect(reducedMotion) {
+        if (reducedMotion) markScale.snapTo(1f)
+        else markScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (isCounted) Confetti(modifier = Modifier.fillMaxSize())
+        if (isCounted && !reducedMotion) Confetti(modifier = Modifier.fillMaxSize())
 
         Column(
             modifier = Modifier
@@ -1131,7 +1145,10 @@ fun SessionCompleteView(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .size(72.dp)
-                        .scale(markScale.value)
+                        .graphicsLayer {
+                            scaleX = markScale.value
+                            scaleY = markScale.value
+                        }
                         .background(Sunlit, CircleShape)
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, tint = OnSunlit, modifier = Modifier.size(40.dp))
@@ -1220,8 +1237,10 @@ private fun StatTile(value: String, label: String, modifier: Modifier = Modifier
     ContentCard(modifier = modifier, padding = PaddingValues(vertical = 14.dp, horizontal = 8.dp)) {
         Text(
             value,
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
             textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth()
         )
         Text(
@@ -1229,6 +1248,8 @@ private fun StatTile(value: String, label: String, modifier: Modifier = Modifier
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
             textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth()
         )
     }

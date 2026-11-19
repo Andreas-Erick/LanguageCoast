@@ -125,6 +125,22 @@ class AnkiPackageReaderTest {
     }
 
     @Test
+    fun duplicateCollectionEntriesAreRejected() {
+        val bytes = ByteArrayOutputStream().also { out ->
+            ZipOutputStream(out).use { archive ->
+                repeat(2) {
+                    archive.putNextEntry(ZipEntry("collection.anki2"))
+                    archive.write("not a db".toByteArray())
+                    archive.closeEntry()
+                }
+            }
+        }.toByteArray()
+
+        assertEquals(AnkiPackageContent.Unreadable, readAnkiPackage(ByteArrayInputStream(bytes), workFolder))
+        assertFalse(workFolder.exists())
+    }
+
+    @Test
     fun packagesPutInTheCacheForTestingGiveCards() {
         val extra = File(context.cacheDir, "anki-test").listFiles().orEmpty().sortedBy { it.name }
         extra.forEach { file ->
@@ -132,8 +148,6 @@ class AnkiPackageReaderTest {
             assertTrue("${file.name} couldn't be read: $content", content is AnkiPackageContent.Notes)
             val notes = (content as AnkiPackageContent.Notes).notes
             val cards = ankiNoteCards(notes)
-            println("ANKI ${file.name}: ${notes.size} notes, ${cards.size} cards, islands ${cards.map { it.island }.distinct().take(6)}")
-            cards.take(3).forEach { println("ANKI   ${it.nativeText.take(50)} | ${it.targetText.take(50)} | ${it.island}") }
             assertTrue("${file.name} gave no cards", cards.isNotEmpty())
         }
     }

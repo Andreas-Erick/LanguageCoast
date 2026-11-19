@@ -79,12 +79,21 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
             return Completion.failure("$providerName needs an API key. Add one in Settings.")
         }
         return try {
-            val response = client.post(endpoint) {
-                header("Authorization", "Bearer $apiKey")
-                contentType(ContentType.Application.Json)
-                setBody(openRouterRequestBody(model, prompt))
+            val (status, responseText, retryAfter) = retryHttpWithBackoff(
+                shouldRetry = { (code, _, retryHeader) ->
+                    code in setOf(408, 502, 503, 504) ||
+                        (code == 429 && (parseRetryAfterMillis(retryHeader) ?: 0L) <= 2_000L)
+                },
+                retryAfterMillis = { (_, _, retryHeader) -> parseRetryAfterMillis(retryHeader) }
+            ) {
+                val response = client.post(endpoint) {
+                    header("Authorization", "Bearer $apiKey")
+                    contentType(ContentType.Application.Json)
+                    setBody(openRouterRequestBody(model, prompt))
+                }
+                Triple(response.status.value, response.bodyAsText(), response.headers["retry-after"])
             }
-            cloudChatAnswer(providerName, response.status.value, response.bodyAsText(), retryAfter = response.headers["retry-after"])
+            cloudChatAnswer(providerName, status, responseText, retryAfter = retryAfter)
         } catch (e: CancellationException) {
             throw e
         } catch (e: HttpRequestTimeoutException) {

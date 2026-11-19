@@ -538,13 +538,31 @@ class StudyViewModel(
         // Take it off the queue right away, so a second tap can't keep it twice.
         updateSession { s -> s.copy(learnQueue = s.learnQueue.drop(1), keptCount = s.keptCount + 1, pendingKeeps = s.pendingKeeps + 1) }
         viewModelScope.launch {
-            val added = flashcards.addFlashcard(
-                coastId, suggestion.nativeText, suggestion.targetText, suggestion.category, suggestion.emoji, suggestion.alternatives, suggestion.note
-            )
-            flashcards.removeSuggestion(suggestion.suggestionId)
-            val island = added.createdIsland ?: flashcards.observeIslands(coastId).first().first { it.islandId == added.card.islandId }
-            val placed = PlacedCard(added.card, island.name, island.emoji, coastId, dailyLanguage)
-            updateSession { s -> s.copy(kept = s.kept + placed, islandIds = s.islandIds + island.islandId, pendingKeeps = s.pendingKeeps - 1) }
+            var placed: PlacedCard? = null
+            var islandId: Int? = null
+            try {
+                val added = flashcards.addFlashcard(
+                    coastId, suggestion.nativeText, suggestion.targetText, suggestion.category, suggestion.emoji, suggestion.alternatives, suggestion.note
+                )
+                flashcards.removeSuggestion(suggestion.suggestionId)
+                val island = added.createdIsland ?: flashcards.observeIslands(coastId).first().firstOrNull { it.islandId == added.card.islandId }
+                if (island != null) {
+                    placed = PlacedCard(added.card, island.name, island.emoji, coastId, dailyLanguage)
+                    islandId = island.islandId
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                com.andreaserick.languagecoast.data.logError("StudyViewModel", "Failed to keep suggested sentence", e)
+            } finally {
+                updateSession { s ->
+                    s.copy(
+                        kept = if (placed != null) s.kept + placed else s.kept,
+                        islandIds = if (islandId != null) s.islandIds + islandId else s.islandIds,
+                        pendingKeeps = (s.pendingKeeps - 1).coerceAtLeast(0)
+                    )
+                }
+            }
         }
     }
 

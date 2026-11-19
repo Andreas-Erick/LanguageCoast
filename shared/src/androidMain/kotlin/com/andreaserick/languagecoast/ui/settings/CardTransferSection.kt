@@ -89,6 +89,7 @@ actual fun CardTransferSection() {
     val undoMessenger = LocalUndoMessenger.current
 
     var showExportDialog by rememberSaveable { mutableStateOf(false) }
+    var isWorking by remember { mutableStateOf(false) }
     // The export chosen in the dialog, kept while the system "save as" screen is open.
     var exportCoastId by rememberSaveable { mutableStateOf<Int?>(null) }
     var exportFormat by rememberSaveable { mutableStateOf(ExportFormat.Anki) }
@@ -99,13 +100,19 @@ actual fun CardTransferSection() {
     // Writes the export chosen in the dialog to the file picked in the system "save as" screen, if any.
     fun writeExport(uri: Uri?) {
         uri ?: return
+        if (isWorking) return
+        isWorking = true
         val coastId = exportCoastId
         val format = exportFormat
         scope.launch {
-            // Writing out a large coast takes a moment, so it is put together away from the main thread.
-            val file = withContext(Dispatchers.Default) { viewModel.buildExport(coastId, format) }
-            val written = withContext(Dispatchers.IO) { writeText(context.contentResolver, uri, file.text) }
-            toast(if (written) "Exported ${plural(file.cardCount, "card")}" else "The file couldn't be saved.")
+            try {
+                // Writing out a large coast takes a moment, so it is put together away from the main thread.
+                val file = withContext(Dispatchers.Default) { viewModel.buildExport(coastId, format) }
+                val written = withContext(Dispatchers.IO) { writeText(context.contentResolver, uri, file.text) }
+                toast(if (written) "Exported ${plural(file.cardCount, "card")}" else "The file couldn't be saved.")
+            } finally {
+                isWorking = false
+            }
         }
     }
 
@@ -116,15 +123,21 @@ actual fun CardTransferSection() {
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
+        if (isWorking) return@rememberLauncherForActivityResult
+        isWorking = true
         scope.launch {
-            // A deck can hold tens of thousands of notes, so its cards are read out away from the main thread too.
-            when (val file = withContext(Dispatchers.IO) { readImportFile(context, uri) }) {
-                is ImportFile.Text ->
-                    if (viewModel.acceptsImportText(file.text)) {
-                        viewModel.onTextCardsRead(withContext(Dispatchers.Default) { parseCardFile(file.text) })
-                    }
-                is ImportFile.AnkiPackage -> viewModel.onAnkiCardsRead(withContext(Dispatchers.Default) { ankiNoteCards(file.notes) })
-                is ImportFile.Unreadable -> viewModel.onImportFileUnreadable(file.reason)
+            try {
+                // A deck can hold tens of thousands of notes, so its cards are read out away from the main thread too.
+                when (val file = withContext(Dispatchers.IO) { readImportFile(context, uri) }) {
+                    is ImportFile.Text ->
+                        if (viewModel.acceptsImportText(file.text)) {
+                            viewModel.onTextCardsRead(withContext(Dispatchers.Default) { parseCardFile(file.text) })
+                        }
+                    is ImportFile.AnkiPackage -> viewModel.onAnkiCardsRead(withContext(Dispatchers.Default) { ankiNoteCards(file.notes) })
+                    is ImportFile.Unreadable -> viewModel.onImportFileUnreadable(file.reason)
+                }
+            } finally {
+                isWorking = false
             }
         }
     }
@@ -142,12 +155,12 @@ actual fun CardTransferSection() {
     Spacer(modifier = Modifier.height(12.dp))
     CoastSecondaryButton(
         onClick = { showExportDialog = true },
-        enabled = uiState.coasts.isNotEmpty(),
+        enabled = uiState.coasts.isNotEmpty() && !isWorking && !uiState.isImporting,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = ButtonHeight)
     ) {
-        Text("Export cards")
+        Text(if (isWorking) "Working…" else "Export cards")
     }
 
     Spacer(modifier = Modifier.height(20.dp))
@@ -157,6 +170,7 @@ actual fun CardTransferSection() {
     Spacer(modifier = Modifier.height(12.dp))
     CoastSecondaryButton(
         onClick = { importLauncher.launch(IMPORT_MIME_TYPES) },
+        enabled = !isWorking && !uiState.isImporting,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = ButtonHeight)
@@ -379,7 +393,8 @@ private fun readImportFile(context: Context, uri: Uri): ImportFile = try {
         }
         input.reset()
         if (read == start.size && start.contentEquals(ZIP_SIGNATURE)) {
-            when (val content = readAnkiPackage(input, File(context.cacheDir, "anki-import"))) {
+            val workDir = File(context.cacheDir, "anki-import-${java.util.UUID.randomUUID()}")
+            when (val content = readAnkiPackage(input, workDir)) {
                 is AnkiPackageContent.Notes -> ImportFile.AnkiPackage(content.notes)
                 AnkiPackageContent.NotAPackage ->
                     ImportFile.Unreadable("That zip file isn't an Anki package. From a spreadsheet, save the cards as CSV and import that.")
@@ -394,6 +409,8 @@ private fun readImportFile(context: Context, uri: Uri): ImportFile = try {
     ImportFile.Unreadable()
 } catch (e: SecurityException) {
     ImportFile.Unreadable()
+} catch (e: OutOfMemoryError) {
+    ImportFile.Unreadable("That file is too large to read on this phone.")
 }
 
 /** Reads a text file, or returns null if it can't be read or is longer than [maxChars]. */
@@ -402,6 +419,8 @@ internal fun readText(resolver: ContentResolver, uri: Uri, maxChars: Int = MAX_I
 } catch (e: IOException) {
     null
 } catch (e: SecurityException) {
+    null
+} catch (e: OutOfMemoryError) {
     null
 }
 

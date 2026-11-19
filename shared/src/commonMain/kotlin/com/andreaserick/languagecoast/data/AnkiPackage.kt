@@ -53,9 +53,12 @@ fun ankiNote(fields: String, deck: String?): AnkiNote = AnkiNote(fields.split(AN
  * `{"1": {"id": 1, "name": "Default", ...}, ...}`. Empty if [decksJson] isn't that.
  */
 fun ankiDeckNames(decksJson: String): Map<Long, String> {
+    if (!isJsonNestingSafe(decksJson)) return emptyMap()
     val decks = try {
         Json.parseToJsonElement(decksJson) as? JsonObject ?: return emptyMap()
     } catch (e: SerializationException) {
+        return emptyMap()
+    } catch (e: IllegalArgumentException) {
         return emptyMap()
     }
     return decks.mapNotNull { (key, deck) ->
@@ -96,10 +99,8 @@ internal fun ankiIsland(deck: String): String? =
  * are dropped. The cells of a table's row are set apart by a space.
  */
 internal fun ankiFieldText(html: String): String {
-    val text = html
-        .replace(HIDDEN_BLOCK, "")
+    val text = expandCloze(stripHiddenBlocks(html))
         .replace(SOUND, "")
-        .replace(CLOZE, "$1")
         .replace(LINE_END, "\n")
         .replace(CELL_END, " ")
         .replace(TAG, "")
@@ -110,20 +111,86 @@ internal fun ankiFieldText(html: String): String {
         .joinToString("\n")
 }
 
+/**
+ * Strips `<style>...</style>` and `<script>...</script>` blocks in O(N) time without regex backtracking,
+ * preventing ReDoS on crafted HTML with many unclosed tags.
+ */
+private fun stripHiddenBlocks(html: String): String {
+    if ('<' !in html) return html
+    val lower = html.lowercase()
+    val out = StringBuilder(html.length)
+    var i = 0
+    while (i < html.length) {
+        val openIdx = lower.indexOf('<', i)
+        if (openIdx < 0) {
+            out.append(html, i, html.length)
+            break
+        }
+        val tagName = when {
+            lower.startsWith("<style", openIdx) -> "style"
+            lower.startsWith("<script", openIdx) -> "script"
+            else -> null
+        }
+        val afterName = if (tagName != null) openIdx + 1 + tagName.length else -1
+        val isBoundary = tagName != null && (afterName == html.length || !lower[afterName].isLetterOrDigit())
+        if (isBoundary) {
+            val openEnd = lower.indexOf('>', afterName)
+            val closeTag = "</$tagName>"
+            val closeIdx = if (openEnd >= 0) lower.indexOf(closeTag, openEnd + 1) else -1
+            if (closeIdx >= 0) {
+                out.append(html, i, openIdx)
+                i = closeIdx + closeTag.length
+                continue
+            }
+        }
+        out.append(html, i, openIdx + 1)
+        i = openIdx + 1
+    }
+    return out.toString()
+}
+
+/**
+ * Expands Anki cloze deletions (`{{c1::answer}}` or `{{c1::answer::hint}}`) in O(N) linear time,
+ * preventing catastrophic regex backtracking on unclosed `{{c1::` sequences with repeated `::`.
+ */
+private fun expandCloze(text: String): String {
+    if ("{{c" !in text) return text
+    val out = StringBuilder(text.length)
+    var i = 0
+    while (i < text.length) {
+        val start = text.indexOf("{{c", i)
+        if (start < 0) {
+            out.append(text, i, text.length)
+            break
+        }
+        var p = start + 3
+        while (p < text.length && text[p].isDigit()) p++
+        if (p > start + 3 && p + 1 < text.length && text[p] == ':' && text[p + 1] == ':') {
+            val answerStart = p + 2
+            val close = text.indexOf("}}", answerStart)
+            if (close >= 0) {
+                out.append(text, i, start)
+                val hintSep = text.indexOf("::", answerStart)
+                val answerEnd = if (hintSep in answerStart until close) hintSep else close
+                out.append(text, answerStart, answerEnd)
+                i = close + 2
+                continue
+            }
+        }
+        out.append(text, i, start + 3)
+        i = start + 3
+    }
+    return out.toString()
+}
+
 /** The character of `&#228;` or `&#xE4;`, given what is between `&#` and `;`; null if that is no character. */
 private fun entityChar(code: String): String? {
     val value = if (code.startsWith("x", ignoreCase = true)) code.drop(1).toIntOrNull(16) else code.toIntOrNull()
     return value?.takeIf { it in 0x20..0xFFFF }?.toChar()?.toString()
 }
 
-/** `<style>` and `<script>` with what is in them, which is never part of a card's text. */
-private val HIDDEN_BLOCK = Regex("<(style|script)\\b[^>]*>[\\s\\S]*?</\\1>", RegexOption.IGNORE_CASE)
-
 /** `[sound:hello.mp3]`, how Anki attaches audio to a field. */
 private val SOUND = Regex("\\[sound:[^\\]]*\\]")
-
-/** A cloze deletion, `{{c1::answer}}` or `{{c1::answer::hint}}`; the answer is its first group. */
-private val CLOZE = Regex("\\{\\{c\\d+::(.*?)(?:::.*?)?\\}\\}")
 
 /** What ends a line in a field: a break, a rule, or the start or end of a block. */
 private val LINE_END = Regex(

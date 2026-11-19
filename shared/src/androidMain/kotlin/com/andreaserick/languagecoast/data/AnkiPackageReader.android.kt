@@ -23,11 +23,20 @@ sealed interface AnkiPackageContent {
     data object Unreadable : AnkiPackageContent
 }
 
-/** A collection larger than this once unpacked is refused; a real one of this size would hold millions of notes. */
+/** Total unpacked bytes allowed across all extracted collection entries (guards against ZIP bombs). */
 private const val MAX_COLLECTION_BYTES = 512L * 1024 * 1024
+
+/** Maximum ZIP entries scanned before aborting (guards against million-entry ZIP flood DoS). */
+private const val MAX_ZIP_ENTRIES = 50_000
 
 /** Notes read from one package at most. */
 private const val MAX_NOTES = 100_000
+
+/** Decks read from one package at most. */
+private const val MAX_DECKS = 10_000
+
+/** Maximum character length of one note's raw `flds` string to avoid single-row OOM. */
+private const val MAX_FIELD_CHARS = 100_000
 
 /**
  * Reads the notes of the Anki package (.apkg or .colpkg) that [input] is, a zip from its first byte.
@@ -42,17 +51,30 @@ fun readAnkiPackage(input: InputStream, workFolder: File): AnkiPackageContent {
     workFolder.deleteRecursively()
     workFolder.mkdirs()
     val found = HashMap<String, File>()
+    var totalExtractedBytes = 0L
+    var scannedEntries = 0
     return try {
         ZipInputStream(input).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
+                scannedEntries++
+                if (scannedEntries > MAX_ZIP_ENTRIES) throw IOException("Too many zip entries")
                 val name = entry.name
                 when {
                     // The names are fixed, so nothing in the zip decides where a file is written.
-                    name in ANKI_COLLECTION_FILES -> found[name] = File(workFolder, name).also { file ->
-                        file.outputStream().use { output ->
-                            if (name == ANKI_COMPRESSED_COLLECTION) ZstdInputStreamNoFinalizer(KeptOpen(zip)).use { it.copyLimitedTo(output) }
-                            else zip.copyLimitedTo(output)
+                    // Reject duplicate collection entries to avoid amplification or shadowing.
+                    name in ANKI_COLLECTION_FILES -> {
+                        if (name in found) throw IOException("Duplicate collection entry: $name")
+                        val remaining = (MAX_COLLECTION_BYTES - totalExtractedBytes).coerceAtLeast(0L)
+                        found[name] = File(workFolder, name).also { file ->
+                            file.outputStream().use { output ->
+                                val written = if (name == ANKI_COMPRESSED_COLLECTION) {
+                                    ZstdInputStreamNoFinalizer(KeptOpen(zip)).use { it.copyLimitedTo(output, remaining) }
+                                } else {
+                                    zip.copyLimitedTo(output, remaining)
+                                }
+                                totalExtractedBytes += written
+                            }
                         }
                     }
                     found.isNotEmpty() && (name == "media" || name.all { it.isDigit() }) -> break
@@ -90,14 +112,17 @@ fun readAnkiPackage(input: InputStream, workFolder: File): AnkiPackageContent {
 /**
  * The notes in the collection [file], each with the name of the deck its first card is in. The file is this
  * app's own copy and is opened for writing: the newer format is left in write-ahead-log mode, which SQLite
- * can't open read-only.
+ * can't open read-only. Verifies that `notes` and `cards` are real tables (not crafted SQLite VIEWs).
  */
 private fun readNotes(file: File): List<AnkiNote> =
     SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { database ->
+        if (!hasRealTable(database, "notes") || !hasRealTable(database, "cards")) {
+            throw SQLiteException("Collection is missing required tables")
+        }
         val decks = deckNames(database)
         val notes = ArrayList<AnkiNote>()
         database.rawQuery(
-            "SELECT n.flds, (SELECT c.did FROM cards c WHERE c.nid = n.id ORDER BY c.ord LIMIT 1) FROM notes n ORDER BY n.id LIMIT $MAX_NOTES",
+            "SELECT substr(n.flds, 1, $MAX_FIELD_CHARS), (SELECT c.did FROM cards c WHERE c.nid = n.id ORDER BY c.ord LIMIT 1) FROM notes n ORDER BY n.id LIMIT $MAX_NOTES",
             null
         ).use { cursor ->
             while (cursor.moveToNext()) {
@@ -107,36 +132,41 @@ private fun readNotes(file: File): List<AnkiNote> =
         notes
     }
 
+private fun hasRealTable(database: SQLiteDatabase, tableName: String): Boolean =
+    database.rawQuery("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", arrayOf(tableName)).use { it.moveToFirst() }
+
 /**
  * The decks' names by ID. The newer format has a table for them; its name column is sorted with a collation
  * of Anki's own, which this SQLite doesn't have, so the rows are read as they come and never compared. The
  * older format keeps them as JSON in the collection's one `col` row.
  */
 private fun deckNames(database: SQLiteDatabase): Map<Long, String> {
-    val hasDeckTable = database.rawQuery("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'decks'", null).use { it.moveToFirst() }
+    val hasDeckTable = hasRealTable(database, "decks")
     if (!hasDeckTable) {
-        return database.rawQuery("SELECT decks FROM col", null).use { cursor ->
+        if (!hasRealTable(database, "col")) return emptyMap()
+        return database.rawQuery("SELECT decks FROM col LIMIT 1", null).use { cursor ->
             if (cursor.moveToFirst()) ankiDeckNames(cursor.getString(0).orEmpty()) else emptyMap()
         }
     }
     val names = HashMap<Long, String>()
-    database.rawQuery("SELECT id, name FROM decks", null).use { cursor ->
+    database.rawQuery("SELECT id, name FROM decks LIMIT $MAX_DECKS", null).use { cursor ->
         while (cursor.moveToNext()) names[cursor.getLong(0)] = cursor.getString(1).orEmpty()
     }
     return names
 }
 
-/** Copies the stream to [output], giving up once it is larger than any collection would be. */
-private fun InputStream.copyLimitedTo(output: OutputStream) {
+/** Copies the stream to [output], giving up once [maxBytes] have been written; returns bytes written. */
+private fun InputStream.copyLimitedTo(output: OutputStream, maxBytes: Long): Long {
     val buffer = ByteArray(64 * 1024)
     var copied = 0L
     while (true) {
         val read = read(buffer)
         if (read == -1) break
         copied += read
-        if (copied > MAX_COLLECTION_BYTES) throw IOException("The collection is larger than $MAX_COLLECTION_BYTES bytes")
+        if (copied > maxBytes) throw IOException("The collection is larger than $MAX_COLLECTION_BYTES bytes")
         output.write(buffer, 0, read)
     }
+    return copied
 }
 
 /** [stream] for a reader that closes what it reads from when it is done, which a zip being read entry by entry must survive. */

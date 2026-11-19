@@ -181,29 +181,45 @@ class CardTransferViewModel(
      * Cards the coast already has, or that appear twice in the file, are skipped; one the coast has in fewer
      * lines than the file is given the file's layout, and keeps everything else (see [ImportResult.reformatted]).
      */
+    /** Off-main dispatcher for deduplicating large card imports; overridable in tests. */
+    var background: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default
+
     fun confirmImport(onImported: (ImportResult) -> Unit) {
+        if (state.value.isImporting) return
         val preview = state.value.importPreview ?: return
         state.update { it.copy(isImporting = true) }
         viewModelScope.launch {
-            val existing = flashcards.getAllContent().firstOrNull { it.coast.coastId == preview.coastId }?.cards.orEmpty()
-                .associateByTo(HashMap()) { duplicateKey(it.nativeText, it.targetText) }
-            val seen = existing.keys.toHashSet()
-            val newCards = mutableListOf<ImportedCard>()
-            var duplicates = 0
-            var reformatted = 0
-            preview.cardsToImport.forEach { card ->
-                val key = duplicateKey(card.nativeText, card.targetText)
-                if (seen.add(key)) {
-                    newCards += card
-                } else {
-                    duplicates++
-                    // Once per card: the file may have it twice.
-                    val old = existing.remove(key)
-                    if (old != null && (hasNewLines(old.nativeText, card.nativeText) || hasNewLines(old.targetText, card.targetText))) {
-                        flashcards.editCard(old.cardId, CardEdit(card.nativeText, card.targetText, old.alternatives, old.note, old.islandId))
-                        reformatted++
+            val existingCards = flashcards.getAllContent().firstOrNull { it.coast.coastId == preview.coastId }?.cards.orEmpty()
+            fun deduplicate(): Triple<List<ImportedCard>, Int, List<Pair<Int, CardEdit>>> {
+                val existing = existingCards.associateByTo(HashMap()) { duplicateKey(it.nativeText, it.targetText) }
+                val seen = existing.keys.toHashSet()
+                val fresh = mutableListOf<ImportedCard>()
+                val updates = mutableListOf<Pair<Int, CardEdit>>()
+                var dupCount = 0
+                preview.cardsToImport.forEach { card ->
+                    val key = duplicateKey(card.nativeText, card.targetText)
+                    if (seen.add(key)) {
+                        fresh += card
+                    } else {
+                        dupCount++
+                        // Once per card: the file may have it twice.
+                        val old = existing.remove(key)
+                        if (old != null && (hasNewLines(old.nativeText, card.nativeText) || hasNewLines(old.targetText, card.targetText))) {
+                            updates += old.cardId to CardEdit(card.nativeText, card.targetText, old.alternatives, old.note, old.islandId)
+                        }
                     }
                 }
+                return Triple(fresh, dupCount, updates)
+            }
+            val (newCards, duplicates, toReformat) = if (existingCards.size + preview.cardsToImport.size >= 200) {
+                kotlinx.coroutines.withContext(background) { deduplicate() }
+            } else {
+                deduplicate()
+            }
+            var reformatted = 0
+            toReformat.forEach { (cardId, edit) ->
+                flashcards.editCard(cardId, edit)
+                reformatted++
             }
             // All the new cards in one go: saved together or not at all, and the rest of the app hears of it
             // once instead of once per card, which is what made a large deck slow to import.

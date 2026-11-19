@@ -47,11 +47,27 @@ fun CardListRow(
         Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f).padding(top = 4.dp)) {
                 if (language != null) {
-                    Text(inLanguage(card.targetText, language), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        inLanguage(card.targetText, language),
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 } else {
-                    Text(card.targetText, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        card.targetText,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Text(card.nativeText, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text(
+                    card.nativeText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
                 if (card.alternatives.isNotEmpty()) {
                     Text(
                         "also: ${card.alternatives.joinToString(" · ")}",
@@ -61,10 +77,17 @@ fun CardListRow(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (place != null) {
-                        Text("$place · ", style = MaterialTheme.typography.labelSmall, color = TextSecondary, maxLines = 1)
+                        Text(
+                            "$place · ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
                     }
                     Text(
                         dueLabel(card, now),

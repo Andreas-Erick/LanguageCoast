@@ -3,9 +3,11 @@ package com.andreaserick.languagecoast.di
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.andreaserick.languagecoast.data.AppDatabase
+import com.andreaserick.languagecoast.data.IosSecretStore
 import com.andreaserick.languagecoast.data.LocalModelController
 import com.andreaserick.languagecoast.data.NoOpLocalModelController
 import com.andreaserick.languagecoast.data.NoWorksheetPrinter
+import com.andreaserick.languagecoast.data.SecretStore
 import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.buildAppDatabase
 import com.andreaserick.languagecoast.data.createSettingsDataStore
@@ -36,6 +38,9 @@ actual val platformModule = module {
 
     /** A settings file that can no longer be read is replaced by an empty one (see [createSettingsDataStore]). */
     single { createSettingsDataStore(settingsPath()) }
+
+    /** Hardware-backed Keychain storage for cloud API keys (WhenUnlockedThisDeviceOnly). */
+    single<SecretStore> { IosSecretStore() }
 
     /** Text is read aloud with iOS's speech synthesizer. */
     singleOf(::IosSpeaker) { bind<Speaker>() }

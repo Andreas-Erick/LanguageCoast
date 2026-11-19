@@ -96,10 +96,11 @@ fun AboutYouScreen(
         if (index >= 0) listState.scrollToItem(index + ITEMS_BEFORE_ISLANDS)
     }
 
-    Column(modifier = Modifier.fillMaxSize().imePadding()) {
+    // App.kt already applies imePadding() around NavHost, so avoid double IME insets here.
+    Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(
             title = "About you",
-            subtitle = "${uiState.answeredCount} of ${uiState.questionCount} answered",
+            subtitle = if (uiState.isLoading) null else "${uiState.answeredCount} of ${uiState.questionCount} answered",
             onBack = onNavigateBack
         )
         LazyColumn(
@@ -215,7 +216,11 @@ private fun BasicsCard(
         Pair("Where you're from", "home country", "hometown")
 
         Text("How sentences about you are worded", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             listOf(Wording.Feminine, Wording.Masculine, Wording.Neutral).forEach { option ->
                 FilterChip(
                     selected = option == wording,

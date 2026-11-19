@@ -27,6 +27,7 @@ object SettingsSnapshot {
      * can't be read ([isReadable]): a damaged snapshot is passed over, never restored in part.
      */
     fun decode(json: String): BackupSettings? {
+        if (!isJsonNestingSafe(json)) return null
         val settings = try {
             format.decodeFromString(BackupSettings.serializer(), json)
         } catch (e: Exception) {

@@ -81,8 +81,14 @@ suspend fun Translator.completeWaiting(engine: TranslationEngine, prompt: String
     var waits = 0
     while (completion.text == null && waits < maxWaits) {
         val seconds = completion.retryAfterSeconds ?: break
+        val waitMillis = computeBackoffDelayMillis(
+            attempt = waits,
+            initialDelayMillis = seconds.coerceIn(1, BUSY_MAX_WAIT_SECONDS) * 1_000L,
+            maxDelayMillis = BUSY_MAX_WAIT_SECONDS * 1_000L,
+            retryAfterMillis = (seconds.coerceIn(1, BUSY_MAX_WAIT_SECONDS) * 1_000L)
+        )
         waits++
-        delay(seconds.coerceIn(1, BUSY_MAX_WAIT_SECONDS) * 1_000L)
+        delay(waitMillis)
         completion = complete(engine, prompt)
     }
     return completion

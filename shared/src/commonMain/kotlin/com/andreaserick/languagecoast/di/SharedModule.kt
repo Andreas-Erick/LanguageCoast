@@ -40,8 +40,8 @@ val sharedModule = module {
     /** Cards are stored in the Room database. */
     singleOf(::OfflineFlashcardRepository) { bind<FlashcardRepository>() }
 
-    /** Settings are stored in Preferences DataStore. */
-    single<SettingsRepository> { DataStoreSettingsRepository(get(), get(), get()) }
+    /** Settings are stored in Preferences DataStore; API keys are kept in hardware-backed [SecretStore]. */
+    single<SettingsRepository> { DataStoreSettingsRepository(get(), get(), get(), get()) }
 
     factoryOf(::BackupManager)
 

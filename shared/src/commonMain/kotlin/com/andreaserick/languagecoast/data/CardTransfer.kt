@@ -61,9 +61,26 @@ private fun csvExport(contents: List<CoastContent>, nativeLanguage: String): Str
     }
 }
 
-/** Quotes a field that contains a comma, quote or line break, or starts or ends with a space, doubling the quotes inside. */
-private fun csvField(text: String): String =
-    if (text.any { it == ',' || it == '"' || it == '\n' || it == '\r' } || text != text.trim()) "\"${text.replace("\"", "\"\"")}\"" else text
+/**
+ * Formats a CSV field: neutralizes spreadsheet formula injection (leading `=`, `+`, `-`, `@`, `\t`, `\r`)
+ * with a leading apostrophe, and quotes fields containing commas, quotes, line breaks, or outer spaces.
+ */
+internal fun csvField(text: String): String {
+    val safe = if (isSpreadsheetFormula(text)) "'$text" else text
+    return if (safe.any { it == ',' || it == '"' || it == '\n' || it == '\r' } || safe != safe.trim()) {
+        "\"${safe.replace("\"", "\"\"")}\""
+    } else {
+        safe
+    }
+}
+
+private fun isSpreadsheetFormula(text: String): Boolean {
+    if (text.isEmpty()) return false
+    val first = text[0]
+    if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\t' || first == '\r') return true
+    val trimmed = text.trimStart()
+    return trimmed.isNotEmpty() && (trimmed[0] == '=' || trimmed[0] == '+' || trimmed[0] == '-' || trimmed[0] == '@')
+}
 
 private const val BYTE_ORDER_MARK = "\uFEFF"
 
@@ -147,9 +164,13 @@ private fun CoastContent.islandsWithCards(): List<Pair<LanguageIsland, List<Flas
 private fun tsvField(text: String): String =
     if (text.any { it == '\t' || it == '\n' || it == '\r' || it == '"' }) "\"${text.replace("\"", "\"\"")}\"" else text
 
-/** Escapes pipes and turns line breaks into `<br>`, so [text] fits in one Markdown table cell. */
+/** Escapes HTML angle brackets and pipes, and turns line breaks into `<br>`, so [text] fits safely in one Markdown table cell. */
 private fun markdownCell(text: String): String =
-    text.replace("|", "\\|").replace("\r\n", "<br>").replace("\n", "<br>")
+    text.replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("|", "\\|")
+        .replace("\r\n", "<br>")
+        .replace("\n", "<br>")
 
 private const val DECK_SEPARATOR = "::"
 

@@ -355,8 +355,13 @@ internal fun BuildProgressCard(
 /** A bar with a piece gliding across it: something is at work, and how far it is can't be told. */
 @Composable
 private fun WorkingBar(modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition()
-    val position by transition.animateFloat(initialValue = 0f, targetValue = 1f, animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing)))
+    val reducedMotion = com.andreaserick.languagecoast.ui.components.LocalReducedMotion.current
+    val position = if (reducedMotion) {
+        0.5f
+    } else {
+        val transition = rememberInfiniteTransition()
+        transition.animateFloat(initialValue = 0f, targetValue = 1f, animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing))).value
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()

@@ -28,7 +28,15 @@ class OpenRouterTranslator(private val client: HttpClient) : Translator {
         if (apiKey.isBlank()) return Completion.failure("OpenRouter needs an API key. Add one in Settings.")
         val body = openRouterRequestBody(engine.model.trim().ifBlank { SettingsDefaults.OPENROUTER_MODEL }, prompt)
         return try {
-            val (status, response, retryAfter) = post(apiKey, body)
+            val (status, response, retryAfter) = retryHttpWithBackoff(
+                shouldRetry = { (code, _, retryHeader) ->
+                    code in setOf(408, 502, 503, 504) ||
+                        (code == 429 && (parseRetryAfterMillis(retryHeader) ?: 0L) <= 2_000L)
+                },
+                retryAfterMillis = { (_, _, retryHeader) -> parseRetryAfterMillis(retryHeader) }
+            ) {
+                post(apiKey, body)
+            }
             openRouterAnswer(status, response, retryAfter)
         } catch (e: CancellationException) {
             throw e

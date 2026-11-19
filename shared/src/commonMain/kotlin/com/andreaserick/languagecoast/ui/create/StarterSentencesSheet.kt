@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -112,7 +113,7 @@ internal fun StarterSentencesSheet(
     val tickedCount = ticked.count { it.value }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
+        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f).imePadding()) {
             Column(modifier = Modifier.padding(horizontal = 24.dp)) {
                 Text("Starter sentences", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
                 Text(

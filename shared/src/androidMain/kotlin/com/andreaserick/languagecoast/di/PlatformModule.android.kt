@@ -3,11 +3,13 @@ package com.andreaserick.languagecoast.di
 import androidx.room.Room
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import com.andreaserick.languagecoast.data.AndroidLocalModelController
+import com.andreaserick.languagecoast.data.AndroidSecretStore
 import com.andreaserick.languagecoast.data.AndroidSettingsSnapshot
 import com.andreaserick.languagecoast.data.AndroidWorksheetPrinter
 import com.andreaserick.languagecoast.data.AppDatabase
 import com.andreaserick.languagecoast.data.LocalModelController
 import com.andreaserick.languagecoast.data.SETTINGS_FILE_PATH
+import com.andreaserick.languagecoast.data.SecretStore
 import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.buildAppDatabase
 import com.andreaserick.languagecoast.data.createSettingsDataStore
@@ -32,6 +34,9 @@ actual val platformModule = module {
      * A file that can no longer be read is replaced by an empty one rather than stopping the app at every start.
      */
     single { createSettingsDataStore(androidContext().filesDir.resolve(SETTINGS_FILE_PATH).absolutePath) }
+
+    /** Hardware-backed KeyStore encryption for cloud API keys and Hugging Face tokens. */
+    single<SecretStore> { AndroidSecretStore(androidContext()) }
 
     /** The copy of the settings that travels with the phone's own backup, which leaves the settings file out. */
     singleOf(::AndroidSettingsSnapshot)

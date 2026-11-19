@@ -246,6 +246,11 @@ class CreateViewModel(
 
     private var dismissJob: Job? = null
     private var tickerJob: Job? = null
+    private var batchJob: Job? = null
+    private var isAddingCoast: Boolean = false
+
+    /** Off-main dispatcher for indexing large coasts; overridable in tests. */
+    var background: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default
 
     /** The cards of the selected coast, to warn about duplicates and suggest an island while typing. */
     private var coastIndex = CoastIndex(emptyList())
@@ -366,8 +371,12 @@ class CreateViewModel(
             selectedCoastId()
                 .flatMapLatest { coastId -> if (coastId == null) flowOf(emptyList()) else flashcards.getPlacedCardsForCoast(coastId) }
                 .collect { cards ->
-                    // The coast's cards are read once per change, so a keystroke in the form only costs a lookup.
-                    val index = CoastIndex(cards)
+                    // Large coasts are indexed off the main thread so imported decks never jank typing.
+                    val index = if (cards.size >= 200) {
+                        kotlinx.coroutines.withContext(background) { CoastIndex(cards) }
+                    } else {
+                        CoastIndex(cards)
+                    }
                     coastIndex = index
                     uiState = uiState.copy(
                         duplicate = index.duplicateOf(uiState.nativeSentence),
@@ -445,10 +454,16 @@ class CreateViewModel(
 
     /** Starts a coast for [language], selects it and asks why the user learns it. */
     fun addCoast(language: String) {
+        if (isAddingCoast) return
+        isAddingCoast = true
         viewModelScope.launch {
-            val coastId = flashcards.addCoast(language)
-            settings.setActiveCoastId(coastId)
-            uiState = uiState.copy(goalPrompt = flashcards.observeCoast(coastId).first())
+            try {
+                val coastId = flashcards.addCoast(language)
+                settings.setActiveCoastId(coastId)
+                uiState = uiState.copy(goalPrompt = flashcards.observeCoast(coastId).first())
+            } finally {
+                isAddingCoast = false
+            }
         }
     }
 
@@ -579,7 +594,18 @@ class CreateViewModel(
         } else {
             uiState.copy(isSaving = false, result = result, fallbackProvider = fallback)
         }
-        scheduleResultDismissal()
+        // Only auto-dismiss success confirmations; keep errors visible until the user retries or edits.
+        if (result is SaveResult.Saved) scheduleResultDismissal() else dismissJob?.cancel()
+    }
+
+    /** Cancels auto-dismissal of the saved-card preview (e.g. while the user edits its translation inline). */
+    fun pauseResultDismissal() {
+        dismissJob?.cancel()
+    }
+
+    /** Restarts auto-dismissal of the saved-card preview once inline editing is cancelled. */
+    fun resumeResultDismissal() {
+        if (uiState.result is SaveResult.Saved) scheduleResultDismissal()
     }
 
     /** Whether a failure means the model answered, but not in the expected format. */
@@ -641,6 +667,8 @@ class CreateViewModel(
 
     /** Starts a batch capture from pasted or scanned [text], splitting it into sentences to tick. */
     fun startBatch(text: String) {
+        batchJob?.cancel()
+        batchJob = null
         val sentences = splitSentences(text)
         uiState = uiState.copy(batch = BatchState(sentences.map { BatchSentence(it) }))
     }
@@ -681,7 +709,8 @@ class CreateViewModel(
         val picked = batch.sentences.filter { it.checked }
         if (picked.isEmpty()) return
         uiState = uiState.copy(batch = batch.copy(saved = 0, failed = 0, lastError = null))
-        viewModelScope.launch {
+        batchJob?.cancel()
+        batchJob = viewModelScope.launch {
             // Without a provider that can translate, every sentence would fail for the same reason: say it once and stop.
             if (batch.fromEnglish || uiState.inputMode != InputMode.Manual) {
                 val choice = try {
@@ -736,8 +765,10 @@ class CreateViewModel(
         }
     }
 
-    /** Closes the batch capture. */
+    /** Closes the batch capture and cancels any in-flight batch save coroutine. */
     fun dismissBatch() {
+        batchJob?.cancel()
+        batchJob = null
         uiState = uiState.copy(batch = null)
     }
 

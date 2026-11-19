@@ -59,20 +59,29 @@ class ProviderModelLister(private val client: HttpClient) : ModelLister {
         if (provider !in MODEL_LIST_PROVIDERS) return ModelListing.Failed("${provider.label} has no list of models to check.")
         if (key.isEmpty()) return ModelListing.Failed("Save your ${provider.label} API key first, then check again.")
         return try {
-            val response = when (provider) {
-                // One page holds them all: 1000 is the most either API returns at once.
-                TranslationProvider.Claude -> client.get("https://api.anthropic.com/v1/models?limit=1000") {
-                    header("x-api-key", key)
-                    header("anthropic-version", "2023-06-01")
+            val (status, body) = retryHttpWithBackoff(
+                shouldRetry = { (code, _, retryHeader) ->
+                    code in setOf(408, 502, 503, 504) ||
+                        (code == 429 && (parseRetryAfterMillis(retryHeader) ?: 0L) <= 2_000L)
+                },
+                retryAfterMillis = { (_, _, retryHeader) -> parseRetryAfterMillis(retryHeader) }
+            ) {
+                val response = when (provider) {
+                    // One page holds them all: 1000 is the most either API returns at once.
+                    TranslationProvider.Claude -> client.get("https://api.anthropic.com/v1/models?limit=1000") {
+                        header("x-api-key", key)
+                        header("anthropic-version", "2023-06-01")
+                    }
+                    TranslationProvider.Gemini -> client.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000") {
+                        header("x-goog-api-key", key)
+                    }
+                    TranslationProvider.OpenAI -> client.get("https://api.openai.com/v1/models") { header("Authorization", "Bearer $key") }
+                    TranslationProvider.Groq -> client.get("https://api.groq.com/openai/v1/models") { header("Authorization", "Bearer $key") }
+                    else -> client.get("https://api.deepseek.com/models") { header("Authorization", "Bearer $key") }
                 }
-                TranslationProvider.Gemini -> client.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000") {
-                    header("x-goog-api-key", key)
-                }
-                TranslationProvider.OpenAI -> client.get("https://api.openai.com/v1/models") { header("Authorization", "Bearer $key") }
-                TranslationProvider.Groq -> client.get("https://api.groq.com/openai/v1/models") { header("Authorization", "Bearer $key") }
-                else -> client.get("https://api.deepseek.com/models") { header("Authorization", "Bearer $key") }
+                Triple(response.status.value, response.bodyAsText(), response.headers["retry-after"])
             }
-            parseModelListing(provider, response.status.value, response.bodyAsText())
+            parseModelListing(provider, status, body)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -16,12 +16,15 @@ import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.ThinkingConfig
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +36,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 /**
  * LiteRT-LM ships its native library for 64-bit processors only. On a 32-bit phone, or where the app runs as
@@ -53,6 +57,9 @@ internal object LocalAiPaths {
 
     @Volatile
     var gpuSupported: Boolean = false
+
+    @Volatile
+    var onModelDeleted: ((String) -> Unit)? = null
 
     fun resolveModelFile(modelId: String, explicitPath: String?): File? {
         if (!explicitPath.isNullOrBlank()) {
@@ -81,10 +88,10 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloads = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-    private val modelsFolder = (context.getExternalFilesDir(MODELS_DIR) ?: File(context.filesDir, MODELS_DIR)).apply { mkdirs() }
+    private val modelsFolder: File by lazy { (context.getExternalFilesDir(MODELS_DIR) ?: File(context.filesDir, MODELS_DIR)).apply { mkdirs() } }
     /** The DownloadManager id of each running download, by model id, so a restart can pick them up again. */
-    private val pending = context.getSharedPreferences("local_model_downloads", Context.MODE_PRIVATE)
-    private val trackers = mutableMapOf<String, Job>()
+    private val pending by lazy { context.getSharedPreferences("local_model_downloads", Context.MODE_PRIVATE) }
+    private val trackers = ConcurrentHashMap<String, Job>()
 
     private val _hardwareProfile = MutableStateFlow<DeviceHardwareProfile?>(null)
     override val hardwareProfile: StateFlow<DeviceHardwareProfile?> = _hardwareProfile.asStateFlow()
@@ -99,13 +106,15 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
     override val installStates: StateFlow<Map<String, ModelInstallStatus>> = _installStates.asStateFlow()
 
     init {
-        LocalAiPaths.modelsDir = modelsFolder
         LocalAiPaths.filesDir = context.filesDir
         LocalAiPaths.cacheDir = context.cacheDir
-        refreshInstalledModels()
-        // Downloads started before the process was killed are still running in DownloadManager.
-        pending.all.forEach { (modelId, id) -> if (id is Long) track(modelId, id) }
-        scanHardware()
+        scope.launch {
+            LocalAiPaths.modelsDir = modelsFolder
+            refreshInstalledModels()
+            // Downloads started before the process was killed are still running in DownloadManager.
+            pending.all.forEach { (modelId, id) -> if (id is Long) track(modelId, id) }
+            scanHardware()
+        }
     }
 
     override fun scanHardware() {
@@ -113,7 +122,9 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
         scope.launch {
             _isScanning.value = true
             try {
-                _hardwareProfile.value = readDeviceHardware(context)
+                val profile = readDeviceHardware(context)
+                LocalAiPaths.gpuSupported = profile.gpuAccelerationSupported
+                _hardwareProfile.value = profile
             } finally {
                 _isScanning.value = false
             }
@@ -127,30 +138,38 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
             _installStates.update { it + (modelId to ModelInstallStatus.Failed(NEEDS_TOKEN)) }
             return
         }
-        if (context.getExternalFilesDir(MODELS_DIR) == null) {
-            _installStates.update { it + (modelId to ModelInstallStatus.Failed("This phone has no storage the download manager can write to.")) }
-            return
-        }
-        // DownloadManager refuses to overwrite, so clear leftovers from an earlier attempt.
-        partFile(model).delete()
-        File(modelsFolder, model.fileName).delete()
-
-        val request = DownloadManager.Request(Uri.parse(model.downloadUrl))
-            .setTitle("Language Coast · ${model.name}")
-            .setDescription("Local AI model, ${model.sizeLabel}")
-            // Under another name until it is complete (see [partFile]).
-            .setDestinationInExternalFilesDir(context, MODELS_DIR, model.fileName + PART_SUFFIX)
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            // Without the user's word a download of this size only runs on Wi-Fi: DownloadManager waits while
-            // there is none and carries on when it is back.
-            .setAllowedOverMetered(allowMetered)
-            .setAllowedOverRoaming(false)
-        if (model.gated) request.addRequestHeader("Authorization", "Bearer ${accessToken!!.trim()}")
-
-        val id = downloads.enqueue(request)
-        pending.edit().putLong(modelId, id).apply()
         _installStates.update { it + (modelId to ModelInstallStatus.Downloading(progress = 0f, downloadedMb = 0L, totalMb = model.sizeMb)) }
-        track(modelId, id)
+        scope.launch {
+            if (context.getExternalFilesDir(MODELS_DIR) == null) {
+                _installStates.update { it + (modelId to ModelInstallStatus.Failed("This phone has no storage the download manager can write to.")) }
+                return@launch
+            }
+            // DownloadManager refuses to overwrite, so clear leftovers from an earlier attempt.
+            partFile(model).delete()
+            File(modelsFolder, model.fileName).delete()
+
+            val request = DownloadManager.Request(Uri.parse(model.downloadUrl))
+                .setTitle("Language Coast · ${model.name}")
+                .setDescription("Local AI model, ${model.sizeLabel}")
+                // Under another name until it is complete (see [partFile]).
+                .setDestinationInExternalFilesDir(context, MODELS_DIR, model.fileName + PART_SUFFIX)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                // Without the user's word a download of this size only runs on Wi-Fi: DownloadManager waits while
+                // there is none and carries on when it is back.
+                .setAllowedOverMetered(allowMetered)
+                .setAllowedOverRoaming(false)
+            if (model.gated) request.addRequestHeader("Authorization", "Bearer ${accessToken!!.trim()}")
+
+            val id = try {
+                downloads.enqueue(request)
+            } catch (e: Exception) {
+                logError(TAG, "DownloadManager refused enqueue for ${model.fileName}", e)
+                _installStates.update { it + (modelId to ModelInstallStatus.Failed("Couldn't start the download. Check that Downloads is enabled and try again.")) }
+                return@launch
+            }
+            pending.edit().putLong(modelId, id).apply()
+            track(modelId, id)
+        }
     }
 
     /** Follows download [id] in DownloadManager until it ends, mirroring its progress into [installStates]. */
@@ -159,14 +178,19 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
         trackers[modelId]?.cancel()
         trackers[modelId] = scope.launch {
             while (isActive) {
-                val snapshot = downloads.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
-                    if (!cursor.moveToFirst()) return@use null
-                    DownloadSnapshot(
-                        status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
-                        reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
-                        downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
-                        total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                    )
+                val snapshot = try {
+                    downloads.query(DownloadManager.Query().setFilterById(id))?.use { cursor ->
+                        if (!cursor.moveToFirst()) return@use null
+                        DownloadSnapshot(
+                            status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
+                            reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+                            downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                            total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                        )
+                    }
+                } catch (e: Exception) {
+                    logError(TAG, "Failed to query DownloadManager for ${model.fileName}", e)
+                    null
                 }
                 if (snapshot == null) {
                     // Removed from DownloadManager, e.g. cancelled from its notification.
@@ -237,14 +261,16 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
 
     override fun cancelInstall(modelId: String) {
         trackers.remove(modelId)?.cancel()
-        val id = pending.getLong(modelId, -1L)
-        if (id != -1L) downloads.remove(id)
-        pending.edit().remove(modelId).apply()
-        LocalAiCatalog.byId(modelId)?.let {
-            partFile(it).delete()
-            File(modelsFolder, it.fileName).delete()
-        }
         _installStates.update { it + (modelId to ModelInstallStatus.NotInstalled) }
+        scope.launch {
+            val id = pending.getLong(modelId, -1L)
+            if (id != -1L) runCatching { downloads.remove(id) }
+            pending.edit().remove(modelId).apply()
+            LocalAiCatalog.byId(modelId)?.let {
+                partFile(it).delete()
+                File(modelsFolder, it.fileName).delete()
+            }
+        }
     }
 
     /**
@@ -254,13 +280,22 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
     private fun partFile(model: LocalAiModel): File = File(modelsFolder, model.fileName + PART_SUFFIX)
 
     override fun deleteModel(modelId: String) {
-        cancelInstall(modelId)
-        val model = LocalAiCatalog.byId(modelId) ?: return
-        File(modelsFolder, model.fileName).delete()
-        File(context.filesDir, MODELS_DIR).resolve(model.fileName).delete()
-        File(context.filesDir, model.fileName).delete()
+        trackers.remove(modelId)?.cancel()
         _installStates.update { it + (modelId to ModelInstallStatus.NotInstalled) }
-        _hardwareProfile.value = readDeviceHardware(context)
+        val model = LocalAiCatalog.byId(modelId) ?: return
+        scope.launch {
+            val id = pending.getLong(modelId, -1L)
+            if (id != -1L) runCatching { downloads.remove(id) }
+            pending.edit().remove(modelId).apply()
+            LocalAiPaths.onModelDeleted?.invoke(model.fileName)
+            partFile(model).delete()
+            File(modelsFolder, model.fileName).delete()
+            File(context.filesDir, MODELS_DIR).resolve(model.fileName).delete()
+            File(context.filesDir, model.fileName).delete()
+            val profile = readDeviceHardware(context)
+            LocalAiPaths.gpuSupported = profile.gpuAccelerationSupported
+            _hardwareProfile.value = profile
+        }
     }
 
     override fun registerExternalModelFile(modelId: String, absolutePath: String) {
@@ -433,9 +468,18 @@ actual class LocalAiTranslator actual constructor() : Translator {
         if (engine != null && loadedModelPath == targetPath) return engine
         closeEngineLocked()
         val cacheDir = LocalAiPaths.cacheDir?.absolutePath ?: modelFile.parentFile?.absolutePath
-        val started = System.currentTimeMillis()
+        val started = TimeSource.Monotonic.markNow()
         val initialized = initializeEngineWithFallback(targetPath, cacheDir, preferGpu = LocalAiPaths.gpuSupported) ?: return null
-        logInfo(TAG, "Loaded ${modelFile.name} on ${initialized.engineConfig.backend} in ${System.currentTimeMillis() - started} ms")
+        logInfo(TAG, "Loaded ${modelFile.name} on ${initialized.engineConfig.backend} in ${started.elapsedNow().inWholeMilliseconds} ms")
+        LocalAiPaths.onModelDeleted = { fileName ->
+            if (loadedModelPath?.endsWith(fileName) == true) {
+                CoroutineScope(dispatcher).launch {
+                    mutex.withLock {
+                        if (loadedModelPath?.endsWith(fileName) == true) closeEngineLocked()
+                    }
+                }
+            }
+        }
         engine = initialized
         loadedModelPath = targetPath
         return initialized
@@ -483,10 +527,10 @@ actual class LocalAiTranslator actual constructor() : Translator {
         }
     }
 
-    /** One conversation with [activeEngine]: [prompt] in, the whole reply out. */
+    /** One conversation with [activeEngine]: [prompt] in, the whole reply out, bounded by [INFERENCE_TIMEOUT_MILLIS]. */
     private suspend fun sendLocked(activeEngine: Engine, prompt: String): String {
         var conversation: Conversation? = null
-        val started = System.currentTimeMillis()
+        val started = TimeSource.Monotonic.markNow()
         try {
             conversation = activeEngine.createConversation(
                 ConversationConfig(
@@ -502,10 +546,15 @@ actual class LocalAiTranslator actual constructor() : Translator {
                 )
             )
             val replyBuilder = StringBuilder()
-            conversation.sendMessageAsync(prompt).collect { chunk -> replyBuilder.append(chunk.toString()) }
+            withTimeout(INFERENCE_TIMEOUT_MILLIS) {
+                conversation.sendMessageAsync(prompt).collect { chunk -> replyBuilder.append(chunk.toString()) }
+            }
             val reply = replyBuilder.toString().trim()
-            logInfo(TAG, "Replied ${reply.length} chars in ${System.currentTimeMillis() - started} ms")
+            logInfo(TAG, "Replied ${reply.length} chars in ${started.elapsedNow().inWholeMilliseconds} ms")
             return reply
+        } catch (e: TimeoutCancellationException) {
+            runCatching { conversation?.cancelProcess() }
+            throw RuntimeException("Local AI inference timed out", e)
         } catch (e: CancellationException) {
             runCatching { conversation?.cancelProcess() }
             throw e
@@ -558,6 +607,9 @@ actual class LocalAiTranslator actual constructor() : Translator {
 
         /** Enough for a translation with alternatives and a note, or a 90-word explanation, with room to spare. */
         const val MAX_OUTPUT_TOKENS = 512
+
+        /** Upper bound on one local inference turn so a wedged model never deadlocks the mutex forever. */
+        const val INFERENCE_TIMEOUT_MILLIS = 120_000L
     }
 }
 

@@ -3,9 +3,14 @@ package com.andreaserick.languagecoast.data
 import android.util.Log
 
 internal actual fun logError(tag: String, message: String, error: Throwable?) {
-    Log.e(tag, message, error)
+    val safeMessage = redactSecrets(message)
+    if (error == null) {
+        Log.e(tag, safeMessage)
+    } else {
+        Log.e(tag, "$safeMessage (${safeErrorSummary(error)})")
+    }
 }
 
 internal actual fun logInfo(tag: String, message: String) {
-    Log.i(tag, message)
+    Log.i(tag, redactSecrets(message))
 }

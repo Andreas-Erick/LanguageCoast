@@ -56,3 +56,7 @@ fun coastTypography(): Typography {
         labelSmall = style(12, 16, FontWeight.Bold)
     )
 }
+
+/** Enables tabular numerals (`tnum`) so counters, timers, download progress, and stats never jitter horizontally. */
+val TextStyle.tabular: TextStyle
+    get() = copy(fontFeatureSettings = "tnum")
