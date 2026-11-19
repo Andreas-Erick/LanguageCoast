@@ -67,7 +67,7 @@ class IosSecretStore : SecretStore {
             return null
         }
         val data = CFBridgingRelease(result.value) as? NSData ?: return null
-        NSString.create(data = data, encoding = NSUTF8StringEncoding) as? String
+        NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
     }
 
     override fun put(key: String, value: String) {
