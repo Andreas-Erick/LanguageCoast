@@ -125,19 +125,26 @@ class AnkiPackageReaderTest {
     }
 
     @Test
-    fun duplicateCollectionEntriesAreRejected() {
-        val bytes = ByteArrayOutputStream().also { out ->
-            ZipOutputStream(out).use { archive ->
-                repeat(2) {
+    fun maliciousSqliteViewInsteadOfNotesTableIsRejected() {
+        val dbFile = File(context.cacheDir, "malicious-view-test.sqlite").apply { delete() }
+        try {
+            android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
+                db.execSQL("CREATE VIEW notes AS SELECT 1 AS id, 'a\u001Fb' AS flds")
+                db.execSQL("CREATE VIEW cards AS SELECT 1 AS id, 1 AS nid, 0 AS ord, 1 AS did")
+            }
+            val bytes = ByteArrayOutputStream().also { out ->
+                ZipOutputStream(out).use { archive ->
                     archive.putNextEntry(ZipEntry("collection.anki2"))
-                    archive.write("not a db".toByteArray())
+                    archive.write(dbFile.readBytes())
                     archive.closeEntry()
                 }
-            }
-        }.toByteArray()
+            }.toByteArray()
 
-        assertEquals(AnkiPackageContent.Unreadable, readAnkiPackage(ByteArrayInputStream(bytes), workFolder))
-        assertFalse(workFolder.exists())
+            assertEquals(AnkiPackageContent.Unreadable, readAnkiPackage(ByteArrayInputStream(bytes), workFolder))
+            assertFalse(workFolder.exists())
+        } finally {
+            dbFile.delete()
+        }
     }
 
     @Test
