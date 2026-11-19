@@ -89,17 +89,20 @@ class SecurityAdversarialTest {
         val unclosedStyles = "<style>".repeat(20_000) + "hello"
         val unclosedScripts = "<script type=\"text/javascript\">".repeat(20_000) + "world"
         val pathologicalCloze = "{{c1::" + "a::".repeat(20_000) + "end"
+        val repeatedUnclosedCloze = "{{c1::".repeat(20_000) + "tail"
 
         val start = TimeSource.Monotonic.markNow()
         val s1 = ankiFieldText(unclosedStyles)
         val s2 = ankiFieldText(unclosedScripts)
         val s3 = ankiFieldText(pathologicalCloze)
+        val s4 = ankiFieldText(repeatedUnclosedCloze)
         val elapsed = start.elapsedNow()
 
         assertTrue(elapsed < 2.seconds, "ankiFieldText took $elapsed on adversarial input (possible ReDoS)")
         assertTrue(s1.endsWith("hello"))
         assertTrue(s2.endsWith("world"))
         assertTrue(s3.contains("end"))
+        assertTrue(s4.endsWith("tail"))
     }
 
     @Test

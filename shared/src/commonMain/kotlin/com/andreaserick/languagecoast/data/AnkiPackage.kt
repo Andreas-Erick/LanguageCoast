@@ -112,14 +112,17 @@ internal fun ankiFieldText(html: String): String {
 }
 
 /**
- * Strips `<style>...</style>` and `<script>...</script>` blocks in O(N) time without regex backtracking,
- * preventing ReDoS on crafted HTML with many unclosed tags.
+ * Strips `<style>...</style>` and `<script>...</script>` blocks in strict O(N) time without regex
+ * backtracking or repeated forward scans, preventing ReDoS on crafted HTML with many unclosed tags.
  */
 private fun stripHiddenBlocks(html: String): String {
     if ('<' !in html) return html
     val lower = html.lowercase()
     val out = StringBuilder(html.length)
     var i = 0
+    var nextGt = -2
+    var nextStyleClose = -2
+    var nextScriptClose = -2
     while (i < html.length) {
         val openIdx = lower.indexOf('<', i)
         if (openIdx < 0) {
@@ -134,13 +137,26 @@ private fun stripHiddenBlocks(html: String): String {
         val afterName = if (tagName != null) openIdx + 1 + tagName.length else -1
         val isBoundary = tagName != null && (afterName == html.length || !lower[afterName].isLetterOrDigit())
         if (isBoundary) {
-            val openEnd = lower.indexOf('>', afterName)
-            val closeTag = "</$tagName>"
-            val closeIdx = if (openEnd >= 0) lower.indexOf(closeTag, openEnd + 1) else -1
-            if (closeIdx >= 0) {
-                out.append(html, i, openIdx)
-                i = closeIdx + closeTag.length
-                continue
+            if (nextGt != -1 && nextGt < afterName) {
+                nextGt = lower.indexOf('>', afterName)
+            }
+            if (nextGt >= 0) {
+                val closeIdx = if (tagName == "style") {
+                    if (nextStyleClose != -1 && nextStyleClose <= nextGt) {
+                        nextStyleClose = lower.indexOf("</style>", nextGt + 1)
+                    }
+                    nextStyleClose
+                } else {
+                    if (nextScriptClose != -1 && nextScriptClose <= nextGt) {
+                        nextScriptClose = lower.indexOf("</script>", nextGt + 1)
+                    }
+                    nextScriptClose
+                }
+                if (closeIdx >= 0) {
+                    out.append(html, i, openIdx)
+                    i = closeIdx + tagName.length + 3
+                    continue
+                }
             }
         }
         out.append(html, i, openIdx + 1)
@@ -150,13 +166,15 @@ private fun stripHiddenBlocks(html: String): String {
 }
 
 /**
- * Expands Anki cloze deletions (`{{c1::answer}}` or `{{c1::answer::hint}}`) in O(N) linear time,
- * preventing catastrophic regex backtracking on unclosed `{{c1::` sequences with repeated `::`.
+ * Expands Anki cloze deletions (`{{c1::answer}}` or `{{c1::answer::hint}}`) in strict O(N) linear time,
+ * preventing catastrophic regex backtracking or repeated forward scans on unclosed `{{c1::` sequences.
  */
 private fun expandCloze(text: String): String {
     if ("{{c" !in text) return text
     val out = StringBuilder(text.length)
     var i = 0
+    var nextClose = -2
+    var nextHintSep = -2
     while (i < text.length) {
         val start = text.indexOf("{{c", i)
         if (start < 0) {
@@ -167,15 +185,21 @@ private fun expandCloze(text: String): String {
         while (p < text.length && text[p].isDigit()) p++
         if (p > start + 3 && p + 1 < text.length && text[p] == ':' && text[p + 1] == ':') {
             val answerStart = p + 2
-            val close = text.indexOf("}}", answerStart)
-            if (close >= 0) {
-                out.append(text, i, start)
-                val hintSep = text.indexOf("::", answerStart)
-                val answerEnd = if (hintSep in answerStart until close) hintSep else close
-                out.append(text, answerStart, answerEnd)
-                i = close + 2
-                continue
+            if (nextClose != -1 && nextClose < answerStart) {
+                nextClose = text.indexOf("}}", answerStart)
             }
+            if (nextClose < 0) {
+                out.append(text, i, text.length)
+                break
+            }
+            out.append(text, i, start)
+            if (nextHintSep != -1 && nextHintSep < answerStart) {
+                nextHintSep = text.indexOf("::", answerStart)
+            }
+            val answerEnd = if (nextHintSep in answerStart until nextClose) nextHintSep else nextClose
+            out.append(text, answerStart, answerEnd)
+            i = nextClose + 2
+            continue
         }
         out.append(text, i, start + 3)
         i = start + 3
