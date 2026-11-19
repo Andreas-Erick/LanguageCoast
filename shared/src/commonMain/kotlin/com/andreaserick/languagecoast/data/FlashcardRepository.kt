@@ -118,6 +118,10 @@ interface FlashcardRepository {
     /** Deletes [card], returning it for [restore]. */
     suspend fun deleteFlashcard(card: Flashcard): DeletedContent
 
+    /** Reads a single card by [cardId], or null if not found. */
+    suspend fun getCardById(cardId: Int): Flashcard? =
+        observeAllCards().first().firstOrNull { it.card.cardId == cardId }?.card
+
     /** Saves [card]'s new scheduling fields after it was graded. */
     suspend fun saveReview(card: Flashcard)
 
@@ -270,6 +274,8 @@ class OfflineFlashcardRepository(
         dao.deleteFlashcard(card)
         return DeletedContent(cards = listOf(card))
     }
+
+    override suspend fun getCardById(cardId: Int): Flashcard? = dao.getCardById(cardId)
 
     override suspend fun saveReview(card: Flashcard) =
         dao.setReview(card.cardId, card.stability, card.difficulty, card.lastReviewed, card.due, card.lapses)

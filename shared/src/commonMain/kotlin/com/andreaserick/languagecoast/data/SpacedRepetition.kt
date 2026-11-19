@@ -34,22 +34,24 @@ fun isDue(card: Flashcard, now: Long): Boolean = card.due == null || card.due <=
 fun reviewOutcomes(card: Flashcard, now: Instant, zone: TimeZone): Map<Grade, ReviewOutcome> {
     val today = now.toLocalDateTime(zone).date
     val previous = card.lastReviewed?.let { Instant.fromEpochMilliseconds(it) }
+    val stability = card.stability?.takeIf { it.isFinite() && it > 0.0 }
+    val difficulty = card.difficulty?.takeIf { it.isFinite() }?.coerceIn(1.0, 10.0)
     val memories = Grade.entries.associateWith { grade ->
         when {
-            card.stability == null || card.difficulty == null || previous == null -> Fsrs.initial(grade)
-            previous.toLocalDateTime(zone).date == today -> Fsrs.sameDay(card.stability, card.difficulty, grade)
+            stability == null || difficulty == null || previous == null -> Fsrs.initial(grade)
+            previous.toLocalDateTime(zone).date == today -> Fsrs.sameDay(stability, difficulty, grade)
             else -> {
                 val elapsedDays = max(0.0, (now - previous) / 1.days)
-                Fsrs.review(card.stability, card.difficulty, elapsedDays, grade)
+                Fsrs.review(stability, difficulty, elapsedDays, grade)
             }
         }
     }
 
-    // Keep the intervals in grade order, as Anki does: Hard ≤ Good < Easy.
+    // Keep the intervals in grade order, as Anki does: Hard ≤ Good ≤ Easy, never exceeding MAX_INTERVAL_DAYS.
     val raw = memories.mapValues { (_, memory) -> intervalFor(memory.stability) }
-    val hard = min(raw.getValue(Grade.Hard), raw.getValue(Grade.Good))
-    val good = max(raw.getValue(Grade.Good), hard + 1)
-    val easy = max(raw.getValue(Grade.Easy), good + 1)
+    val hard = min(raw.getValue(Grade.Hard), raw.getValue(Grade.Good)).coerceIn(1, MAX_INTERVAL_DAYS)
+    val good = max(raw.getValue(Grade.Good), hard + 1).coerceIn(1, MAX_INTERVAL_DAYS)
+    val easy = max(raw.getValue(Grade.Easy), good + 1).coerceIn(1, MAX_INTERVAL_DAYS)
     val intervals = mapOf(Grade.Again to raw.getValue(Grade.Again), Grade.Hard to hard, Grade.Good to good, Grade.Easy to easy)
 
     return memories.mapValues { (grade, memory) ->
@@ -69,7 +71,10 @@ fun reviewOutcomes(card: Flashcard, now: Instant, zone: TimeZone): Map<Grade, Re
 }
 
 /** At 90% desired retention the FSRS interval equals the stability, so only rounding and limits remain. */
-private fun intervalFor(stability: Double): Int = stability.roundToInt().coerceIn(1, MAX_INTERVAL_DAYS)
+private fun intervalFor(stability: Double): Int {
+    if (!stability.isFinite() || stability <= 0.0) return 1
+    return stability.coerceAtMost(MAX_INTERVAL_DAYS.toDouble()).roundToInt().coerceIn(1, MAX_INTERVAL_DAYS)
+}
 
 private const val MAX_INTERVAL_DAYS = 36_500
 
@@ -91,24 +96,35 @@ internal object Fsrs {
 
     /** Memory after a review [elapsedDays] after the previous one. */
     fun review(stability: Double, difficulty: Double, elapsedDays: Double, grade: Grade): Memory {
-        val r = retrievability(elapsedDays, stability)
+        val safeStability = if (stability.isFinite() && stability > 0.0) stability.coerceAtLeast(MIN_STABILITY) else MIN_STABILITY
+        val safeDifficulty = if (difficulty.isFinite()) difficulty.clampDifficulty() else initialDifficulty(grade.value).clampDifficulty()
+        val safeElapsed = if (elapsedDays.isFinite() && elapsedDays >= 0.0) elapsedDays else 0.0
+        val r = retrievability(safeElapsed, safeStability)
         val newStability = if (grade == Grade.Again) {
-            min(stability, forgetStability(stability, difficulty, r))
+            min(safeStability, forgetStability(safeStability, safeDifficulty, r))
         } else {
-            recallStability(stability, difficulty, r, grade)
+            recallStability(safeStability, safeDifficulty, r, grade)
         }
-        return Memory(max(MIN_STABILITY, newStability), nextDifficulty(difficulty, grade))
+        val clampedStability = if (newStability.isFinite()) newStability.coerceIn(MIN_STABILITY, MAX_STABILITY) else MIN_STABILITY
+        return Memory(clampedStability, nextDifficulty(safeDifficulty, grade))
     }
 
     /** Memory after another review on the same day, which the long-term formulas do not model. */
-    fun sameDay(stability: Double, difficulty: Double, grade: Grade): Memory = Memory(
-        max(MIN_STABILITY, stability * exp(w[17] * (grade.value - 3 + w[18]))),
-        nextDifficulty(difficulty, grade)
-    )
+    fun sameDay(stability: Double, difficulty: Double, grade: Grade): Memory {
+        val safeStability = if (stability.isFinite() && stability > 0.0) stability.coerceAtLeast(MIN_STABILITY) else MIN_STABILITY
+        val safeDifficulty = if (difficulty.isFinite()) difficulty.clampDifficulty() else initialDifficulty(grade.value).clampDifficulty()
+        val updated = safeStability * exp(w[17] * (grade.value - 3 + w[18]))
+        val clamped = if (updated.isFinite()) updated.coerceIn(MIN_STABILITY, MAX_STABILITY) else MIN_STABILITY
+        return Memory(clamped, nextDifficulty(safeDifficulty, grade))
+    }
 
     /** Probability of recalling a card [elapsedDays] after its last review. */
-    fun retrievability(elapsedDays: Double, stability: Double): Double =
-        (1 + FACTOR * elapsedDays / stability).pow(DECAY)
+    fun retrievability(elapsedDays: Double, stability: Double): Double {
+        if (!elapsedDays.isFinite() || !stability.isFinite() || stability <= 0.0) return 0.0
+        return (1 + FACTOR * max(0.0, elapsedDays) / stability).pow(DECAY).coerceIn(0.0, 1.0)
+    }
+
+    private const val MAX_STABILITY = 36_500.0
 
     /** Difficulty of a new card after its first grade ([grade] from 1 to 4). */
     private fun initialDifficulty(grade: Int): Double = w[4] - exp(w[5] * (grade - 1)) + 1

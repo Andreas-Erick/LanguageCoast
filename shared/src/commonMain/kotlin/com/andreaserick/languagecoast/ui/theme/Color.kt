@@ -23,7 +23,9 @@ class CoastPalette(
     val surfaceSelected: Color,
     val sunlit: Color,
     val sunlitText: Color,
+    val accentControl: Color,
     val onSunlit: Color,
+    val onColored: Color,
     val textPrimary: Color,
     val textSecondary: Color,
     val coralText: Color,
@@ -36,56 +38,59 @@ class CoastPalette(
     val isDark: Boolean
 )
 
-/** Night on the coast: the app's original look. */
+/** Night on the coast: the app's original look. Every text colour is ≥ 4.5:1 on every surface, including [surfaceSelected]. */
 val DarkPalette = CoastPalette(
     oceanGround = Color(0xFF0C2536),
     oceanSurface = Color(0xFF123349),
-    cardEdge = Color(0x12FFFFFF),
+    cardEdge = Color(0x18D8EBF7),
     navGround = Color(0xFF0A1F2E),
     surfaceCard = Color(0xFF153449),
     surfaceRaised = Color(0xFF1F4560),
-    surfaceSelected = Color(0xFF24506E),
+    surfaceSelected = Color(0xFF1F4966),
     sunlit = Color(0xFFF3C969),
     sunlitText = Color(0xFFF3C969),
+    accentControl = Color(0xFFF3C969),
     onSunlit = Color(0xFF0C2536),
+    onColored = Color(0xFF0C2536),
     textPrimary = Color(0xFFF5F2EA),
-    textSecondary = Color(0xFFA9BDCB),
-    coralText = Color(0xFFF5A28C),
+    textSecondary = Color(0xFFB2C5D3),
+    coralText = Color(0xFFF7AA96),
     seafoam = Color(0xFF7FD1AE),
     onSeafoam = Color(0xFF0C2536),
     surfBlue = Color(0xFF6FB3D9),
     waveLine = Color(0xFF2C5C7C),
     streakToday = Color(0xFF4A7898),
-    chipContainer = Color.White.copy(alpha = 0.06f),
+    chipContainer = Color(0x12D8EBF7),
     isDark = true
 )
 
 /**
- * Daylight: warm sand under a hazy sky, with deeper versions of the same accents so text keeps its contrast.
- * Nothing here is white: the lightest surface, a card, is a soft paper tone, and the ground behind it is a
- * step darker, so a whole screen of it is easy on the eyes in a bright room or a dark one. Selected controls
- * keep a sea-mist blue. Every text colour is above 4.5:1 on every surface, [surfaceSelected] included.
+ * Daylight: warm sand under a hazy sky, with deeper versions of the same accents so text and non-text
+ * controls keep WCAG AA contrast. Nothing here is pure white or dead gray: neutral overlays carry ocean ink
+ * and warm alabaster undertones.
  */
 val LightPalette = CoastPalette(
     oceanGround = Color(0xFFDFDACD),
     oceanSurface = Color(0xFFE9E4D8),
-    cardEdge = Color(0x14000000),
+    cardEdge = Color(0x1816293A),
     navGround = Color(0xFFE6E1D5),
     surfaceCard = Color(0xFFF2EEE4),
     surfaceRaised = Color(0xFFE3DDCF),
     surfaceSelected = Color(0xFFC8D5DB),
     sunlit = Color(0xFFE0A93A),
     sunlitText = Color(0xFF754700),
+    accentControl = Color(0xFF8C5600),
     onSunlit = Color(0xFF1A2733),
+    onColored = Color(0xFFFAF7F0),
     textPrimary = Color(0xFF16293A),
     textSecondary = Color(0xFF43566A),
     coralText = Color(0xFFA33423),
     seafoam = Color(0xFF155E41),
-    onSeafoam = Color(0xFFFFFFFF),
+    onSeafoam = Color(0xFFFAF7F0),
     surfBlue = Color(0xFF256F9F),
     waveLine = Color(0xFFB5BFC2),
     streakToday = Color(0xFF9DB8CC),
-    chipContainer = Color.Black.copy(alpha = 0.06f),
+    chipContainer = Color(0x1016293A),
     isDark = false
 )
 
@@ -128,16 +133,19 @@ val Sunlit: Color get() = palette.sunlit
  */
 val SunlitText: Color get() = palette.sunlitText
 
+/** High-contrast accent for non-text UI boundaries (focus rings, selected borders, progress indicators): ≥ 4.5:1 in both palettes. */
+val AccentControl: Color get() = palette.accentControl
+
 /** Text and icons on a [Sunlit] surface. */
 val OnSunlit: Color get() = palette.onSunlit
 
-/** Standard text and icons. */
+/** Supporting text and quiet icons; ≥ 4.5:1 on every surface, including [SurfaceSelected]. */
 val TextPrimary: Color get() = palette.textPrimary
 
-/** Supporting text and quiet icons; above 4.5:1 on every surface except [SurfaceSelected]. */
+/** Supporting text and quiet icons; ≥ 4.5:1 on every surface, including [SurfaceSelected]. */
 val TextSecondary: Color get() = palette.textSecondary
 
-/** "Again", errors and destructive actions, as text or icon (above 4.5:1 on every surface except [SurfaceSelected]). */
+/** "Again", errors and destructive actions, as text or icon (≥ 4.5:1 on every surface, including [SurfaceSelected]). */
 val CoralText: Color get() = palette.coralText
 
 /**

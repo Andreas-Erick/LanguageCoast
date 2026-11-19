@@ -186,7 +186,10 @@ private fun ColumnScope.WorksheetOptionsForm(
     val allPicked = picked.size == islands.size
     // What the number field says, which while typing can be no number or one outside the limits.
     var countText by rememberSaveable(options.count) { mutableStateOf("${options.count}") }
+    var countBlurred by rememberSaveable(options.count) { mutableStateOf(false) }
     val countIsValid = countText.toIntOrNull() in WORKSHEET_COUNT_RANGE
+    // Only show red error state after blur/done (never punish on first keystroke while replacing digits).
+    val showCountError = !countIsValid && countBlurred
     // What stands in the way, if anything: said here, before a request is spent on finding out.
     val blocker = when {
         picked.isEmpty() -> "Pick at least one island to make the sheet from."
@@ -249,22 +252,35 @@ private fun ColumnScope.WorksheetOptionsForm(
             Text("Sentences", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
             Text(
                 // A number outside the limits is said in words too, not by the colour alone.
-                text = (if (countIsValid) "" else "Enter ") + "${WORKSHEET_COUNT_RANGE.first} to ${WORKSHEET_COUNT_RANGE.last}",
+                text = (if (showCountError) "Enter " else "") + "${WORKSHEET_COUNT_RANGE.first} to ${WORKSHEET_COUNT_RANGE.last}",
                 style = MaterialTheme.typography.bodySmall,
-                color = if (countIsValid) TextSecondary else CoralText
+                color = if (showCountError) CoralText else TextSecondary
             )
         }
         CountStepper(
             count = options.count,
             text = countText,
-            isValid = countIsValid,
+            showError = showCountError,
             onTextChange = { typed ->
                 countText = typed
-                typed.toIntOrNull()?.takeIf { it in WORKSHEET_COUNT_RANGE }?.let { onOptionsChange(options.copy(count = it)) }
+                typed.toIntOrNull()?.takeIf { it in WORKSHEET_COUNT_RANGE }?.let {
+                    countBlurred = false
+                    onOptionsChange(options.copy(count = it))
+                }
             },
             // Leaving the field with something else in it puts the number back.
-            onDone = { countText = "${options.count}" },
-            onChange = { onOptionsChange(options.copy(count = it)) }
+            onDone = {
+                countBlurred = true
+                if (countText.toIntOrNull() !in WORKSHEET_COUNT_RANGE) {
+                    countText = "${options.count}"
+                    countBlurred = false
+                }
+            },
+            onChange = { next ->
+                countBlurred = false
+                countText = "$next"
+                onOptionsChange(options.copy(count = next))
+            }
         )
     }
 
@@ -453,14 +469,16 @@ internal fun worksheetEstimate(count: Int, provider: TranslationProvider): Strin
  * @param onDone Called when the user is done typing: the keyboard's Done, or leaving the field.
  */
 @Composable
-private fun CountStepper(count: Int, text: String, isValid: Boolean, onTextChange: (String) -> Unit, onDone: () -> Unit, onChange: (Int) -> Unit) {
+private fun CountStepper(count: Int, text: String, showError: Boolean, onTextChange: (String) -> Unit, onDone: () -> Unit, onChange: (Int) -> Unit) {
     val focusManager = LocalFocusManager.current
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusedAsState()
     var wasFocused by remember { mutableStateOf(false) }
     // The field's own state holds the selection; its text follows [text] (the plus and minus change it too).
     var field by remember { mutableStateOf(TextFieldValue(text)) }
-    if (field.text != text) field = TextFieldValue(text, TextRange(text.length))
+    LaunchedEffect(text) {
+        if (field.text != text) field = TextFieldValue(text, TextRange(text.length))
+    }
     LaunchedEffect(focused) {
         // Tapping the number selects it, so that typing replaces it instead of adding digits to it.
         if (focused) field = field.copy(selection = TextRange(0, field.text.length))
@@ -478,7 +496,7 @@ private fun CountStepper(count: Int, text: String, isValid: Boolean, onTextChang
                 field = if (digits == typed.text) typed else TextFieldValue(digits, TextRange(digits.length))
                 if (digits != text) onTextChange(digits)
             },
-            textStyle = MaterialTheme.typography.titleLarge.copy(color = TextPrimary, textAlign = TextAlign.Center),
+            textStyle = MaterialTheme.typography.titleLarge.copy(color = TextPrimary, textAlign = TextAlign.Center, fontFeatureSettings = "tnum"),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
@@ -489,13 +507,19 @@ private fun CountStepper(count: Int, text: String, isValid: Boolean, onTextChang
                 // A definite width: a text field without one takes room for ten letters. Wider with large text, so the
                 // number isn't cut, but only as wide as three digits need: the label beside it needs the room too.
                 .width((44.dp * LocalDensity.current.fontScale).coerceAtLeast(68.dp))
-                .heightIn(min = 44.dp)
+                .heightIn(min = 48.dp)
                 .background(ChipContainer, shape)
-                .then(if (focused || !isValid) Modifier.border(1.5.dp, if (isValid) Sunlit else CoralText, shape) else Modifier)
+                .then(
+                    if (focused || showError) Modifier.border(
+                        1.5.dp,
+                        if (showError) CoralText else com.andreaserick.languagecoast.ui.theme.AccentControl,
+                        shape
+                    ) else Modifier
+                )
                 .semantics {
                     contentDescription = "Number of sentences"
                     // What is wrong with the number, for a screen reader; sighted users get it from the text beside the field.
-                    if (!isValid) this[SemanticsProperties.Error] = "Enter a number from ${WORKSHEET_COUNT_RANGE.first} to ${WORKSHEET_COUNT_RANGE.last}"
+                    if (showError) this[SemanticsProperties.Error] = "Enter a number from ${WORKSHEET_COUNT_RANGE.first} to ${WORKSHEET_COUNT_RANGE.last}"
                 },
             decorationBox = { field -> Box(contentAlignment = Alignment.Center) { field() } }
         )

@@ -16,7 +16,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -56,26 +59,39 @@ actual fun BackupSection() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val undoMessenger = LocalUndoMessenger.current
+    var isWorking by remember { mutableStateOf(false) }
 
     // Shows [text] briefly at the bottom of the screen.
     fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
 
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
+        if (isWorking) return@rememberLauncherForActivityResult
+        isWorking = true
         scope.launch {
-            // Writing out every card takes a moment on a large collection, so it happens away from the main thread.
-            val file = withContext(Dispatchers.Default) { viewModel.buildBackup() }
-            val written = withContext(Dispatchers.IO) { writeText(context.contentResolver, uri, file.text) }
-            toast(if (written) "Backed up ${plural(file.cardCount, "card")}" else "The backup couldn't be saved.")
+            try {
+                // Writing out every card takes a moment on a large collection, so it happens away from the main thread.
+                val file = withContext(Dispatchers.Default) { viewModel.buildBackup() }
+                val written = withContext(Dispatchers.IO) { writeText(context.contentResolver, uri, file.text) }
+                toast(if (written) "Backed up ${plural(file.cardCount, "card")}" else "The backup couldn't be saved.")
+            } finally {
+                isWorking = false
+            }
         }
     }
 
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
+        if (isWorking) return@rememberLauncherForActivityResult
+        isWorking = true
         scope.launch {
-            val text = withContext(Dispatchers.IO) { readText(context.contentResolver, uri, MAX_BACKUP_CHARS) }
-            // Reading a large backup takes a moment too. The ViewModel only stores what was read, which any thread may do.
-            if (text == null) viewModel.onRestoreFileUnreadable() else withContext(Dispatchers.Default) { viewModel.onRestoreFileRead(text) }
+            try {
+                val text = withContext(Dispatchers.IO) { readText(context.contentResolver, uri, MAX_BACKUP_CHARS) }
+                // Reading a large backup takes a moment too. The ViewModel only stores what was read, which any thread may do.
+                if (text == null) viewModel.onRestoreFileUnreadable() else withContext(Dispatchers.Default) { viewModel.onRestoreFileRead(text) }
+            } finally {
+                isWorking = false
+            }
         }
     }
 
@@ -94,15 +110,16 @@ actual fun BackupSection() {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         CoastSecondaryButton(
             onClick = { backupLauncher.launch(viewModel.backupFileName()) },
-            enabled = uiState.hasCoasts,
+            enabled = uiState.hasCoasts && !isWorking && !uiState.isRestoring,
             modifier = Modifier
                 .weight(1f)
                 .heightIn(min = ButtonHeight)
         ) {
-            Text("Back up")
+            Text(if (isWorking) "Working…" else "Back up")
         }
         CoastSecondaryButton(
             onClick = { restoreLauncher.launch(BACKUP_MIME_TYPES) },
+            enabled = !isWorking && !uiState.isRestoring,
             modifier = Modifier
                 .weight(1f)
                 .heightIn(min = ButtonHeight)
@@ -128,8 +145,10 @@ actual fun BackupSection() {
 /** Says what the backup holds and that restoring it replaces everything in the app. */
 @Composable
 private fun RestoreDialog(summary: BackupSummary, isRestoring: Boolean, onRestore: () -> Unit, onDismiss: () -> Unit) {
-    val date = Instant.ofEpochMilli(summary.createdAt).atZone(ZoneId.systemDefault()).toLocalDate()
-        .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+    val date = runCatching {
+        Instant.ofEpochMilli(summary.createdAt).atZone(ZoneId.systemDefault()).toLocalDate()
+            .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+    }.getOrDefault("unknown date")
     AlertDialog(
         onDismissRequest = { if (!isRestoring) onDismiss() },
         title = { Text("Restore backup?") },

@@ -57,7 +57,6 @@ class WorkManagerReminderScheduler(
         val workManager = WorkManager.getInstance(context)
         if (!reminder.enabled) {
             workManager.cancelUniqueWork(WORK_NAME)
-            Log.d(TAG, "Reminders are off")
             return
         }
 
@@ -67,7 +66,6 @@ class WorkManagerReminderScheduler(
             .addTag(TAG)
             .build()
         workManager.enqueueUniqueWork(WORK_NAME, policy, request)
-        Log.d(TAG, "Reminder scheduled in ${delay.toMinutes()} minutes")
     }
 
     private companion object {
@@ -150,7 +148,6 @@ class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
                 teaser = teaser?.let { ReminderCard(it.card.nativeText, it.language, it.islandName, it.emoji, it.card.cardId, it.card.targetText) },
                 day = today
             )
-            Log.d(TAG, "Showing study reminder")
             NotificationHelper.showStudyNotification(applicationContext, message)
         }
         // The widget's streak and count follow the day as well.

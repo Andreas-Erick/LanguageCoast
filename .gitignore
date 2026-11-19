@@ -3,8 +3,12 @@
 build/
 .kotlin/
 
-# Local configuration (SDK path, API keys) - never commit
+# Local configuration (SDK path, API keys, env files) - never commit
 local.properties
+.env
+.env.*
+!.env.example
+*.hprof
 
 # Android Studio / IntelliJ
 *.iml

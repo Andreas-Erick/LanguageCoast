@@ -2,12 +2,17 @@ package com.andreaserick.languagecoast
 
 import android.app.Application
 import com.andreaserick.languagecoast.data.AndroidSettingsSnapshot
+import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.di.appModule
 import com.andreaserick.languagecoast.di.dataModule
 import com.andreaserick.languagecoast.di.platformModule
 import com.andreaserick.languagecoast.di.sharedModule
 import com.andreaserick.languagecoast.di.viewModelModule
 import com.andreaserick.languagecoast.notifications.NotificationHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -25,6 +30,15 @@ class LanguageCoastApplication : Application() {
         // So the phone's notification settings list "Study reminders" from the first day, not from the first reminder.
         NotificationHelper.createNotificationChannel(this)
         restoreSettingsAfterDeviceRestore()
+        // Move any legacy plaintext API keys out of DataStore into hardware-backed Android KeyStore off-main.
+        val migrationJob = SupervisorJob()
+        CoroutineScope(migrationJob + Dispatchers.IO).launch {
+            try {
+                get<SettingsRepository>().migrateLegacySecrets()
+            } finally {
+                migrationJob.cancel()
+            }
+        }
     }
 
     /**

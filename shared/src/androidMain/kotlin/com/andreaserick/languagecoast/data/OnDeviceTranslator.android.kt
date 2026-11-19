@@ -58,7 +58,9 @@ actual class OnDeviceTranslator actual constructor() : Translator {
                     "A language pack couldn't be downloaded. Check your internet connection and try again."
                 )
             }
-            val translated = translator.translate(request.nativeSentence).await()
+            val translated = withTimeoutOrNull(TRANSLATE_TIMEOUT_MILLIS) {
+                translator.translate(request.nativeSentence).await()
+            } ?: return TranslationResult.failure("On-device translation took too long. Try again.")
             TranslationResult(translated, request.userCategory.ifBlank { DEFAULT_CATEGORY }, isSuccess = true)
         } catch (e: CancellationException) {
             throw e
@@ -75,6 +77,9 @@ actual class OnDeviceTranslator actual constructor() : Translator {
 
         /** A language pack is about 30 MB: seconds on Wi-Fi, a minute or so on a slow connection. */
         const val LANGUAGE_PACK_WAIT_MILLIS = 90_000L
+
+        /** Guard against hung Play Services translation IPC. */
+        const val TRANSLATE_TIMEOUT_MILLIS = 30_000L
     }
 }
 

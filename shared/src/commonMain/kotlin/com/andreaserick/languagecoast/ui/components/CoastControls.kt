@@ -146,7 +146,7 @@ fun CoastTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier.then(
-            if (focused) Modifier.border(BorderStroke(1.5.dp, Sunlit), shape) else Modifier
+            if (focused) Modifier.border(BorderStroke(1.5.dp, com.andreaserick.languagecoast.ui.theme.AccentControl), shape) else Modifier
         ),
         readOnly = readOnly,
         label = label,
@@ -306,14 +306,14 @@ fun SegmentedSwitch(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .heightIn(min = 40.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(9.dp))
                     .background(if (selected) SurfaceSelected else Color.Transparent)
                     .selectable(selected = selected, role = Role.Tab, onClick = {
                         if (!selected && hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                         onSelect(index)
                     })
-                    .padding(horizontal = 6.dp, vertical = 8.dp)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 val labelStyle = MaterialTheme.typography.labelMedium
                 Text(

@@ -260,9 +260,18 @@ interface LanguageCoastDao {
     @Query("SELECT * FROM language_islands WHERE coastId = :coastId")
     suspend fun getIslandsForCoastOnce(coastId: Int): List<LanguageIsland>
 
-    /** The cards on any of [islandIds], read once rather than observed. */
+    /** The cards on any of [islandIds] (chunked for SQLite's 999-parameter limit), read once rather than observed. */
     @Query("SELECT * FROM flashcards WHERE islandId IN (:islandIds)")
-    suspend fun getCardsForIslandsOnce(islandIds: List<Int>): List<Flashcard>
+    suspend fun getCardsForIslandsChunk(islandIds: List<Int>): List<Flashcard>
+
+    /** The cards on any of [islandIds], safely chunked to avoid SQLite's bind-parameter cap. */
+    suspend fun getCardsForIslandsOnce(islandIds: List<Int>): List<Flashcard> =
+        if (islandIds.isEmpty()) emptyList()
+        else islandIds.chunked(DELETE_CHUNK).flatMap { getCardsForIslandsChunk(it) }
+
+    /** The single card with [cardId], or null if it was deleted. */
+    @Query("SELECT * FROM flashcards WHERE cardId = :cardId LIMIT 1")
+    suspend fun getCardById(cardId: Int): Flashcard?
 
     /** Inserts [coasts] with their IDs, replacing rows with the same ID. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)

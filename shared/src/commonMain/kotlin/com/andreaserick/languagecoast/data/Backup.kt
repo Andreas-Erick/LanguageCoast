@@ -137,33 +137,84 @@ internal fun BackupSettings.isReadable(): Boolean =
         studyDays.all { parseDateOrNull(it) != null } &&
         (reminderMinuteOfDay == null || reminderMinuteOfDay in MINUTES_OF_DAY)
 
+/** Maximum allowed JSON nesting depth before parsing, preventing StackOverflowError on crafted payloads. */
+private const val MAX_JSON_NESTING_DEPTH = 64
+
+/** Valid epoch millisecond range for backup timestamps (1970-01-01 to 2200-01-01 UTC). */
+private const val MIN_VALID_EPOCH_MILLIS = 0L
+private const val MAX_VALID_EPOCH_MILLIS = 7_258_118_400_000L
+
+/**
+ * Checks in O(N) time without recursion that [text] does not exceed [maxDepth] levels of nested JSON
+ * objects or arrays, preventing StackOverflowError in recursive-descent JSON parsers.
+ */
+internal fun isJsonNestingSafe(text: String, maxDepth: Int = MAX_JSON_NESTING_DEPTH): Boolean {
+    var depth = 0
+    var inString = false
+    var escaped = false
+    for (ch in text) {
+        if (inString) {
+            if (escaped) {
+                escaped = false
+            } else if (ch == '\\') {
+                escaped = true
+            } else if (ch == '"') {
+                inString = false
+            }
+            continue
+        }
+        when (ch) {
+            '"' -> inString = true
+            '{', '[' -> {
+                depth++
+                if (depth > maxDepth) return false
+            }
+            '}', ']' -> if (depth > 0) depth--
+        }
+    }
+    return true
+}
+
 /**
  * The backup in [text]. Throws [BackupException] if it isn't a Language Coast backup, was made by a newer
  * version of the app, has islands or cards whose coast or island is missing, has two coasts for one
- * language, or has a date or reminder time that can't be read ([isReadable]). Nothing is restored from such
- * a file, so what is in the app stays as it is.
+ * language, has invalid FSRS numbers or timestamps, or has a date or reminder time that can't be read
+ * ([isReadable]). Nothing is restored from such a file, so what is in the app stays as it is.
  */
 fun decodeBackup(text: String): Backup {
+    val clean = text.removePrefix("\uFEFF")
+    if (!isJsonNestingSafe(clean)) throw BackupException("That file isn't a Language Coast backup.")
     val backup = try {
-        backupJson.decodeFromString(Backup.serializer(), text.removePrefix("﻿"))
+        backupJson.decodeFromString(Backup.serializer(), clean)
     } catch (e: SerializationException) {
         throw BackupException("That file isn't a Language Coast backup.")
     } catch (e: IllegalArgumentException) {
         throw BackupException("That file isn't a Language Coast backup.")
     }
     if (backup.format != BACKUP_FORMAT) throw BackupException("That file isn't a Language Coast backup.")
+    if (backup.version < 1) throw BackupException("That file isn't a Language Coast backup.")
     if (backup.version > BACKUP_VERSION) throw BackupException("This backup is from a newer version of Language Coast. Update the app first.")
 
     val coastIds = backup.coasts.mapTo(HashSet()) { it.coastId }
     val islandIds = backup.islands.mapTo(HashSet()) { it.islandId }
-    val isComplete = coastIds.size == backup.coasts.size &&
+    val validTimestamp = backup.createdAt in MIN_VALID_EPOCH_MILLIS..MAX_VALID_EPOCH_MILLIS
+    val cardsValid = backup.cards.all { card ->
+        card.islandId in islandIds &&
+            card.lapses >= 0 &&
+            (card.stability == null || (card.stability.isFinite() && card.stability > 0.0)) &&
+            (card.difficulty == null || (card.difficulty.isFinite() && card.difficulty in 1.0..10.0)) &&
+            (card.due == null || card.due in MIN_VALID_EPOCH_MILLIS..MAX_VALID_EPOCH_MILLIS) &&
+            (card.lastReviewed == null || card.lastReviewed in MIN_VALID_EPOCH_MILLIS..MAX_VALID_EPOCH_MILLIS)
+    }
+    val isComplete = validTimestamp &&
+        coastIds.size == backup.coasts.size &&
         // The app keeps one coast per language; two would push each other out while being restored.
         backup.coasts.distinctBy { it.language }.size == backup.coasts.size &&
         backup.settings.isReadable() &&
         islandIds.size == backup.islands.size &&
         backup.cards.distinctBy { it.cardId }.size == backup.cards.size &&
         backup.islands.all { it.coastId in coastIds } &&
-        backup.cards.all { it.islandId in islandIds }
+        cardsValid
     if (!isComplete) throw BackupException("This backup is damaged and can't be restored.")
     return backup
 }

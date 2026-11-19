@@ -18,28 +18,33 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,6 +60,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,8 +73,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -89,7 +97,9 @@ import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.daysToLearn
 import com.andreaserick.languagecoast.ui.components.PaceSheet
+import com.andreaserick.languagecoast.ui.components.PlatformBackHandler
 import com.andreaserick.languagecoast.ui.components.roughDuration
+import com.andreaserick.languagecoast.ui.theme.tabular
 import com.andreaserick.languagecoast.data.Language
 import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.RecentCard
@@ -164,6 +174,8 @@ fun CreateScreen(
         onRetryWithFallback = viewModel::retryWithFallback,
         onUndo = viewModel::undoLastSave,
         onEditSavedTranslation = viewModel::updateSavedTranslation,
+        onPauseResultDismissal = viewModel::pauseResultDismissal,
+        onResumeResultDismissal = viewModel::resumeResultDismissal,
         onStartBatch = viewModel::startBatch,
         onToggleBatchSentence = viewModel::toggleBatchSentence,
         onSaveBatch = viewModel::saveBatch,
@@ -210,6 +222,8 @@ private fun CreateContent(
     onRetryWithFallback: () -> Unit,
     onUndo: () -> Unit,
     onEditSavedTranslation: (String) -> Unit,
+    onPauseResultDismissal: () -> Unit,
+    onResumeResultDismissal: () -> Unit,
     onStartBatch: (String) -> Unit,
     onToggleBatchSentence: (Int) -> Unit,
     onSaveBatch: () -> Unit,
@@ -418,9 +432,20 @@ private fun CreateContent(
                     when (val result = uiState.result) {
                         // Keyed by the card, so what was typed into one card's preview is never restored into the next one's.
                         is SaveResult.Saved -> key(result.added.card.cardId) {
-                            SavedCard(result, language = selectedCoast.language, onUndo = onUndo, onEditTranslation = onEditSavedTranslation)
+                            SavedCard(
+                                result = result,
+                                language = selectedCoast.language,
+                                onUndo = onUndo,
+                                onEditTranslation = onEditSavedTranslation,
+                                onStartEditing = onPauseResultDismissal,
+                                onCancelEditing = onResumeResultDismissal
+                            )
                         }
-                        is SaveResult.Error -> ErrorCard(result.message, fallback = uiState.fallbackProvider, onRetry = onRetryWithFallback)
+                        is SaveResult.Error -> ErrorCard(
+                            message = result.message,
+                            fallback = uiState.fallbackProvider,
+                            onRetry = if (uiState.fallbackProvider != null) onRetryWithFallback else onSave
+                        )
                         null -> Unit
                     }
                 }
@@ -439,7 +464,7 @@ private const val RESULT_SCROLL_DELAY_MILLIS = 350L
 private fun StreakBadge(streak: Int) {
     Text(
         text = plural(streak, "day"),
-        style = MaterialTheme.typography.labelMedium,
+        style = MaterialTheme.typography.labelMedium.tabular,
         color = SunlitText,
         maxLines = 1,
         modifier = Modifier
@@ -766,12 +791,13 @@ private fun GoalLine(goal: String?, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            .heightIn(min = 48.dp)
             .clickable(onClickLabel = if (goal == null) null else "change the goal", role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = goal?.let { "Goal: $it" } ?: "Set a goal" }
-            .padding(top = 2.dp)
+            .padding(vertical = 8.dp)
     ) {
-        Icon(Icons.Default.Flag, contentDescription = null, tint = SunlitText, modifier = Modifier.size(14.dp))
-        Spacer(modifier = Modifier.width(6.dp))
+        Icon(Icons.Default.Flag, contentDescription = null, tint = SunlitText, modifier = Modifier.size(16.dp))
+        Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = goal ?: "Why are you learning it? Tap to say",
             style = MaterialTheme.typography.bodySmall,
@@ -795,11 +821,20 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
     // Saved, so what was typed survives turning the phone.
     var text by rememberSaveable(coast.coastId) { mutableStateOf(coast.goal.orEmpty()) }
     var region by rememberSaveable(coast.coastId) { mutableStateOf(coast.region.orEmpty()) }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val isDirty = text != coast.goal.orEmpty() || region != coast.region.orEmpty()
+    fun requestDismiss() {
+        if (isDirty) confirmDiscard = true else onDismiss()
+    }
+    ModalBottomSheet(
+        onDismissRequest = ::requestDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
@@ -844,10 +879,28 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
             CoastButton(onClick = { onSave(text, region) }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
                 Text("Save")
             }
-            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            TextButton(onClick = ::requestDismiss, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 Text(if (coast.goal == null) "Not now" else "Cancel", color = TextSecondary, style = MaterialTheme.typography.labelMedium)
             }
         }
+    }
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text("Discard changes?") },
+            text = { Text("Your changes to this coast's goal haven't been saved yet.", color = TextSecondary) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDiscard = false
+                    onDismiss()
+                }) { Text("Discard", color = CoralText, style = MaterialTheme.typography.labelMedium) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDiscard = false }) {
+                    Text("Keep editing", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        )
     }
 }
 
@@ -973,24 +1026,23 @@ private fun NewCardForm(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
+                    .heightIn(min = 48.dp)
                     .clickable(onClickLabel = "use this island", role = Role.Button) { onCategoryChange(suggested) }
                     .semantics(mergeDescendants = true) { contentDescription = "Looks like $suggested" }
-                    .padding(vertical = 2.dp)
+                    .padding(vertical = 8.dp)
             ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = SunlitText, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Lightbulb, contentDescription = null, tint = SunlitText, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Looks like $emoji $suggested", style = MaterialTheme.typography.labelMedium, color = SunlitText)
             }
         }
 
         if (uiState.coastIslands.isNotEmpty()) {
-            Row(
+            LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
+                modifier = Modifier.fillMaxWidth()
             ) {
-                uiState.coastIslands.forEach { island ->
+                items(uiState.coastIslands, key = { it.islandId }) { island ->
                     val isSelected = uiState.category.equals(island.name, ignoreCase = true)
                     FilterChip(
                         selected = isSelected,
@@ -1009,7 +1061,8 @@ private fun NewCardForm(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp)
-                .heightIn(min = ButtonHeight),
+                .heightIn(min = ButtonHeight)
+                .testTag("create_save_button"),
             enabled = !uiState.isSaving && uiState.nativeSentence.isNotBlank() && !uiState.isSameLanguage
         ) {
             if (uiState.isSaving) {
@@ -1027,7 +1080,7 @@ private fun NewCardForm(
                     Text(
                         text = if (uiState.elapsedSeconds < 2) "Thinking…" else "Thinking… ${uiState.elapsedSeconds}s",
                         color = TextPrimary,
-                        style = MaterialTheme.typography.labelMedium
+                        style = MaterialTheme.typography.labelMedium.tabular
                     )
                 }
             } else {
@@ -1045,11 +1098,11 @@ private fun NewCardForm(
         if (mode != InputMode.Manual && uiState.engineReady) {
             Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                 TextButton(onClick = onBrowseStarters, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = SunlitText, modifier = Modifier.padding(end = 6.dp).size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = SunlitText, modifier = Modifier.padding(end = 6.dp).size(18.dp))
                     Text("Starter sentences", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                 }
                 TextButton(onClick = onAddMany, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = TextSecondary, modifier = Modifier.padding(end = 6.dp).size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null, tint = TextSecondary, modifier = Modifier.padding(end = 6.dp).size(18.dp))
                     Text(if (photoOffered) "From text or a photo" else "From text", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
                 }
             }
@@ -1138,6 +1191,8 @@ private fun Onboarding(
     var step by rememberSaveable { mutableStateOf(1) }
     var showNativePicker by rememberSaveable { mutableStateOf(false) }
     val native = Languages.byName(nativeLanguage)
+
+    PlatformBackHandler(enabled = step == 2) { step = 1 }
 
     if (showNativePicker) {
         LanguagePickerDialog(
@@ -1238,7 +1293,14 @@ private fun Onboarding(
  * shows what was corrected. [language] is the coast's, which the translation is in.
  */
 @Composable
-private fun SavedCard(result: SaveResult.Saved, language: String, onUndo: () -> Unit, onEditTranslation: (String) -> Unit) {
+private fun SavedCard(
+    result: SaveResult.Saved,
+    language: String,
+    onUndo: () -> Unit,
+    onEditTranslation: (String) -> Unit,
+    onStartEditing: () -> Unit,
+    onCancelEditing: () -> Unit
+) {
     var editing by rememberSaveable(result.added.card.cardId) { mutableStateOf(false) }
     var draft by rememberSaveable(result.added.card.cardId) { mutableStateOf(result.targetText) }
     ContentCard(
@@ -1255,7 +1317,10 @@ private fun SavedCard(result: SaveResult.Saved, language: String, onUndo: () -> 
                 modifier = Modifier.weight(1f)
             )
             if (!editing) {
-                IconButton(onClick = { editing = true }) {
+                IconButton(onClick = {
+                    editing = true
+                    onStartEditing()
+                }) {
                     Icon(Icons.Default.Edit, contentDescription = "Edit translation", tint = TextSecondary, modifier = Modifier.size(18.dp))
                 }
             }
@@ -1275,6 +1340,7 @@ private fun SavedCard(result: SaveResult.Saved, language: String, onUndo: () -> 
                 TextButton(onClick = {
                     draft = result.targetText
                     editing = false
+                    onCancelEditing()
                 }) { Text("Cancel", color = TextSecondary, style = MaterialTheme.typography.labelMedium) }
                 TextButton(onClick = {
                     onEditTranslation(draft)
@@ -1311,7 +1377,7 @@ private fun SavedCard(result: SaveResult.Saved, language: String, onUndo: () -> 
     }
 }
 
-/** Shows why a card couldn't be saved, and offers a cloud provider when the local model keeps failing. */
+/** Shows why a card couldn't be saved, with a Retry button (or a cloud fallback when the local model keeps failing). */
 @Composable
 private fun ErrorCard(message: String, fallback: TranslationProvider?, onRetry: () -> Unit) {
     // Read out at once when it appears, like the result of a save.
@@ -1321,11 +1387,9 @@ private fun ErrorCard(message: String, fallback: TranslationProvider?, onRetry: 
             Spacer(modifier = Modifier.width(12.dp))
             Text(text = message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         }
-        if (fallback != null) {
-            Spacer(modifier = Modifier.height(10.dp))
-            CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
-                Text("Try with ${fallback.label}", style = MaterialTheme.typography.labelMedium)
-            }
+        Spacer(modifier = Modifier.height(10.dp))
+        CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text(if (fallback != null) "Try with ${fallback.label}" else "Try again", style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -1355,11 +1419,19 @@ private fun BatchSheet(
     onSave: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    var confirmStopBatch by remember { mutableStateOf(false) }
+    fun requestDismiss() {
+        if (batch?.isSaving == true) confirmStopBatch = true else onDismiss()
+    }
+    ModalBottomSheet(
+        onDismissRequest = ::requestDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
@@ -1468,7 +1540,7 @@ private fun BatchSheet(
                                 drawStopIndicator = {},
                                 modifier = Modifier.fillMaxWidth().height(6.dp)
                             )
-                            Text("Translating ${(batch.saved ?: 0) + 1} of $picked…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                            Text("Translating ${(batch.saved ?: 0) + 1} of $picked…", style = MaterialTheme.typography.bodyMedium.tabular, color = TextSecondary)
                         }
                         else -> CoastButton(
                             onClick = onSave,
@@ -1481,5 +1553,23 @@ private fun BatchSheet(
                 }
             }
         }
+    }
+    if (confirmStopBatch) {
+        AlertDialog(
+            onDismissRequest = { confirmStopBatch = false },
+            title = { Text("Stop adding cards?") },
+            text = { Text("Cards already translated stay on your coast; remaining sentences won't be added.", color = TextSecondary) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmStopBatch = false
+                    onDismiss()
+                }) { Text("Stop", color = CoralText, style = MaterialTheme.typography.labelMedium) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmStopBatch = false }) {
+                    Text("Keep going", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        )
     }
 }

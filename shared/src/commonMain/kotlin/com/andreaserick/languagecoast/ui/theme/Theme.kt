@@ -8,8 +8,11 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.andreaserick.languagecoast.ui.components.LocalReducedMotion
+import com.andreaserick.languagecoast.ui.components.rememberSystemReducedMotion
 
 /** How the app is lit: as the device is set (dark or light, or switching by itself), always dark, or always light. */
 enum class ThemeMode(val key: String, val label: String) {
@@ -36,13 +39,13 @@ private fun colorScheme(p: CoastPalette): ColorScheme {
         onPrimaryContainer = p.textPrimary,
 
         secondary = p.surfBlue,
-        onSecondary = p.onSunlit,
+        onSecondary = p.onColored,
 
         secondaryContainer = p.surfaceSelected,
         onSecondaryContainer = p.textPrimary,
 
         tertiary = p.coralText,
-        onTertiary = p.onSunlit,
+        onTertiary = p.onColored,
 
         tertiaryContainer = p.surfaceSelected,
         onTertiaryContainer = p.textPrimary,
@@ -67,7 +70,7 @@ private fun colorScheme(p: CoastPalette): ColorScheme {
         outlineVariant = p.surfaceSelected,
 
         error = p.coralText,
-        onError = p.onSunlit
+        onError = p.onColored
     )
 }
 
@@ -103,12 +106,15 @@ fun LanguageCoastTheme(mode: ThemeMode = ThemeMode.Dark, content: @Composable ()
     // The tokens in Color.kt read this. It is set before anything below composes, so the first frame
     // is already in the right palette; a change recomposes whatever read a token.
     if (palette !== chosen) palette = chosen
-    MaterialTheme(
-        colorScheme = colorScheme(chosen),
-        shapes = CoastShapes,
-        typography = coastTypography(),
-        content = content
-    )
+    val reducedMotion = rememberSystemReducedMotion()
+    CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
+        MaterialTheme(
+            colorScheme = colorScheme(chosen),
+            shapes = CoastShapes,
+            typography = coastTypography(),
+            content = content
+        )
+    }
 }
 
 /** Whether the theme currently showing is dark, for platform chrome such as status bar icons. */

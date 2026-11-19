@@ -60,54 +60,58 @@ private const val TEXT_SECONDARY = 0xFFA9BDCB.toInt()
 /** Draws [recap] and saves it as a PNG in the cache folder other apps are let into. Throws if the picture can't be made or written. */
 private fun drawRecap(context: Context, recap: RecapShare): Uri {
     val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    canvas.drawRect(0f, 0f, WIDTH.toFloat(), HEIGHT.toFloat(), Paint().apply {
-        shader = LinearGradient(0f, 0f, 0f, HEIGHT.toFloat(), OCEAN_SURFACE, OCEAN_GROUND, Shader.TileMode.CLAMP)
-    })
+    try {
+        val canvas = Canvas(bitmap)
+        canvas.drawRect(0f, 0f, WIDTH.toFloat(), HEIGHT.toFloat(), Paint().apply {
+            shader = LinearGradient(0f, 0f, 0f, HEIGHT.toFloat(), OCEAN_SURFACE, OCEAN_GROUND, Shader.TileMode.CLAMP)
+        })
 
-    val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_SECONDARY; textSize = 36f; typeface = Typeface.DEFAULT_BOLD }
-    val title = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_PRIMARY; textSize = 72f; typeface = Typeface.DEFAULT_BOLD }
-    val headline = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_PRIMARY; textSize = 44f }
-    val big = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = SUNLIT; textSize = 96f; typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER }
-    val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_SECONDARY; textSize = 34f; textAlign = Paint.Align.CENTER }
-    val card = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = SURFACE_CARD }
-    val sun = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = SUNLIT }
+        val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_SECONDARY; textSize = 36f; typeface = Typeface.DEFAULT_BOLD }
+        val title = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_PRIMARY; textSize = 72f; typeface = Typeface.DEFAULT_BOLD }
+        val headline = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_PRIMARY; textSize = 44f }
+        val big = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = SUNLIT; textSize = 96f; typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER }
+        val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_SECONDARY; textSize = 34f; textAlign = Paint.Align.CENTER }
+        val card = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = SURFACE_CARD }
+        val sun = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = SUNLIT }
 
-    val margin = 72f
-    // The sun-on-horizon mark, as on the app's icon.
-    canvas.drawCircle(WIDTH - margin - 48f, margin + 48f, 44f, sun)
-    canvas.drawRect(WIDTH - margin - 110f, margin + 48f, WIDTH - margin + 14f, margin + 58f, Paint().apply { color = OCEAN_SURFACE })
+        val margin = 72f
+        // The sun-on-horizon mark, as on the app's icon.
+        canvas.drawCircle(WIDTH - margin - 48f, margin + 48f, 44f, sun)
+        canvas.drawRect(WIDTH - margin - 110f, margin + 48f, WIDTH - margin + 14f, margin + 58f, Paint().apply { color = OCEAN_SURFACE })
 
-    canvas.drawText("LANGUAGE COAST", margin, margin + 40f, label)
-    canvas.drawText(recap.title, margin, margin + 130f, title)
-    drawWrapped(canvas, recap.headline, margin, margin + 210f, WIDTH - 2 * margin, headline, 56f)
+        canvas.drawText("LANGUAGE COAST", margin, margin + 40f, label)
+        canvas.drawText(recap.title, margin, margin + 130f, title)
+        drawWrapped(canvas, recap.headline, margin, margin + 210f, WIDTH - 2 * margin, headline, 56f)
 
-    // Four stat tiles in a 2×2 grid.
-    val top = margin + 360f
-    val gap = 24f
-    val tileWidth = (WIDTH - 2 * margin - gap) / 2
-    val tileHeight = 260f
-    recap.stats.take(4).forEachIndexed { index, (value, text) ->
-        val left = margin + (index % 2) * (tileWidth + gap)
-        val tileTop = top + (index / 2) * (tileHeight + gap)
-        canvas.drawRoundRect(RectF(left, tileTop, left + tileWidth, tileTop + tileHeight), 40f, 40f, card)
-        canvas.drawText(value, left + tileWidth / 2, tileTop + 140f, big)
-        canvas.drawText(text, left + tileWidth / 2, tileTop + 205f, small)
+        // Four stat tiles in a 2×2 grid.
+        val top = margin + 360f
+        val gap = 24f
+        val tileWidth = (WIDTH - 2 * margin - gap) / 2
+        val tileHeight = 260f
+        recap.stats.take(4).forEachIndexed { index, (value, text) ->
+            val left = margin + (index % 2) * (tileWidth + gap)
+            val tileTop = top + (index / 2) * (tileHeight + gap)
+            canvas.drawRoundRect(RectF(left, tileTop, left + tileWidth, tileTop + tileHeight), 40f, 40f, card)
+            canvas.drawText(value, left + tileWidth / 2, tileTop + 140f, big)
+            canvas.drawText(text, left + tileWidth / 2, tileTop + 205f, small)
+        }
+
+        var y = top + 2 * tileHeight + gap + 90f
+        val coastText = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_PRIMARY; textSize = 40f }
+        recap.coasts.take(4).forEach { line ->
+            canvas.drawText(line, margin, y, coastText)
+            y += 60f
+        }
+
+        val folder = File(context.cacheDir, "shared").apply { mkdirs() }
+        val slug = recap.title.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "recap" }
+        val file = File(folder, "language-coast-$slug.png")
+        val written = file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        check(written) { "The recap picture couldn't be compressed" }
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    } finally {
+        bitmap.recycle()
     }
-
-    var y = top + 2 * tileHeight + gap + 90f
-    val coastText = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TEXT_PRIMARY; textSize = 40f }
-    recap.coasts.take(4).forEach { line ->
-        canvas.drawText(line, margin, y, coastText)
-        y += 60f
-    }
-
-    val folder = File(context.cacheDir, "shared").apply { mkdirs() }
-    val file = File(folder, "language-coast-${recap.title.lowercase().replace(' ', '-')}.png")
-    val written = file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-    bitmap.recycle()
-    check(written) { "The recap picture couldn't be compressed" }
-    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 }
 
 /** Hands the saved [picture] of [recap] to the app the user picks. */

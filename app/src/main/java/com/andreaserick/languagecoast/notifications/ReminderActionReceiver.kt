@@ -8,11 +8,12 @@ import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.data.reviewOutcomes
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.datetime.TimeZone
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -25,6 +26,8 @@ import kotlin.time.Clock
 class ReminderActionReceiver : BroadcastReceiver(), KoinComponent {
 
     private val flashcards: FlashcardRepository by inject()
+    private val clock: Clock by inject()
+    private val timeZone: TimeZone by inject()
 
     override fun onReceive(context: Context, intent: Intent) {
         val teaser = ReminderCard(
@@ -45,22 +48,32 @@ class ReminderActionReceiver : BroadcastReceiver(), KoinComponent {
     /** Saves [grade] for card [cardId] and takes the reminder down; the receiver stays alive until that is done. */
     private fun grade(context: Context, cardId: Int, grade: Grade) {
         val pending = goAsync()
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        val job = SupervisorJob()
+        CoroutineScope(job + Dispatchers.IO).launch {
             try {
-                val placed = flashcards.observeAllCards().first().firstOrNull { it.card.cardId == cardId }
-                if (placed != null) {
-                    val reviewed = reviewOutcomes(placed.card, Clock.System.now(), TimeZone.currentSystemDefault()).getValue(grade).card
-                    flashcards.saveReview(reviewed)
+                withTimeout(BROADCAST_TIMEOUT_MILLIS) {
+                    val card = flashcards.getCardById(cardId)
+                    if (card != null) {
+                        val reviewed = reviewOutcomes(card, clock.now(), timeZone).getValue(grade).card
+                        flashcards.saveReview(reviewed)
+                    }
+                    NotificationHelper.dismiss(context)
+                    StudyWidgetProvider.requestUpdate(context)
                 }
-                NotificationHelper.dismiss(context)
-                StudyWidgetProvider.requestUpdate(context)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Failed to grade card from reminder notification", e)
             } finally {
                 pending.finish()
+                job.cancel()
             }
         }
     }
 
     companion object {
+        private const val TAG = "ReminderActionReceiver"
+        private const val BROADCAST_TIMEOUT_MILLIS = 8_000L
         const val ACTION_REVEAL = "com.andreaserick.languagecoast.REVEAL"
         const val ACTION_GOOD = "com.andreaserick.languagecoast.GOOD"
         const val ACTION_AGAIN = "com.andreaserick.languagecoast.AGAIN"

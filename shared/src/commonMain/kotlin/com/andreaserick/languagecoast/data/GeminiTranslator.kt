@@ -38,27 +38,36 @@ class GeminiTranslator(private val client: HttpClient) : Translator {
         val promptBody = geminiRequestBody(prompt)
 
         return try {
-            var (status, responseText, retryAfter) = postGenerateContent(apiKey, primaryModel, promptBody)
+            var (status, responseText, retryAfter) = retryHttpWithBackoff(
+                shouldRetry = { (code, _, retryHeader) ->
+                    code in setOf(408, 502, 503, 504) ||
+                        (code == 429 && (parseRetryAfterMillis(retryHeader) ?: 0L) <= 2_000L)
+                },
+                retryAfterMillis = { (_, _, retryHeader) -> parseRetryAfterMillis(retryHeader) }
+            ) {
+                postGenerateContent(apiKey, primaryModel, promptBody)
+            }
 
             if (status == 404) {
                 // Google retires models often, and its 404 names the replacement ("use models/gemini-x"):
                 // try that, or else the default, so a stale choice keeps translating.
-                val replacement = suggestedGeminiModel(responseText)?.takeIf { it != primaryModel }
+                val replacement = suggestedGeminiModel(responseText)?.let(::normalizeGeminiModel)?.takeIf { it != primaryModel }
                     ?: SettingsDefaults.GEMINI_MODEL.takeIf { it != primaryModel }
                 if (replacement != null) {
                     logError(TAG, "Model $primaryModel not found, retrying with $replacement")
-                    val fallback = postGenerateContent(apiKey, replacement, promptBody)
+                    val fallback = retryHttpWithBackoff(
+                        shouldRetry = { (code, _, retryHeader) ->
+                            code in setOf(408, 502, 503, 504) ||
+                                (code == 429 && (parseRetryAfterMillis(retryHeader) ?: 0L) <= 2_000L)
+                        },
+                        retryAfterMillis = { (_, _, retryHeader) -> parseRetryAfterMillis(retryHeader) }
+                    ) {
+                        postGenerateContent(apiKey, replacement, promptBody)
+                    }
                     status = fallback.first
                     responseText = fallback.second
                     retryAfter = fallback.third
                 }
-            } else if (status == 503 || status == 500) {
-                // Brief retry on transient Gemini server overload.
-                delay(400)
-                val retry = postGenerateContent(apiKey, primaryModel, promptBody)
-                status = retry.first
-                responseText = retry.second
-                retryAfter = retry.third
             }
 
             geminiAnswer(status, responseText, retryAfter)
@@ -89,9 +98,12 @@ class GeminiTranslator(private val client: HttpClient) : Translator {
     }
 }
 
+private val SAFE_GEMINI_MODEL_ID = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
 /**
  * Maps Gemini model ids that Google has retired (or is about to) to their current replacements, so a
- * choice saved by an earlier version of the app doesn't fail with HTTP 404. Unknown ids pass through.
+ * choice saved by an earlier version of the app doesn't fail with HTTP 404. Unknown ids pass through only
+ * when they match a safe URL path segment (blocking path traversal or query injection from crafted backups).
  */
 internal fun normalizeGeminiModel(rawModel: String): String {
     val cleaned = rawModel.trim().removePrefix("models/")
@@ -99,7 +111,7 @@ internal fun normalizeGeminiModel(rawModel: String): String {
         "", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash",
         "gemini-2.5-flash-lite", "gemini-3.1-flash-lite-preview" -> SettingsDefaults.GEMINI_MODEL
         "gemini-1.5-pro", "gemini-2.5-pro", "gemini-3-pro-preview" -> "gemini-3.1-pro-preview"
-        else -> cleaned
+        else -> if (SAFE_GEMINI_MODEL_ID.matches(cleaned) && ".." !in cleaned) cleaned else SettingsDefaults.GEMINI_MODEL
     }
 }
 

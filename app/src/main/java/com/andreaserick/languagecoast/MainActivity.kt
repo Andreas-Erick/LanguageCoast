@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
 
     /** Holds the theme the system was last told a splash screen for (see [matchSplashToTheme]); outside the backup for the same reason. */
     private val splashThemeNote: File get() = File(noBackupFilesDir, "splash-theme")
+    private val themeFallbackRunnable = Runnable { themeIsShown = true }
+    private var lastWindowGroundArgb: Int? = null
 
     /** Sets up the splash screen and edge-to-edge drawing, then shows the app. */
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,9 +75,11 @@ class MainActivity : ComponentActivity() {
         // frame: at a cold start the splash stays those few frames longer, after a rotation the window does.
         splash.setKeepOnScreenCondition { !themeIsShown }
         // Whatever happens to that read, the app shows.
-        window.decorView.postDelayed({ themeIsShown = true }, THEME_WAIT_MILLIS)
+        window.decorView.postDelayed(themeFallbackRunnable, THEME_WAIT_MILLIS)
         // After a rotation the window is seen before the first frame; the theme in use is still known then.
-        window.setBackgroundDrawable(ColorDrawable(OceanGround.toArgb()))
+        val initialGround = OceanGround.toArgb()
+        lastWindowGroundArgb = initialGround
+        window.setBackgroundDrawable(ColorDrawable(initialGround))
         // WorkManager needs no permission, so the reminder is queued whether or not notifications are allowed yet.
         lifecycleScope.launch { reminderScheduler.ensureScheduled() }
 
@@ -84,13 +88,16 @@ class MainActivity : ComponentActivity() {
             val systemDark = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
             // System bar icons must stay readable over the chosen theme: light icons on the dark coast, dark on the light.
             val dark = isDarkPalette
-            val ground = OceanGround
+            val groundArgb = OceanGround.toArgb()
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = !dark
                     isAppearanceLightNavigationBars = !dark
                 }
-                window.setBackgroundDrawable(ColorDrawable(ground.toArgb()))
+                if (lastWindowGroundArgb != groundArgb) {
+                    lastWindowGroundArgb = groundArgb
+                    window.setBackgroundDrawable(ColorDrawable(groundArgb))
+                }
                 val mode = storedTheme
                 if (mode != null && dark == ThemeMode.fromKey(mode).isDarkWhen(systemDark)) themeIsShown = true
             }
@@ -105,7 +112,8 @@ class MainActivity : ComponentActivity() {
             // phone: by then it is clear what a reminder would be for. Never at the start, and never again after
             // an answer; Settings asks when the reminder is switched on there.
             LaunchedEffect(Unit) {
-                if (!mayAskForNotifications()) return@LaunchedEffect
+                val canAsk = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { mayAskForNotifications() }
+                if (!canAsk) return@LaunchedEffect
                 val before = settings.studyDays.first()
                 // Only a session recorded today counts: a restored backup brings study days along without one.
                 settings.studyDays.first { days ->
@@ -115,14 +123,20 @@ class MainActivity : ComponentActivity() {
                 // The end of the session is seen first.
                 delay(ASK_DELAY_MILLIS)
                 // The reminder is the only notification: with it switched off there is nothing to ask for.
-                if (mayAskForNotifications() && settings.reminderSettings.first().enabled) {
-                    runCatching { notificationsAsked.createNewFile() }
+                val stillCanAsk = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { mayAskForNotifications() }
+                if (stillCanAsk && settings.reminderSettings.first().enabled) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { notificationsAsked.createNewFile() } }
                     askForNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
 
             LanguageCoastApp()
         }
+    }
+
+    override fun onDestroy() {
+        window.decorView.removeCallbacks(themeFallbackRunnable)
+        super.onDestroy()
     }
 
     /**
@@ -141,14 +155,16 @@ class MainActivity : ComponentActivity() {
      * draws the splash before the app runs, so it can't follow a setting; it keeps what it is told here
      * (Android 12 and later; before that the splash is always the manifest's, the dark coast).
      */
-    private fun matchSplashToTheme(mode: String) {
+    private suspend fun matchSplashToTheme(mode: String) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         if (mode == splashThemeMode) return
         splashThemeMode = mode
         val theme = ThemeMode.fromKey(mode)
         // What the system was told last is noted in a file, so it is only told again when the theme changes.
         // No file means it was never told anything, and shows the manifest's splash: the dark one.
-        val told = runCatching { splashThemeNote.readText() }.getOrNull() ?: ThemeMode.Dark.key
+        val told = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { splashThemeNote.readText() }.getOrNull() ?: ThemeMode.Dark.key
+        }
         if (told == theme.key) return
         splashScreen.setSplashScreenTheme(
             when (theme) {
@@ -158,7 +174,9 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.System -> R.style.Theme_LanguageCoast_Starting_System
             }
         )
-        runCatching { if (theme == ThemeMode.Dark) splashThemeNote.delete() else splashThemeNote.writeText(theme.key) }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { if (theme == ThemeMode.Dark) splashThemeNote.delete() else splashThemeNote.writeText(theme.key) }
+        }
     }
 
     /**

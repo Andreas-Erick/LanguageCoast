@@ -360,7 +360,7 @@ internal fun AgainContinue(onGrade: (Grade) -> Unit) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onDismiss: () -> Unit) {
+internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onRetry: () -> Unit, onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     // Said in the sheet itself: a snackbar would come up behind it.
     var linkError by remember(dictionaryUrl) { mutableStateOf<String?>(null) }
@@ -387,12 +387,21 @@ internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onD
             Column(modifier = Modifier.fillMaxWidth().announceResult()) {
                 when {
                     explanation.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        CircularProgressIndicator(
+                            color = Sunlit,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(18.dp).semantics { }
+                        )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("Asking ${explanation.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                     }
                     explanation.text != null -> Text(explanation.text, style = MaterialTheme.typography.bodyLarge)
-                    else -> Text(explanation.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                    else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(explanation.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                        CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Text("Try again", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                 }
             }
             if (explanation.text != null) {
@@ -445,6 +454,7 @@ internal fun CardCheckSheet(
     onApply: () -> Unit,
     onAskAlternative: (String) -> Unit,
     onSaveAlternative: () -> Unit,
+    onRetry: () -> Unit,
     onDismiss: () -> Unit
 ) {
     // Opens in full: it ends in a text field, which a half-open sheet would hide behind the keyboard.
@@ -480,7 +490,12 @@ internal fun CardCheckSheet(
                             Text("Asking ${check.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         }
                     } else {
-                        Text(check.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(check.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                            CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Text("Try again", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
                     }
                     CardVerdict.Fine -> {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -786,7 +801,16 @@ private fun CardQuestionContent(questions: CardQuestions, onAsk: (String) -> Uni
                         Text("Asking ${questions.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                     }
                     asked.answer != null -> Text(asked.answer, style = MaterialTheme.typography.bodyLarge)
-                    else -> Text(asked.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                    else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(asked.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                        CoastSecondaryButton(
+                            onClick = { onAsk(asked.question) },
+                            enabled = !questions.isAsking,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        ) {
+                            Text("Try again", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                 }
             }
         }

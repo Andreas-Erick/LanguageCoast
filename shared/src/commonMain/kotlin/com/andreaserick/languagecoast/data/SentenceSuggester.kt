@@ -158,8 +158,8 @@ class SuggestionPool(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) {
     private val lock = Mutex()
-    private val jobs = HashMap<Int, Job>()
-    private val failedAt = HashMap<Int, Long>()
+    private val jobs = MutableStateFlow<Map<Int, Job>>(emptyMap())
+    private val failedAt = MutableStateFlow<Map<Int, Long>>(emptyMap())
     private val _preparing = MutableStateFlow<Set<Int>>(emptySet())
     private val _failures = MutableStateFlow<Map<Int, String>>(emptyMap())
 
@@ -174,19 +174,20 @@ class SuggestionPool(
 
     /** Tops up coast [coastId] in the background, unless that is already happening. */
     fun requestTopUp(coastId: Int) {
-        if (jobs[coastId]?.isActive == true) return
-        jobs[coastId] = scope.launch { topUp(coastId) }
+        if (jobs.value[coastId]?.isActive == true) return
+        val job = scope.launch { topUp(coastId) }
+        jobs.update { it + (coastId to job) }
     }
 
     /** Forgets that coast [coastId]'s last top-up failed, e.g. once the provider or the goal changed, or to try again. */
     fun forgetFailure(coastId: Int) {
-        failedAt.remove(coastId)
+        failedAt.update { it - coastId }
         _failures.update { it - coastId }
     }
 
     /** Forgets every coast's failed top-up: a new provider, key or permission makes all their reasons out of date. */
     fun forgetFailures() {
-        failedAt.clear()
+        failedAt.value = emptyMap()
         _failures.value = emptyMap()
     }
 
@@ -208,7 +209,7 @@ class SuggestionPool(
         val waiting = flashcards.observeAllCards().first().count { it.coastId == coastId && it.card.due == null }
         if (waiting >= pace.newPerDay) return
         val now = clock.now().toEpochMilliseconds()
-        failedAt[coastId]?.let { if (now - it < RETRY_AFTER_MILLIS) return }
+        failedAt.value[coastId]?.let { if (now - it < RETRY_AFTER_MILLIS) return }
 
         _preparing.update { it + coastId }
         try {
@@ -246,7 +247,7 @@ class SuggestionPool(
             if (fresh.isEmpty()) {
                 failed(coastId, clock.now().toEpochMilliseconds(), suggestions.error ?: if (proposals.isEmpty()) NOTHING_PREPARED else NOTHING_NEW)
             } else {
-                failedAt.remove(coastId)
+                failedAt.update { it - coastId }
                 _failures.update { it - coastId }
                 flashcards.addSuggestions(
                     fresh.map {
@@ -270,7 +271,7 @@ class SuggestionPool(
 
     /** Remembers that coast [coastId]'s top-up brought nothing, and why. [time] is when it gave up; the wait before the next attempt counts from there. */
     private fun failed(coastId: Int, time: Long, reason: String) {
-        failedAt[coastId] = time
+        failedAt.update { it + (coastId to time) }
         _failures.update { it + (coastId to reason) }
     }
 

@@ -1,311 +1,199 @@
 <p align="center">
-  <img src="docs/logo.png" alt="Language Coast logo" width="140" />
+  <img src="docs/logo.png" alt="Language Coast logo" width="128" />
 </p>
 
-<h1 align="center">🌊 Language Coast</h1>
+<h1 align="center">Language Coast</h1>
 
 <p align="center">
-  An AI-powered flashcard app for Android, with an iOS version on the way. Built with Kotlin Multiplatform and Compose Multiplatform, with translation on your phone or by the cloud AI of your choice.
+  An offline-first spaced-repetition flashcard app for Android and iOS built with Kotlin Multiplatform and Compose Multiplatform, combining an FSRS-5 scheduler with on-device translation (ML Kit / LiteRT-LM) and bring-your-own-key cloud LLMs.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ci.yml"><img src="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status" /></a>
-  <a href="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ios.yml"><img src="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ios.yml/badge.svg?branch=main" alt="iOS build status" /></a>
-  <img src="https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white" alt="Platform: Android" />
-  <img src="https://img.shields.io/badge/platform-iOS%20preview-147EFB?logo=apple&logoColor=white" alt="Platform: iOS preview" />
-  <img src="https://img.shields.io/badge/Kotlin-Compose%20Multiplatform-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin + Compose Multiplatform" />
-  <img src="https://img.shields.io/badge/min%20SDK-26-blue" alt="Min SDK 26" />
+  <a href="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ci.yml"><img src="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ci.yml/badge.svg?branch=main" alt="Android CI" /></a>
+  <a href="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ios.yml"><img src="https://github.com/Andreas-Erick/LanguageCoast/actions/workflows/ios.yml/badge.svg?branch=main" alt="iOS CI" /></a>
+  <img src="https://img.shields.io/badge/Kotlin_2.4-Compose_Multiplatform-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.4 + Compose Multiplatform" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-All_Rights_Reserved-43566A" alt="License: All Rights Reserved" /></a>
 </p>
 
 ---
 
-Language Coast is a flashcard app that changes how you build vocabulary. It combines AI translation with a coastal-themed UI. Each language you learn gets its own **Coast** (e.g. a *German Coast* and an *Icelandic Coast*), and each coast has a reason: a trip, a person, a job. Every day, Today offers one short session: a few due cards, then a few new sentences picked for that reason, to keep or skip. Type your own sentence whenever you like, and the AI translates it and files it into one of that coast's "Language Islands", ready to study.
+Language Coast organizes each language you study as a **Coast** (e.g., *German Coast*, *Icelandic Coast*) tailored to a personal goal and regional dialect, with vocabulary grouped into **Language Islands**. Each day presents a finishable session—due reviews scheduled by FSRS-5 followed by a few new sentences—while supporting on-device translation, local LLMs, or your own cloud API key with zero backend server.
 
-## 📱 Screenshots
+## Visual Overview
 
 <p align="center">
-  <img src="docs/screenshots/today.png" alt="Today: the German coast with its goal and level, today's session of due and new cards ready to start, the pace, and a place to add a sentence of your own" width="200" />
-  <img src="docs/screenshots/my-coast.png" alt="My Coasts with the study streak and weekly island goal, a leaky words session, and the German and Spanish coasts, each with its level and due cards" width="200" />
-  <img src="docs/screenshots/coast.png" alt="German Coast with its level on the route, the next island to add, a button to review the whole coast, and its Language Islands" width="200" />
-  <img src="docs/screenshots/route.png" alt="The route of a coast: the islands of level A1, each with its cards and how many are learned" width="200" />
-  <img src="docs/screenshots/island-cards.png" alt="The cards of the My Family island with their translations and when each is due" width="200" />
-  <img src="docs/screenshots/study.png" alt="Flipped flashcard with the Flip, Type and Fill gap modes, the study direction, a read-aloud button, tappable words to explain, and Again, Hard, Good and Easy buttons showing when the card comes back" width="200" />
-  <img src="docs/screenshots/type.png" alt="Type mode: a typed translation marked Perfect, with a Listen button and the grade buttons" width="200" />
-  <img src="docs/screenshots/fill-gap.png" alt="Fill gap mode: the translation with its key word blanked out and the English sentence as the hint" width="200" />
-  <img src="docs/screenshots/alternatives.png" alt="Sheet with other ways to say a sentence, with read-aloud and Make main buttons" width="200" />
-  <img src="docs/screenshots/search.png" alt="Search results across all coasts, each showing its coast, island and when it is due" width="200" />
-  <img src="docs/screenshots/recap.png" alt="This month's recap: days studied, cards reviewed, streak, cards that stuck, new islands, leaky words and each coast's share" width="200" />
-  <img src="docs/screenshots/practice-sheet.png" alt="Practice sheet options: the islands, the direction, Easy, Medium or Hard, and the number of sentences" width="200" />
-  <img src="docs/screenshots/today-light.png" alt="Today in the light theme" width="200" />
-  <img src="docs/screenshots/coast-light.png" alt="A coast in the light theme" width="200" />
-  <img src="docs/screenshots/settings.png" alt="Settings with the choice of on-device translation, Local AI or a cloud AI provider" width="200" />
-  <img src="docs/screenshots/notification.png" alt="Daily study reminder quoting a due card, with a Reveal button" width="200" />
-  <img src="docs/screenshots/widget.png" alt="Home-screen widget with the study streak and the cards due today" width="200" />
+  <img src="docs/screenshots/today.png" alt="Today screen with daily session, streak, and card creation" width="190" />
+  <img src="docs/screenshots/coast.png" alt="Coast screen with CEFR route progress and Language Islands" width="190" />
+  <img src="docs/screenshots/study.png" alt="Study flip mode with read-aloud, tappable words, and FSRS grade intervals" width="190" />
+  <img src="docs/screenshots/type.png" alt="Study type mode with live answer checking and grading" width="190" />
 </p>
 
-## ✨ Features
+<details>
+<summary>More screenshots (13 additional views: light theme, fill-gap, alternatives, search, monthly recap, practice sheet, settings, widget &amp; notifications)</summary>
 
-### ☀️ Today
-- **One session a day, always finishable**: Today shows the coast you focus on and one button. At the default pace the session reviews at most 12 due cards (the rest wait for another day, with *Review all* if you insist), then brings up to 3 new cards or sentences. A faster pace raises both (see *Pace* under My Coasts).
-- **A goal per coast, and a region**: say why you learn the language (*A trip to Lisbon in March*, *Talking with Anna's parents*) and where you'll use it (*Mexico*, *Brazil*, *Switzerland*). The goal picks the new sentences; the region goes into every translation prompt, so Spanish for Mexico comes out Mexican, not Castilian.
-- **Sentences come to you**: a pool of sentences is prepared in the background by your AI provider (local or cloud), fitted to the goal, your level and the islands you have, avoiding what you already know. Without an AI model, the starter sentences are translated on the device instead. Each new sentence is shown with both sides; *Keep it* makes it a card that you practice at the end of the session, *Skip* means it isn't offered again.
-- **Starter sentences**: about 900 sentences and words everyone needs, in 37 topics. Situations: greetings and politeness, getting by in the language, small talk, about me (including your age), restaurant, directions, airport, getting around, hotel, shopping, help and health, making plans, phone and internet, money and bank, home and renting, paperwork, wishes and toasts, telling the time, weather and seasons, feelings, describing people, appointments and calls, likes and opinions, at work. Building blocks: days, months and seasons, numbers (0 to 30 in full, the tens, hundreds, thousands up to a billion, ordinals, halves, percent, years: everything any number is built from), everyday words, question words, family and people, colours, food and drink, clothes, body and symptoms, house and furniture, places in town, signs you read on the street, and the words your phone's Settings app uses once you switch it to the language (Wi-Fi, notifications, permissions, Save, Allow, Turn off...). Tick the ones you'd say, fill in blanks like *[city]* or *[name]* (*[language]* fills itself), and they are translated and filed on islands. Sentences your coast already has are marked.
-- **The basics first**: for the first 120 sentences (about six weeks at the default pace) the new sentences come from the starter bank, in a sensible order (greetings, getting by, small talk, about you, then the situations your goal points to), translated by your provider. After that the AI suggests sentences for your goal, and the bank stays the fallback.
-- **Welcome back, not a backlog**: after three or more days away, the session shrinks: to 5 cards and 2 new sentences at the default pace.
-- **Your streak** in the header, the **new card form** folded away under *Add your own*, and the **cards you added most recently** to that coast.
-- **Onboarding**: the language you speak, then the language you want to learn, with a short explanation of coasts and islands. After that the app asks why you learn it.
+<p align="center">
+  <img src="docs/screenshots/my-coast.png" alt="My Coasts with study streak, weekly goal, and leaky words" width="190" />
+  <img src="docs/screenshots/route.png" alt="CEFR route showing A1 islands and progress" width="190" />
+  <img src="docs/screenshots/island-cards.png" alt="Island card list with translations and due labels" width="190" />
+  <img src="docs/screenshots/fill-gap.png" alt="Fill-gap mode with cloze blank and native hint" width="190" />
+  <img src="docs/screenshots/alternatives.png" alt="Alternative translations sheet with read-aloud and swap" width="190" />
+  <img src="docs/screenshots/search.png" alt="Cross-coast search results" width="190" />
+  <img src="docs/screenshots/recap.png" alt="Monthly recap statistics" width="190" />
+  <img src="docs/screenshots/practice-sheet.png" alt="Practice sheet PDF options" width="190" />
+  <img src="docs/screenshots/today-light.png" alt="Today screen in daylight theme" width="190" />
+  <img src="docs/screenshots/coast-light.png" alt="Coast screen in daylight theme" width="190" />
+  <img src="docs/screenshots/settings.png" alt="Settings with on-device, Local AI, and cloud providers" width="190" />
+  <img src="docs/screenshots/notification.png" alt="Daily reminder notification quoting a due card with Reveal action" width="190" />
+  <img src="docs/screenshots/widget.png" alt="Android home-screen widget showing streak and due count" width="190" />
+</p>
 
-### 🤖 AI-powered card creation
-- **Translate however you like**, picked in Settings:
-  - **On-device** (Google ML Kit): free, private and offline once a language is downloaded (about 30 MB). It only translates, so cards go into the island you type. Covers every app language except Bosnian, Latin and Serbian.
-  - **Local AI** (Android): a language model that runs on your phone with Google LiteRT-LM. The app scans your phone's RAM, storage and processor, recommends models that fit (Qwen 3, LFM2.5 and Gemma 4 download straight away; Gemma 3 is gated on Hugging Face and needs a token from there), and downloads the one you pick in the background. Free, private and offline, and unlike the on-device translator it also sorts cards into islands and suggests alternatives.
-  - **Cloud AI** with your own API key: **Google Gemini**, **OpenAI**, **Anthropic Claude**, **Groq**, **DeepSeek** or **OpenRouter** (one key for many models; `openrouter/auto` picks one for you, or enter any model ID). Before a provider receives anything, the app asks once per provider: it shows what is sent and to whom, with a link to that provider's privacy policy. Requests go straight from your phone under your own key. Without your permission nothing is sent, and removing the key in Settings withdraws it.
-- **Auto-categorization**: the AI models sort each new card into an island such as *Travel*, *Restaurant* or *Greetings*, reusing your existing islands whenever one fits.
-- **Icelandic noun rule**: single Icelandic nouns are returned with their definite and plural forms (e.g. *hestur, hesturinn, hestar*).
-- **Island emojis**: the AI models also pick an emoji for each new island (🍽️ *Restaurant*, ✈️ *Travel*).
-- **Write it yourself**: switch to *I write it* and write the sentence in the coast's language. The AI fills in your language, corrects spelling and grammar slips, and the saved card shows what it changed.
-- **Manual mode**: you can skip the AI and enter your own translation and island.
-- **Add many at once**: paste a paragraph, or read the text off a photo of a page or a sign (Android, on the phone), tick the sentences you want and they become cards one after the other.
-- **Island suggestion**: while you type, the island whose cards share the most words with your sentence is suggested before the AI sees it.
-- **Instant preview with undo and edit**: after saving you see the card that was created, can undo it right away, or fix the translation in place with the pencil.
-- **Patient with local models**: the model is loaded as soon as Today opens, the button shows how long it has been thinking, and after two unreadable answers a cloud provider you have a key for is offered instead.
-- **Alternatives for longer sentences**: for sentences of 6 words or more, the AI models also suggest up to two other translations with a note on how they differ (e.g. formal vs. informal). They are saved with the card: after flipping it, *2 alternatives* opens a sheet with the note, a read-aloud button for each and *Make main* to swap one with the card's translation. Alternatives also count as correct in Type mode and are included in exports.
+</details>
 
-### 🏝️ My Coasts
-- **One coast per language**: study several languages side by side, each with its flag and its own islands. The focus coast, which Today's session and new cards are on, is switched right on Today.
-- **A route through the levels**: every coast shows the level you are on (A1, A2, B1), how far you are, and the next island to take. A level is a set of islands; an island counts as you learn its cards. At B1 the AI provider writes islands on what that level asks for (opinions with reasons, telling a story, complaints, what-ifs, work and meetings, advice, feelings, news, explaining things) and takes each island about you up a level from the same answers.
-- **Pace**: Steady (3 new a day), Fast (10) or Sprint (20). Islands you add wait as *new* cards and each day's session introduces a few, with *I know this* to wave through what you can already say. Nothing counts as overdue because you added a lot at once.
-- **Rehearse as a talk**: an island's own sentences joined into about a minute of speech to read aloud, listen to and then say without looking.
-- **Islands about you**: the topics no phrase bank can hold, because they differ from person to person. *About you* asks a few optional questions for each of 20 islands (personal details, family, partner and children, friends, home, where you live, where you're from, work or studies, education, daily routine, weekends, hobbies, sports, music/films/books, food, pets, health, celebrations and traditions, your past, your plans). On a coast, one tap has your AI provider write up to 25 simple (A2) sentences for an island in both languages, from your answers only, followed by the native-speaker check. Together with the starter topics these are the islands level A2 asks for. Change an answer and the island offers to be written again, keeping the cards you have studied.
-- **Starter topics as islands**: the route lists the starter topics a coast doesn't have yet. One tap adds the whole topic as an island, translated while the app stays open; you can leave the coast's screen while it runs. Your name, the city and country you live in, the country you're from, your hometown and your job are entered once under *Settings › About you* and filled in wherever a blank appears; a topic only asks for what you left empty. Sentences with a blank per sentence (*[number]*, *[time]*) stay in the starter list on Today. A language model translates a topic 15 sentences at a time with one prompt that carries the topic's rules (natural wording, the polite form of address with strangers, dictionary forms with articles for single words, numbers as words, the phone's own wording for its settings), so the entries are consistent with each other; the on-device translator goes sentence by sentence. A second prompt per batch then reads the result as a native speaker of that region and rewrites anything people wouldn't actually say: the natural version becomes the card, the first version stays as an alternative, and the reason becomes the card's note. The same check runs on the daily session's bank sentences. At the top of a level, a button such as *Add 12 topics* adds every topic of that level the coast doesn't have yet, with a count and a time estimate, if you really want it.
-- **Language Islands**: on each coast, your vocabulary is grouped into islands by category, each with its emoji, card count and how many cards are due. A coast with cards due offers one session over all of its islands.
-- **Progress at a glance**: coasts show how many islands you explored this week, and the streak card tracks your **weekly island goal** (3, 5, 7 or 10, picked in Settings).
-- **Leaky words**: cards you have forgotten twice, or that the scheduler rates hard, are gathered into a short booster session of their own.
-- **Monthly recap**: days studied, cards reviewed, cards that stuck, new islands and each coast's share, as a page and as a picture to share (Android).
-- **Island card list**: *See cards* in an island's ⋮ menu (or *All cards* in the ⋮ menu while studying) shows every card with its translation, alternatives and when it is due next.
-- **Search**: the search icon on My Coasts finds cards on every coast by their native text, translation or alternatives, and shows which coast and island each is on.
-- **Duplicate hint**: while you type a new card, Today tells you if the coast already has that sentence and on which island.
-- **Edit cards**: fix a card's native text, translation or alternatives, or move it to another island, without losing its review progress.
-- **Daily streaks with a freeze**: a streak counter and a bar for each day of the week track your study days. One missed day a week is covered automatically by a streak freeze, shown on the bar.
-- **Undo after every delete**: deleted coasts, islands and cards can be restored from the snackbar. Deleting a coast asks first, and so does deleting an island with more than 10 cards. Cards and smaller islands are deleted at once.
-- **Offline-first storage**: cards are stored locally with **Room**, and preferences with **Jetpack DataStore**.
+---
 
-### 🧠 Study modes
-- **Spaced repetition**: cards are scheduled with [FSRS](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm), the algorithm Anki uses, so each island only asks for the cards that are due. Islands and coasts show how many cards are due, and the daily reminder says how many are waiting. When nothing is due you can still practice all cards.
-- **Focus mode**: a study session takes the whole screen, with just a progress bar, the card and the grade buttons. Previous card, Skip card and the island's card list are in the ⋮ menu.
-- **Flip**: classic flashcards with an animated flip. Grade each card *Again*, *Hard*, *Good* or *Easy* (each button shows when the card comes back), or swipe left for *Again* and right for *Good*. *Again* shows *Soon*: it moves the card to the end of the session, so you see it again before you finish.
-- **Type**: test your recall by typing the translation. Capitalization, punctuation and extra spaces don't count against you, accents do. A correct answer is graded like a flipped card; a slip of a letter is *Almost* and counts as *Hard*; a wrong one counts as *Again* and the card comes back later in the session.
-- **Fill gap**: the translation with its key word blanked out and the sentence in your language as the hint. Type the missing word.
-- **Read aloud**: a speaker button reads the translation in the coast's language, using the voices installed on your phone (free and offline). It only appears when the phone has a voice for that language.
-- **Study the other way round**: swap the direction under the mode switch to see the translation first and answer in your native language, training recognition instead of recall. Works with Flip and Type, and is remembered for later sessions.
-- **Session summary**: finishing a session shows a short celebration with your stats and streak.
-- **Check for new models**: under the model list of Gemini, OpenAI, Claude, Groq and DeepSeek in Settings, a button asks the provider (with your API key) which models it offers now. The request carries only the key and is made only for a provider you have allowed. Saving a key makes the same request, to check that the key works. Models the list didn't have are added, newest first; models the provider no longer offers are removed; and if the model you were using is gone, the provider's default (or the first model left) is selected and the app says so. Only models that answer a text prompt are kept, under their plain names: speech, image, embedding and safety models and dated copies of the same model are left out. A check that fails (no key, no network) changes nothing. The list is stored on the device and isn't part of a backup.
-- **Practice sheets (Android)**: the PDF icon on a coast makes a worksheet of new sentences to translate, from your language into the coast's or the other way round. Your AI provider writes them from that coast's cards, and islands whose cards you are forgetting get more of the sentences. Pick which islands it is made from, or leave all of them in, then *Easy*, *Medium* or *Hard* and 3 to 500 sentences (10 medium ones unless you change it). The PDF has the app's mark, numbered sentences with lines to write on, word help under a sentence that needs it (from a cloud AI provider), and the answer key on a page of its own with your card under each answer, on A4 or Letter depending on where you are. *Download PDF* saves it to the phone's Downloads folder (on Android 9 and older, to the place you choose); *Open* shows it in a PDF viewer. <details><summary>How a sheet is put together</summary>The prompt carries the cards island by island and names, for each sentence, the card it is built from: the model says something new with that card's key word or phrase. A correct, natural sentence comes first, so it may use common words the coast doesn't have; up to three of them are printed under the sentence with their meaning. A few more sentences are asked for than needed, and copies of a card, near-repeats and the ones that stray furthest from the coast's vocabulary are left out (one new word on an easy sheet, two on a harder one, don't count against a sentence). A coast of any size works, thousands of cards included: a prompt carries at most 400 cards and about 40,000 characters of them up to 40 cards of an island at a time (60 cards, 20 of an island, for a local model), so one huge island (an imported deck, say) can't crowd the others out. What a sheet practises follows from how you have studied: every request names the cards its sentences are built from, the studied ones that need practice most first and none twice on a sheet until its island runs out, and an island gets more the more its cards need practice, which is when they are slipping (the chance of recalling them today, from the FSRS memory model, has dropped) or keep being forgotten. The focus is damped, so a sheet stays mixed (four times the need is twice the sentences), every island keeps a small share, and a long sheet still gets around the whole coast. Cards you have never studied add no need, and of a large island a request shows the studied cards first; a coast nobody has studied yet shares the sheet evenly. A long sheet from a large coast is many large requests in a row; when Claude answers that its per-minute limit is used up, the sheet waits as long as Claude says (a minute at most, four times in a row) and carries on instead of coming out short. The provider is asked for 25 sentences at a time, and a coast too small for a long sheet gives a shorter one. Claude's newer models think before they answer, a dozen sentences for a minute or two, so Claude is asked for a dozen at a time and its answer is read as it is written (a stream), which lets it take as long as it keeps coming, up to ten minutes. A request that is too much for a model all the same (it runs out of time, or of room for its answer) is made again with half as many sentences. The request also carries your wording choice and, when the sheet's cards are mostly the route's, your level on the coast's route.</details>
-- **Check translation**: not sure a card is right? *Check translation* in the ⋮ menu while studying has your AI provider read the translation back word for word, without being told what the card should say, so you can compare it yourself. It then says whether a native speaker would put it that way. A suggestion is only applied when you tap *Use this*: a translation that was correct but stiff stays as an alternative, a wrong one is replaced.
-- **Correct as well?**: in the same sheet, type how you would have said it and ask. If the provider finds your translation correct too, *Save as an alternative* adds it to the card, with what sets it apart (formal, regional, ...) in the card's note, and from then on it counts as correct in Type mode. If it has a slip, you see what is wrong and can save the corrected sentence instead.
-- **Ask about this card**: wondering why it is *dem* and not *den*, or when you would actually say this? *Ask about this card* in the ⋮ menu while studying opens a sheet where you put your own question to your AI provider. It answers in your language with the whole card in view, and you can follow up: it remembers what was said until you close the sheet. Three ready-made questions (*Break it down word by word*, *When would I say this?*, *Give me two more examples*) get you started. Nothing on the card changes.
-- **Explain this word**: tap any word on the back of a card and your AI provider explains it as used in that sentence (meaning, form, one more example), with a **dict.cc** link alongside. dict.cc uses your language pair when it has it (it pairs every language with English or German) and falls back to the English dictionary otherwise.
-- **Feedback you can switch off**: a short buzz for flips and grades and a soft tone for right and wrong answers, each with its own switch in Settings.
-
-### 🔔 Study reminders
-- A daily reminder, scheduled with **WorkManager**: at a surprise time between 9:00 and 21:00, or at a fixed time you pick in Settings. It can also be turned off. On iPhone the reminders are queued with the system's notifications instead, so they don't say how many cards are due. The app asks for permission to send notifications after your first finished session, or when you switch reminders on, not when it first opens. Reminders are made on the phone; no server is involved.
-- **A different reminder every day**: how many cards are due, a due card quoted as a quick self-test (*"Where is the train station?" in German*), a streak to keep going, a milestone within reach (day 7, 30, 100, ...), or *All caught up*. Each has its own picture and wording, rotated so two days in a row never look the same. A reminder never quotes a sentence from an island about you.
-- **Answer from the notification** (Android): the quoted card has a *Reveal* button, and the revealed card *Got it* / *Forgot*, which grade it without opening the app.
-- **Home-screen widget** (Android): the cards due today and your streak, a gentler nudge than a notification. It refreshes every hour and whenever you leave the app, and tapping it opens the app.
-
-### 📤 Export, import & backup
-- **Export to Anki**: save one coast or all of them as a text file that Anki imports with *File › Import*. Each island becomes a subdeck (e.g. *German Coast::Greetings*), and alternatives and notes go on the back of the card. Review progress isn't exported, so cards start fresh in Anki.
-- **Export to CSV**: one coast or all of them as a spreadsheet file for Excel, Google Sheets or Numbers. A header row, then one row per card with its island, alternatives and note in columns of their own (and the language, when several coasts share the file). The same file imports back into the app, alternatives and notes included.
-- **Export to Markdown**: one table per island, to read, print or keep in your notes app.
-- **Import an Anki deck** (Android): pick an `.apkg` (or a whole collection, `.colpkg`) and its notes become cards. Both of Anki's formats are read, the compressed one current Anki exports by default and the older one; each note's first two fields with text are the card's sides, and its deck names the island (*Spanish::Food* lands on *Food*). The text is taken without its HTML, pictures and sounds, but with its line breaks: a back with a word, its forms and an example shows them on lines of their own, the first one as the headline, instead of run together (a numbered list written in one line is taken apart too). Typing any one of the lines counts as the answer. Cards you imported before this, which are cramped into one line, get their line breaks when you import the same deck again; they keep their review history. Cloze gaps are filled in, and Anki's review history stays behind, so the cards start fresh. A preview shows the first cards before anything is added; *Swap sides* turns a deck around that has the foreign language on the front.
-- **Import from CSV or tab-separated files**, e.g. a spreadsheet or an Anki notes export (*Notes in Plain Text*). A third column (or Anki's deck column) picks the island, a header row is detected, and cards the coast already has are skipped. Imports can be undone. A file that is neither text nor an Anki deck (an `.xlsx`, a picture) is turned away instead of being read as rows of garbage.
-- **Full backup and restore**: one JSON file with every coast, island and card including review progress, plus the streak, study days, settings and your About you answers, for moving to a new phone. API keys are left out. Restoring replaces everything after a confirmation, and can be undone.
-- Files are saved and opened with the system file picker, so they can go to Downloads, Google Drive and so on. The app needs no storage permission.
-
-### ❓ Built-in guide
-- **How to use**: a button in Settings opens a short guide to coasts and islands, creating cards, translation, studying, streaks, reminders and the widget, and exporting, importing and backing up.
-
-**Supported languages:** all 28 dict.cc languages (Albanian, Bosnian, Bulgarian, Croatian, Czech, Danish, Dutch, English, Esperanto, Finnish, French, German, Greek, Hungarian, Icelandic, Italian, Latin, Norwegian, Polish, Portuguese, Romanian, Russian, Serbian, Slovak, Spanish, Swedish, Turkish, Ukrainian), plus Japanese and Korean without dictionary lookup. The language picker can be searched by English or native name (e.g. *Deutsch*, *Suomi*).
-
-## 🛠️ Tech stack
-
-| Area | Library |
-| --- | --- |
-| Architecture | MVVM: ViewModels + repositories, unidirectional data flow with `StateFlow` |
-| Code sharing | [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html): UI, ViewModels, data layer and translation in a `shared` module used by the Android and iOS apps |
-| Dependency injection | [Koin](https://insert-koin.io/) |
-| UI | [Compose Multiplatform](https://www.jetbrains.com/compose-multiplatform/) + Material 3 (Jetpack Compose on Android), 100% Kotlin |
-| Translation | [Gemini](https://ai.google.dev/api/generate-content), [OpenAI](https://platform.openai.com/docs/api-reference), [Anthropic](https://docs.anthropic.com/en/api), [Groq](https://console.groq.com/docs), [DeepSeek](https://api-docs.deepseek.com/) and [OpenRouter](https://openrouter.ai/docs) APIs over [Ktor](https://ktor.io/); [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) for local models and [ML Kit Translation](https://developers.google.com/ml-kit/language/translation) on-device (both Android) |
-| Database | [Room](https://developer.android.com/kotlin/multiplatform/room) (Kotlin Multiplatform) |
-| Preferences | [Jetpack DataStore](https://developer.android.com/kotlin/multiplatform/datastore) (Kotlin Multiplatform) |
-| Navigation | [Navigation Compose](https://kotlinlang.org/docs/multiplatform/compose-navigation-routing.html) (multiplatform) with type-safe routes |
-| Spaced repetition | [FSRS-5](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm) with its default parameters (implemented in `shared/.../data/SpacedRepetition.kt`) |
-| Text-to-speech | Android [`TextToSpeech`](https://developer.android.com/reference/android/speech/tts/TextToSpeech) / iOS `AVSpeechSynthesizer`, with the voices installed on the phone |
-| Reminders | [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) on Android, `UNUserNotificationCenter` on iOS |
-| Home-screen widget | [`AppWidgetProvider`](https://developer.android.com/develop/ui/views/appwidgets) with `RemoteViews` (no extra library, Android only) |
-| Backups | [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) JSON |
-| Testing | kotlin.test (shared module), JUnit 4, kotlinx-coroutines-test, hand-written fakes |
-| CI/CD | GitHub Actions (tests on every pull request and push to `main`; the minified release build started on an Android emulator, where the instrumented tests run too; shared code tested and the iOS app built and launched on a macOS runner; signed APK and app bundle on every release tag) |
-
-## 🏗️ Architecture
+## Architecture & Design Decisions
 
 ```mermaid
 flowchart LR
-    UI["Compose screens"] -- events --> VM["ViewModels"]
+    UI["Compose Multiplatform UI<br/>(Android & iOS)"] -- events --> VM["MVVM ViewModels<br/>(StateFlow / Coroutines)"]
     VM -- UI state --> UI
-    VM --> FR["FlashcardRepository"] --> Room[("Room")]
-    VM --> SR["SettingsRepository"] --> DS[("DataStore")]
-    VM --> TR["Translator"] --> Cloud(["Gemini, OpenAI, Claude, Groq, DeepSeek or OpenRouter API"])
-    TR --> LocalAI(["LiteRT-LM local model (Android)"])
-    TR --> MLKit(["ML Kit (on-device, Android)"])
+
+    VM --> FR["FlashcardRepository"] --> Room[("Room KMP<br/>(SQLite)")]
+    VM --> SR["SettingsRepository"] --> DS[("DataStore<br/>Preferences")]
+    SR --> SS[("SecretStore<br/>KeyStore AES-GCM / iOS Keychain")]
+
+    VM --> RT["RoutingTranslator"]
+    RT --> MLKit["OnDeviceTranslator<br/>(Android ML Kit)"]
+    RT --> Local["LocalAiTranslator<br/>(Android LiteRT-LM)"]
+    RT --> Retry["HttpRetry<br/>(Backoff + Jitter)"] --> Cloud(["Gemini · OpenAI · Claude SSE<br/>Groq · DeepSeek · OpenRouter"])
 ```
 
-- **Screens** are stateless: they render a UI state and forward user events to their ViewModel.
-- **ViewModels** hold the screen logic, e.g. `StudyViewModel` runs the study session (every grade reschedules the card, *Again* re-queues it, completing a session updates the streak).
-- **Repositories** are interfaces with one production implementation each, provided by Koin. Tests swap them for in-memory fakes, so all ViewModel logic is tested without a device.
+- **Shared Multiplatform Core (`shared`):** UI, navigation, ViewModels, Room database, FSRS-5 scheduler, import/export parsers, and Ktor networking live in `commonMain`, with thin `expect`/`actual` platform adapters for SQLite drivers, TTS, hardware-backed secrets, reduced motion, notifications, and Android-only features (ML Kit, LiteRT-LM, PDF worksheets, widgets).
+- **Hardware-Backed Secret Isolation & Defense-in-Depth:** Cloud API keys and Hugging Face tokens are stored in [SecretStore](shared/src/commonMain/kotlin/com/andreaserick/languagecoast/data/SecretStore.kt) — encrypted with Android KeyStore AES-256-GCM on Android and stored in iOS Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) on iOS — excluded from cloud/local backups, scrubbed from all diagnostic logs via `redactSecrets()`, and protected by `usesCleartextTraffic="false"`.
+- **Deterministic FSRS-5 Engine:** The full [FSRS-5 algorithm](shared/src/commonMain/kotlin/com/andreaserick/languagecoast/data/SpacedRepetition.kt) runs purely in Kotlin with injected `Clock`/`TimeZone` seams, `NaN`/overflow guards, and 250-iteration seeded property-based fuzz tests verifying monotonicity and interval bounds.
+- **Resilient Multi-Provider AI Pipeline:** A single `Translator` interface routes between on-device ML Kit, local LiteRT-LM (with hardware RAM/storage/OpenCL profiling, DownloadManager resume tracking, and bounded inference timeouts), and 6 cloud APIs over Ktor with SSE streaming for Claude thinking models and exponential backoff with jitter (`HttpRetry`) for transient HTTP `408`/`429`/`502`/`503`/`504`/`529` failures.
+- **Hardened File Parsers:** Streaming Anki `.apkg`/`.colpkg` ingestion (ZIP + zstd + SQLite) enforces exact filename allowlists (Zip Slip protection), entry-count and aggregate byte caps (ZIP bomb protection), real-table verification against crafted SQLite `VIEW`s, and linear-time HTML/cloze parsing (zero ReDoS). Backup JSON decoding checks nesting depth before parsing (`StackOverflowError` prevention), CSV exports neutralize spreadsheet formula injection, and Markdown exports escape raw HTML.
 
-## 📁 Project structure
+---
 
-```
-shared/src/                  # Kotlin Multiplatform code for Android and iOS
-├── commonMain/
-│   ├── kotlin/…/languagecoast/
-│   │   ├── App.kt           # Bottom navigation and NavHost
-│   │   ├── data/            # Room database, repositories, DataStore settings, translators (cloud providers,
-│   │   │                    # local AI models), spaced repetition, search, import/export formats, backups
-│   │   ├── di/              # Koin modules
-│   │   ├── navigation/      # Type-safe route definitions
-│   │   ├── notifications/   # Reminder scheduling interface and timing
-│   │   └── ui/              # Each feature's Screen and ViewModel, shared composables and the theme
-│   └── composeResources/    # Nunito font and the logo mark
-├── androidMain/             # Android implementations: database and settings files, ML Kit, the LiteRT-LM engine,
-│                            # text-to-speech, file import/export and backup, date and time formats
-├── iosMain/                 # iOS implementations, plus the entry point and notification reminders
-└── commonTest/              # Tests that run on every platform
-
-app/src/main/java/com/andreaserick/languagecoast/   # The Android app
-├── LanguageCoastApplication.kt  # Starts Koin
-├── MainActivity.kt          # Splash screen, notification permission, shows the shared UI
-├── di/                      # Koin modules for Android-only parts
-├── notifications/           # Daily study reminder (WorkManager + notification)
-└── widget/                  # Home-screen widget (streak and cards due)
-
-iosApp/                      # The iOS app: a SwiftUI shell around the shared UI
-├── project.yml              # Xcode project description for XcodeGen
-└── iosApp/iOSApp.swift
-```
-
-## 🚀 Getting started
+## Quickstart
 
 ### Prerequisites
-- A recent version of **Android Studio** that supports Android Gradle Plugin 9.2.
-- **JDK 21** (Gradle can download it automatically through the toolchain resolver).
-- Optionally an API key for a cloud provider: Google Gemini ([Google AI Studio](https://aistudio.google.com/)), OpenAI, Anthropic, Groq, DeepSeek or OpenRouter ([openrouter.ai](https://openrouter.ai/)). On-device and Local AI translation need no key.
 
-### Setup
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Andreas-Erick/LanguageCoast.git
-   ```
-2. Open the project in Android Studio and let Gradle sync.
-3. Run the app on an emulator or a physical device (Android 8.0 / API 26 or higher).
-4. On first start the app asks for your native language and the language you want to learn, and starts a coast for it.
-5. On-device translation needs no key. In **Settings** you can switch to Local AI, which downloads a model, or to a cloud provider, which needs your API key.
+- **JDK 21** (or Gradle toolchain auto-provisioning)
+- **Android Studio** supporting AGP 9.2+ with Android SDK (API 26+ device or emulator)
+- *(Optional, iOS on macOS)* **Xcode** and **[XcodeGen](https://github.com/yonaskolb/XcodeGen)** (`brew install xcodegen`)
 
-### Running the iOS app
-The iOS app needs a Mac with **Xcode** and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`):
+### Clone & Build (Android)
+
+```bash
+git clone https://github.com/Andreas-Erick/LanguageCoast.git
+cd LanguageCoast
+
+# Compile the debug APK
+./gradlew assembleDebug
+```
+
+Open the project in Android Studio and run the `app` configuration on an Android 8.0+ (API 26) device or emulator. On-device translation works without an API key; cloud providers can be configured inside **Settings > Translation** (keys stay encrypted on-device and are never compiled into the build or stored in `.env`).
+
+For optional local release signing, copy [keystore.properties.example](keystore.properties.example) to `keystore.properties` (git-ignored) and fill in your keystore values.
+
+### Running Tests
+
+```bash
+# Run all shared KMP unit, property-fuzz & adversarial security tests + Android ViewModel & chaos tests
+./gradlew :shared:testAndroidHostTest :app:testDebugUnitTest
+
+# Run instrumented tests (Room migrations, Anki .apkg/.colpkg reader, PDF worksheets) on a throwaway emulator
+./gradlew connectedDebugAndroidTest
+
+# On macOS, run the shared test suite on the iOS Simulator
+./gradlew :shared:iosSimulatorArm64Test
+```
+
+### Running on iOS (macOS)
+
 ```bash
 cd iosApp
 xcodegen generate
 open iosApp.xcodeproj
 ```
-Then run it on a simulator from Xcode. The first build takes a few minutes, since it compiles the shared Kotlin code. On iPhone, translation uses the cloud providers, so it needs an API key: until one is set, Today says so and the card form starts in Manual mode. On-device translation, Local AI, import/export, the backup file, practice sheet PDFs, reading text from a photo and the widget are Android-only for now.
 
-> **Your API keys stay on your device.** The app keeps them in local app storage (DataStore). They are left out of the backup file and of the phone's own backups (Google backup, iCloud Backup). They are never compiled into the app, so you don't need to add them to `local.properties`.
-
-See the [privacy policy](docs/privacy-policy.md) for what the app stores and sends. Store listing texts and form answers are in [docs/store](docs/store/).
-
-### Running tests
-```bash
-./gradlew testDebugUnitTest :shared:testAndroidHostTest
-# On a Mac, the shared tests also run on the iOS simulator:
-./gradlew :shared:iosSimulatorArm64Test
-```
-The unit tests cover the ViewModels, the FSRS scheduler, the streak rules, prompt building and response parsing, editing and searching cards, export, import, backup and restore, answer checking in Type mode (both directions), reminder timing, the date labels and the widget's texts. They run in GitHub Actions on every pull request and every push to `main`; the shared tests also run on the iOS simulator whenever shared or iOS code changes.
-
-The same CI run builds the minified release build (R8, signed with the debug key), installs it on an Android emulator, starts it and fails if the app is not running 20 seconds later. Unit tests run on debug classes, so this is the check that catches a missing keep rule. The instrumented tests (database migrations, the Anki package reader, practice sheet PDFs) then run on that emulator. To run them yourself, use `./gradlew connectedDebugAndroidTest` on an emulator you don't study on: the task removes the debug build, and with it its cards, when it is done.
-
-## 📦 Releases
-
-Signed APKs are published on the [Releases](https://github.com/Andreas-Erick/LanguageCoast/releases) page. Download the APK on an Android device to install it. You may need to allow installs from unknown sources. Installing a new version over an old one keeps your cards and progress. To move to a new phone, use *Back up* in Settings and *Restore* the file on the new phone.
-
-The released APK is built for ARM phones (practically every Android phone) to keep it small. To run the app on an x86 emulator, build it from Android Studio instead.
-
-<details>
-<summary>How releases are built (for maintainers)</summary>
-
-Pushing a tag such as `v3.1.0` runs the [release workflow](.github/workflows/release.yml), which builds a signed APK and app bundle (for Google Play) and attaches them to a GitHub Release, together with the build's R8 mapping file:
-
-```bash
-git tag v3.1.0
-git push origin v3.1.0
-```
-
-The version name and code come from the tag (`v1.8.2` → `1.8.2`, code `10802`), so there is no need to edit `build.gradle.kts` before a release. Google Play accepts each version code only once, so a tag is always three plain numbers, with minor and patch below 100. The workflow refuses a pre-release tag such as `v3.1.0-rc1`, because it would use up the code of the final `v3.1.0`. A test build is the next patch release.
-
-The release workflow does not start the app. CI builds the minified release variant on every push to `main`, installs it on an emulator and starts it, so tag a commit whose CI run passed.
-
-The workflow needs these repository secrets (*Settings → Secrets and variables → Actions*): `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`.
-
-To sign release builds locally, place a `keystore.properties` file in the project root (it is git-ignored):
-
-```properties
-storeFile=release-keystore.jks
-storePassword=...
-keyAlias=...
-keyPassword=...
-```
-
-**Reading a crash from a released APK.** Release builds are minified, so the names in their stack traces are shortened. From v3.1.0 on, each release carries `LanguageCoast-vX.Y.Z-mapping.txt.gz`, which turns them back: unpack it and run `retrace LanguageCoast-vX.Y.Z-mapping.txt stacktrace.txt` (`retrace` comes with the Android SDK command-line tools). Google Play does this by itself, because the app bundle carries the same mapping.
-
-**Google Play.** Nothing is uploaded to Play automatically: the app bundle from the GitHub Release is uploaded by hand in the [Play Console](https://play.google.com/console). For the first release:
-
-1. Create the app in the Play Console. Its package name, `com.andreaserick.languagecoast`, comes from the first bundle you upload and can't be changed afterwards.
-2. Decide on Play App Signing before a release reaches open testing or production; after that the app signing key is fixed. By default Google generates the key. A copy installed from Play and an APK from the Releases page are then signed differently and can't update each other: to move over, use *Back up* in Settings, uninstall, install from Play and *Restore*. To let them update each other, provide the existing release key as the app signing key instead. Note the choice here, and once the listing is live say it in the paragraph on installing above.
-3. Upload `LanguageCoast-vX.Y.Z.aab` from the GitHub Release, never a bundle built on your own computer: a local build has version code 1 and version name 1.0. Every upload needs a new tag, because the version code comes from it.
-4. Start on the internal testing track and install the app from Play on a real phone. That is the first time the bundle runs as the split APKs Play makes from it. Then move on to a closed testing track. A personal developer account created after 13 November 2023 can apply for production only after a closed test with at least 12 testers who stayed opted in for 14 days in a row.
-5. Fill in the store listing, Data safety, content rating, target audience and the other declarations from [docs/store/README.md](docs/store/README.md), and give the link to the [privacy policy](docs/privacy-policy.md).
-6. Write a *What's new* text of at most 500 characters for each release.
-7. After a release, read crashes and ANRs under *Android vitals*, and check in the app bundle explorer that the bundle supports 16 KB memory pages.
-
-**iOS.** The same tag also runs the [iOS release workflow](.github/workflows/ios-release.yml), which builds the signed app on a GitHub Mac runner and uploads it to App Store Connect, where it shows up in TestFlight. Submitting it for review is done in App Store Connect. The version comes from the tag and the build number from the workflow run. A tag the Android workflow refuses, such as `v3.1.0-rc1`, is refused here as well. The workflow can also be started by hand from the Actions tab; it then uploads the version you type there, or the version of the latest tag if you leave it empty. Signing is cloud-managed, so no Mac or certificate files are needed. One-time setup, all in the browser:
-
-1. In the [Apple Developer portal](https://developer.apple.com/account/resources/identifiers/list), register the bundle ID `com.andreaserick.languagecoast`.
-2. In [App Store Connect](https://appstoreconnect.apple.com), create the app with that bundle ID.
-3. Under *Users and Access → Integrations → App Store Connect API → Team Keys*, generate a key with **Admin** access (needed to create the distribution certificate) and download the `.p8` file. It can be downloaded only once.
-4. Add these repository secrets:
-   - `APP_STORE_CONNECT_KEY_BASE64`: the `.p8` file in Base64 (`base64 -w0 AuthKey_XXXX.p8`)
-   - `APP_STORE_CONNECT_KEY_ID`: the key's ID
-   - `APP_STORE_CONNECT_ISSUER_ID`: the issuer ID shown above the keys
-   - `APPLE_TEAM_ID`: the team ID from *Membership details* in the Developer portal
-
-Without these secrets, the iOS workflow skips the upload.
-</details>
-
-## 🎨 Design
-
-Language Coast is deep water lit from above, with one sunlit accent. A light theme (warm sand tones with no surface as bright as white, and deeper accents for contrast) can be picked in Settings, or the app can follow the phone:
-- **Ocean**: a dark blue ground with a gradient that lightens towards the top, and a few lighter layers of it for cards, tiles and selected controls.
-- **Sunlit**: a single warm gold, used only for what to do next: the main button, due counts, the active tab.
-- **Coral** for *Again* and errors, **seafoam** for success, and off-white and mist for text.
-- **The mark**: a sun on the horizon over two waves, drawn once as a vector for the launcher icon, splash, widget and the app itself.
-
-Everything is set in [Nunito](https://github.com/googlefonts/nunito) (licensed under the [SIL Open Font License](docs/licenses/Nunito-OFL.txt)) on one type scale, and text colors are checked against the WCAG contrast guidelines (at least 4.5:1 for normal text). The palette lives in `shared/.../ui/theme/Color.kt` and the shared controls in `ui/components/CoastControls.kt`.
-
-## 📄 License
-
-Copyright © 2026 Andreas Erick. All rights reserved. The source code is public for reference only; see [LICENSE](LICENSE). Third-party assets keep their own licenses (see [docs/licenses](docs/licenses/)).
+Run on a simulator from Xcode. On iOS, translation uses cloud providers via your own API key (entered in Settings); until a key is set, the card composer defaults to Manual mode. On-device ML Kit, Local AI, file import/export, practice sheet PDFs, OCR photo capture, and the home-screen widget are currently Android-only.
 
 ---
 
-<p align="center"><i>"Build your coast, one word at a time."</i> 🌊⚓</p>
+## Project Structure
+
+```text
+LanguageCoast/
+├── shared/src/
+│   ├── commonMain/
+│   │   ├── kotlin/.../languagecoast/
+│   │   │   ├── App.kt                 # Bottom navigation and type-safe NavHost
+│   │   │   ├── data/                  # Room DB, repositories, DataStore + SecretStore, FSRS-5,
+│   │   │   │                          # HttpRetry, cloud/local translators, Anki/CSV/JSON parsers
+│   │   │   ├── di/                    # Koin shared & ViewModel modules
+│   │   │   ├── navigation/            # Type-safe Compose navigation routes
+│   │   │   ├── notifications/         # Reminder scheduling interface & message selection
+│   │   │   └── ui/                    # Feature Screens + ViewModels, shared controls & theme
+│   │   └── composeResources/          # Nunito variable font and vector logo mark
+│   ├── androidMain/                   # Android KeyStore SecretStore, ML Kit, LiteRT-LM,
+│   │                                  # Anki zstd/SQLite reader, PDF printer, TTS, reduced motion
+│   ├── iosMain/                       # iOS Keychain SecretStore, BundledSQLite, AVSpeechSynthesizer,
+│   │                                  # UNUserNotificationCenter, reduced motion
+│   ├── commonTest/                    # FSRS, parser, HttpRetry, property-fuzz & adversarial security tests
+│   └── androidHostTest/               # Live localhost SSE streaming tests for Claude
+├── app/
+│   ├── src/main/                      # Android entry point, WorkManager reminders, AppWidgetProvider
+│   ├── src/test/                      # ViewModel unit tests, Koin DI verification, chaos/monkey tests
+│   └── src/androidTest/               # Room migration, Anki .apkg fixture & PDF instrumented tests
+├── iosApp/                            # SwiftUI host shell, PrivacyInfo.xcprivacy & XcodeGen spec
+├── docs/                              # Privacy policy, screenshots, store listing assets & third-party licenses
+└── .github/workflows/                 # Android CI (unit + R8 release smoke + emulator tests), iOS CI & releases
+```
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Multiplatform & UI | Kotlin 2.4, Compose Multiplatform 1.12, Material 3, Navigation Compose |
+| Architecture & DI | MVVM (`StateFlow` / unidirectional data flow), Koin 4.1 |
+| Persistence & Secrets | Room KMP (SQLite), Jetpack DataStore, Android KeyStore (AES-256-GCM) / iOS Keychain |
+| Networking & AI | Ktor Client 3.2 (with `HttpRetry` backoff + jitter), LiteRT-LM (local LLMs), Google ML Kit (translate & OCR) |
+| Scheduling & Speech | Pure-Kotlin FSRS-5, WorkManager / `UNUserNotificationCenter`, Android TTS / `AVSpeechSynthesizer` |
+| Serialization & Compression | `kotlinx.serialization` JSON, `zstd-jni` (Anki `.apkg`/`.colpkg`) |
+| Testing & CI | `kotlin.test`, JUnit 4, `kotlinx-coroutines-test`, seeded property fuzzing, ViewModel chaos & adversarial security suites, GitHub Actions |
+
+---
+
+## Feature Highlights
+
+- **Daily Focus Sessions (Today):** Caps daily reviews by pace (*Steady* 3 new/day, *Fast* 10, *Sprint* 20) with automatic welcome-back scaling after 3+ days away, background sentence suggestions tailored to your coast's goal/region, and a 900-sentence starter bank across 37 topics.
+- **Flexible Translation & Card Creation:** Switch between On-Device ML Kit (offline), Local AI via LiteRT-LM (offline, auto-categorization, alternatives), Cloud AI (**Gemini**, **OpenAI**, **Claude**, **Groq**, **DeepSeek**, **OpenRouter** with explicit per-provider consent), *I write it* correction mode, Manual mode, and batch capture from pasted text or photos (Android OCR).
+- **CEFR Route & Personal Islands:** Track A1–B1 progression per coast, generate custom personal islands from optional *About you* answers, rehearse any island as a spoken talk, drill *Leaky words*, and print AI-generated **Practice Sheet PDFs** (Android) weighted toward slipping FSRS cards.
+- **Multi-Mode Study:** Focus-mode **Flip** (swipe or tap), **Type** (accent-aware matching with alternatives), and **Fill gap** modes in both directions, plus offline read-aloud, in-context word explanations with **dict.cc** lookup, *Check translation*, and *Ask about this card* follow-up chat.
+- **Portability & Reminders:** Full JSON backup/restore (excluding secrets), Anki `.apkg`/`.colpkg` & CSV/TSV import, Anki/CSV/Markdown export, local WorkManager/`UNUserNotificationCenter` reminders (with Android inline Reveal/Grade notification actions), monthly recaps, and an Android home-screen widget.
+- **Supported Languages (30):** 28 dict.cc languages (Albanian, Bosnian, Bulgarian, Croatian, Czech, Danish, Dutch, English, Esperanto, Finnish, French, German, Greek, Hungarian, Icelandic, Italian, Latin, Norwegian, Polish, Portuguese, Romanian, Russian, Serbian, Slovak, Spanish, Swedish, Turkish, Ukrainian) plus Japanese and Korean.
+
+---
+
+## Design & Accessibility
+
+Language Coast uses a custom deep-ocean dark palette and a warm-sand daylight palette (without pure `#FFFFFF` or dead grays), with one sunlit gold accent reserved strictly for primary actions and due indicators:
+
+- **WCAG AA Contrast:** Every text and interactive boundary token meets WCAG AA contrast across every surface in both dark and light themes ([Color.kt](shared/src/commonMain/kotlin/com/andreaserick/languagecoast/ui/theme/Color.kt), [Theme.kt](shared/src/commonMain/kotlin/com/andreaserick/languagecoast/ui/theme/Theme.kt)).
+- **Typography & Motion:** Set in the [Nunito](docs/licenses/Nunito-OFL.txt) variable font with tabular numerals (`tnum`) on dynamic counters/timers/progress stats, `>= 48dp` interactive targets, locale-tagged screen-reader spans, and OS reduced-motion support (disabling confetti, 3D card flips, and ambient glides when enabled).
+
+---
+
+## Releases & Privacy
+
+- Signed Android APKs and Play App Bundles are published via [release.yml](.github/workflows/release.yml) on semantic version tags (`vX.Y.Z`), alongside iOS TestFlight uploads via [ios-release.yml](.github/workflows/ios-release.yml).
+- See [docs/privacy-policy.md](docs/privacy-policy.md) for data handling details and [docs/store/README.md](docs/store/README.md) for Play Store / App Store declarations.
+
+## License
+
+Copyright © 2026 Andreas Erick. All rights reserved. The source code is public for reference only; see [LICENSE](LICENSE). Third-party components retain their own licenses (see [docs/licenses/THIRD-PARTY.md](docs/licenses/THIRD-PARTY.md)).

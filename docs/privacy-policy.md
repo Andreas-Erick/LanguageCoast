@@ -1,6 +1,6 @@
 # Privacy policy
 
-*Language Coast · Last updated November 15, 2026*
+*Language Coast · Last updated November 19, 2026*
 
 Language Coast is a flashcard app for learning languages, made by Andreas Erick. This policy explains what happens to your data when you use it on Android or iPhone.
 
@@ -73,8 +73,8 @@ Study reminders are scheduled on your phone. No push service is involved, and no
 
 ## Security
 
-- Everything the app sends travels over an encrypted connection (HTTPS).
-- Your cards, settings, answers and keys are kept in the app's private storage, which other apps cannot read. The app adds no lock of its own, so your phone's screen lock is what keeps them from someone holding your phone.
+- Everything the app sends travels over an encrypted connection (HTTPS), and cleartext HTTP traffic is blocked.
+- Your cards, settings and answers are kept in the app's private storage, which other apps cannot read. API keys and Hugging Face tokens are stored encrypted using hardware-backed OS key storage (Android KeyStore AES-256-GCM on Android, iOS Keychain on iPhone). The app adds no lock of its own, so your phone's screen lock is what keeps your cards from someone holding your phone.
 - An API key is sent only to the provider it belongs to, and only after you have allowed that provider. Keys are left out of device backups and of the app's backup files.
 - The app has no server, and the developer holds no copy of your data.
 - Files you save yourself (backups, exports, practice sheets) are ordinary readable files. Keep them somewhere you trust.

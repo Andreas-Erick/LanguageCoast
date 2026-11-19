@@ -226,12 +226,15 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
 
             SettingsCard(title = "Weekly goal", icon = Icons.Default.Flag) {
                 FieldLabel("Islands to study each week")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     SettingsDefaults.WEEKLY_GOALS.forEach { goal ->
                         FilterChip(
                             selected = goal == uiState.weeklyGoal,
                             onClick = { viewModel.setWeeklyGoal(goal) },
-                            label = { Text("$goal", style = MaterialTheme.typography.labelMedium) },
+                            label = { Text("$goal", style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")) },
                             colors = coastChipColors(),
                             border = coastChipBorder(enabled = true, selected = goal == uiState.weeklyGoal),
                             shape = MaterialTheme.shapes.small
@@ -243,7 +246,10 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
 
             SettingsCard(title = "Look & feel", icon = Icons.Default.Palette) {
                 FieldLabel("Theme")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     ThemeMode.entries.forEach { mode ->
                         FilterChip(
                             selected = mode == uiState.themeMode,
@@ -544,6 +550,8 @@ private fun ApiKeySection(
         Spacer(modifier = Modifier.height(12.dp))
     }
 
+    var confirmRemove by remember { mutableStateOf(false) }
+
     CoastTextField(
         value = currentInput,
         onValueChange = {
@@ -557,6 +565,9 @@ private fun ApiKeySection(
         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
         // A password field for the keyboard too, shown or hidden: it must not learn or suggest the key.
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+            onDone = { if ((!isSaved || canCheckAgain) && currentInput.isNotBlank()) onSave(currentInput) }
+        ),
         leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
         trailingIcon = {
             IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -599,12 +610,31 @@ private fun ApiKeySection(
 
     if (savedKey.isNotEmpty()) {
         TextButton(
-            onClick = onRemove,
+            onClick = { confirmRemove = true },
             colors = ButtonDefaults.textButtonColors(contentColor = CoralText),
             contentPadding = PaddingValues(0.dp)
         ) {
             Text("Remove $shortNoun", style = MaterialTheme.typography.labelMedium)
         }
+    }
+
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text("Remove $noun?") },
+            text = { Text("This deletes the saved $noun from this device.", color = TextSecondary) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRemove = false
+                    onRemove()
+                }) { Text("Remove", color = CoralText, style = MaterialTheme.typography.labelMedium) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemove = false }) {
+                    Text("Cancel", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        )
     }
 }
 
@@ -1178,7 +1208,7 @@ private fun ModelRecommendationCard(
                                 Text(
                                     text = "Downloading $downloadedMb / $totalMb MB ($percent%)",
                                     color = TextPrimary,
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -1349,7 +1379,10 @@ private fun ReminderSection(
     if (reminder.enabled) {
         Spacer(modifier = Modifier.height(12.dp))
         val chipColors = coastChipColors()
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             FilterChip(
                 selected = reminder.time == null,
                 onClick = { onTimeChange(null) },
@@ -1361,7 +1394,7 @@ private fun ReminderSection(
             FilterChip(
                 selected = reminder.time != null,
                 onClick = { showTimePicker = true },
-                label = { Text(reminder.time?.let { formatTime(it) } ?: "Pick a time", style = MaterialTheme.typography.labelMedium) },
+                label = { Text(reminder.time?.let { formatTime(it) } ?: "Pick a time", style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")) },
                 colors = chipColors,
                 border = coastChipBorder(enabled = true, selected = reminder.time != null),
                 shape = MaterialTheme.shapes.small

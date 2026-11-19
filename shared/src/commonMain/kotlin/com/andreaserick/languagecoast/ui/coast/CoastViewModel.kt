@@ -326,7 +326,11 @@ class CoastViewModel(
         speaker.stop()
         talk.value = TalkUiState(island)
         talkJob = viewModelScope.launch {
-            val coast = flashcards.observeCoast(coastId).first() ?: return@launch
+            val coast = flashcards.observeCoast(coastId).first()
+            if (coast == null) {
+                talk.value = TalkUiState(island, error = "This coast is no longer available.")
+                return@launch
+            }
             val canSpeak = speaker.canSpeak(coast.language).first()
             talk.value = TalkUiState(island, canSpeak = canSpeak)
             val cards = flashcards.observeCards(island.islandId).first().sortedBy { it.cardId }.take(TALK_CARD_LIMIT)

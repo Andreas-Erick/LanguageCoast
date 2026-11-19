@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Sailing
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -265,7 +267,11 @@ fun StreakCard(
     ContentCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.Bottom) {
             if (streakCount > 0) {
-                Text("$streakCount", style = MaterialTheme.typography.headlineMedium, color = SunlitText)
+                Text(
+                    "$streakCount",
+                    style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
+                    color = SunlitText
+                )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "day streak",
@@ -275,7 +281,7 @@ fun StreakCard(
             } else {
                 Column {
                     Text("Start your streak today", style = MaterialTheme.typography.titleMedium)
-                    Text("Finish today's session to light the fire.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text("Finish today's session to start a new streak.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                 }
             }
         }
@@ -302,7 +308,7 @@ fun StreakCard(
                 text = buildString {
                     append(if (reached) "Weekly goal reached: " else "Weekly goal: ")
                     append("$islandsThisWeek of ${plural(weeklyGoal, "island")}")
-                    if (freezeUsedOn != null) append(" · ❄️ freeze used ${dayOfWeekName(freezeUsedOn.dayOfWeek, narrow = false)}")
+                    if (freezeUsedOn != null) append(" · Freeze used ${dayOfWeekName(freezeUsedOn.dayOfWeek, narrow = false)}")
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
@@ -316,7 +322,14 @@ fun StreakCard(
 private fun LeakyCard(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
     ContentCard(onClick = onClick, onClickLabel = "study them", modifier = modifier, padding = PaddingValues(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconTile { Text("💧", fontSize = 22.sp) }
+            IconTile {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.WaterDrop,
+                    contentDescription = null,
+                    tint = SurfBlue,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("${plural(count, "leaky word")}", style = MaterialTheme.typography.titleMedium)

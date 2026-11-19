@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -229,13 +230,17 @@ interface SettingsRepository {
 
     /** Replaces everything stored here with [backup], except the API keys, which are kept. */
     suspend fun restoreSettings(backup: BackupSettings)
+
+    /** Moves any legacy plaintext secrets out of DataStore into hardware-backed [SecretStore]. */
+    suspend fun migrateLegacySecrets() {}
 }
 
-/** [SettingsRepository] backed by Preferences DataStore; days are counted in [timeZone]. */
+/** [SettingsRepository] backed by Preferences DataStore and hardware-backed [SecretStore]; days are counted in [timeZone]. */
 class DataStoreSettingsRepository(
     private val dataStore: DataStore<Preferences>,
     private val clock: Clock,
-    private val timeZone: TimeZone
+    private val timeZone: TimeZone,
+    private val secretStore: SecretStore = InMemorySecretStore()
 ) : SettingsRepository {
 
     override val nativeLanguage: Flow<String> =
@@ -244,23 +249,22 @@ class DataStoreSettingsRepository(
     override val activeCoastId: Flow<Int?> =
         dataStore.data.map { it[ACTIVE_COAST_ID] }
 
-    override val translationProvider: Flow<TranslationProvider> = dataStore.data.map { preferences ->
+    override val translationProvider: Flow<TranslationProvider> = combine(dataStore.data, secretStore.version) { preferences, _ ->
+        val hasGeminiKey = !readSecret(preferences, API_KEY).isBlank()
         preferences[TRANSLATION_PROVIDER]?.let { name -> TranslationProvider.entries.firstOrNull { it.name == name } }
             // A provider this phone can't run (Local AI in settings that came from another phone) counts as none picked.
             ?.takeUnless { (it == TranslationProvider.LocalAi && !localAiAvailable) || (it == TranslationProvider.OnDevice && !onDeviceTranslationAvailable) }
             // Before providers could be picked, Gemini was the only one; keep it for users who set it up.
-            ?: if (onDeviceTranslationAvailable && preferences[API_KEY].isNullOrBlank()) TranslationProvider.OnDevice else TranslationProvider.Gemini
+            ?: if (onDeviceTranslationAvailable && !hasGeminiKey) TranslationProvider.OnDevice else TranslationProvider.Gemini
     }
 
-    override val apiKey: Flow<String> =
-        dataStore.data.map { it[API_KEY] ?: "" }
+    override val apiKey: Flow<String> = secretFlow(API_KEY)
 
     override val geminiModel: Flow<String> =
         // A model picked in an earlier version may be retired by now; show and use its replacement.
         dataStore.data.map { normalizeGeminiModel(it[GEMINI_MODEL] ?: SettingsDefaults.GEMINI_MODEL) }
 
-    override val openRouterKey: Flow<String> =
-        dataStore.data.map { it[OPENROUTER_KEY] ?: "" }
+    override val openRouterKey: Flow<String> = secretFlow(OPENROUTER_KEY)
 
     override val openRouterModel: Flow<String> =
         dataStore.data.map { it[OPENROUTER_MODEL] ?: SettingsDefaults.OPENROUTER_MODEL }
@@ -268,29 +272,24 @@ class DataStoreSettingsRepository(
     override val localAiModel: Flow<String> =
         dataStore.data.map { it[LOCAL_AI_MODEL] ?: SettingsDefaults.LOCAL_AI_MODEL }
 
-    override val openAiKey: Flow<String> =
-        dataStore.data.map { it[OPENAI_KEY] ?: "" }
+    override val openAiKey: Flow<String> = secretFlow(OPENAI_KEY)
 
     override val openAiModel: Flow<String> =
         dataStore.data.map { it[OPENAI_MODEL] ?: SettingsDefaults.OPENAI_MODEL }
 
-    override val claudeKey: Flow<String> =
-        dataStore.data.map { it[CLAUDE_KEY] ?: "" }
+    override val claudeKey: Flow<String> = secretFlow(CLAUDE_KEY)
 
     override val claudeModel: Flow<String> =
         dataStore.data.map { it[CLAUDE_MODEL] ?: SettingsDefaults.CLAUDE_MODEL }
 
-    override val groqKey: Flow<String> =
-        dataStore.data.map { it[GROQ_KEY] ?: "" }
+    override val groqKey: Flow<String> = secretFlow(GROQ_KEY)
 
-    override val huggingFaceToken: Flow<String> =
-        dataStore.data.map { it[HUGGING_FACE_TOKEN] ?: "" }
+    override val huggingFaceToken: Flow<String> = secretFlow(HUGGING_FACE_TOKEN)
 
     override val groqModel: Flow<String> =
         dataStore.data.map { it[GROQ_MODEL] ?: SettingsDefaults.GROQ_MODEL }
 
-    override val deepSeekKey: Flow<String> =
-        dataStore.data.map { it[DEEPSEEK_KEY] ?: "" }
+    override val deepSeekKey: Flow<String> = secretFlow(DEEPSEEK_KEY)
 
     override val deepSeekModel: Flow<String> =
         dataStore.data.map { it[DEEPSEEK_MODEL] ?: SettingsDefaults.DEEPSEEK_MODEL }
@@ -391,6 +390,7 @@ class DataStoreSettingsRepository(
 
     override suspend fun removeApiKey(provider: TranslationProvider) {
         val key = apiKeyPreference(provider) ?: return
+        secretStore.remove(key.name)
         dataStore.edit { preferences ->
             preferences.remove(key)
             val allowed = preferences[AI_SHARING_ALLOWED].orEmpty() - provider.name
@@ -398,7 +398,8 @@ class DataStoreSettingsRepository(
         }
     }
 
-    override suspend fun isEmpty(): Boolean = dataStore.data.first().asMap().isEmpty()
+    override suspend fun isEmpty(): Boolean =
+        dataStore.data.first().asMap().isEmpty() && SECRET_KEYS.all { secretStore.get(it.name).isNullOrEmpty() }
 
     override suspend fun setNativeLanguage(language: String) = set(NATIVE_LANG, language)
     override suspend fun setStudyReversed(reversed: Boolean) = set(STUDY_REVERSED, reversed)
@@ -420,7 +421,13 @@ class DataStoreSettingsRepository(
     override suspend fun setGroqKey(key: String) = setKey(TranslationProvider.Groq, key)
     override suspend fun setHuggingFaceToken(token: String) {
         // A blank token is no token: removing it leaves nothing of it behind.
-        dataStore.edit { preferences -> if (token.isBlank()) preferences.remove(HUGGING_FACE_TOKEN) else preferences[HUGGING_FACE_TOKEN] = token }
+        if (token.isBlank()) {
+            secretStore.remove(HUGGING_FACE_TOKEN.name)
+        } else {
+            secretStore.put(HUGGING_FACE_TOKEN.name, token)
+        }
+        // Clear any legacy plaintext copy from DataStore.
+        dataStore.edit { it.remove(HUGGING_FACE_TOKEN) }
     }
     override suspend fun setGroqModel(model: String) = set(GROQ_MODEL, model)
     override suspend fun setDeepSeekKey(key: String) = setKey(TranslationProvider.DeepSeek, key)
@@ -514,7 +521,7 @@ class DataStoreSettingsRepository(
             put(ACTIVE_COAST_ID, backup.activeCoastId)
             // A provider this version doesn't know falls back to the default.
             put(TRANSLATION_PROVIDER, backup.translationProvider?.takeIf { name -> TranslationProvider.entries.any { it.name == name } })
-            put(GEMINI_MODEL, backup.geminiModel)
+            put(GEMINI_MODEL, backup.geminiModel?.let(::normalizeGeminiModel))
             put(OPENROUTER_MODEL, backup.openRouterModel)
             put(LOCAL_AI_MODEL, backup.localAiModel)
             put(OPENAI_MODEL, backup.openAiModel)
@@ -547,11 +554,44 @@ class DataStoreSettingsRepository(
         dataStore.edit { it[key] = value }
     }
 
-    /** Stores [provider]'s API key. A blank one removes the key, and with it the permission to send text there. */
+    /** Stores [provider]'s API key in [secretStore]. A blank one removes the key and revokes AI sharing consent. */
     private suspend fun setKey(provider: TranslationProvider, key: String) {
         val preference = apiKeyPreference(provider) ?: return
-        if (key.isBlank()) removeApiKey(provider) else set(preference, key)
+        if (key.isBlank()) {
+            removeApiKey(provider)
+        } else {
+            secretStore.put(preference.name, key)
+            // Remove any legacy plaintext copy from DataStore if present.
+            if (dataStore.data.first()[preference] != null) {
+                dataStore.edit { it.remove(preference) }
+            }
+        }
     }
+
+    /** Moves any legacy plaintext secrets from DataStore into hardware-backed [secretStore] and deletes the plaintext copies. */
+    override suspend fun migrateLegacySecrets() {
+        val preferences = dataStore.data.first()
+        val toRemove = SECRET_KEYS.filter { key ->
+            val legacy = preferences[key]
+            if (!legacy.isNullOrBlank()) {
+                if (secretStore.get(key.name).isNullOrBlank()) {
+                    secretStore.put(key.name, legacy)
+                }
+                true
+            } else {
+                legacy != null
+            }
+        }
+        if (toRemove.isNotEmpty()) {
+            dataStore.edit { mutable -> toRemove.forEach { mutable.remove(it) } }
+        }
+    }
+
+    private fun secretFlow(key: Preferences.Key<String>): Flow<String> =
+        combine(dataStore.data, secretStore.version) { preferences, _ -> readSecret(preferences, key) }
+
+    private fun readSecret(preferences: Preferences, key: Preferences.Key<String>): String =
+        secretStore.get(key.name) ?: preferences[key] ?: ""
 
     private fun Preferences.readProfile(): Profile =
         PROFILE_KEYS.entries.fold(Profile()) { profile, (placeholder, key) -> profile.with(placeholder, this[key].orEmpty()) }
@@ -622,6 +662,10 @@ class DataStoreSettingsRepository(
             TranslationProvider.OpenRouter -> OPENROUTER_KEY
             TranslationProvider.OnDevice, TranslationProvider.LocalAi -> null
         }
+
+        val SECRET_KEYS: List<Preferences.Key<String>> = listOf(
+            API_KEY, OPENROUTER_KEY, OPENAI_KEY, CLAUDE_KEY, GROQ_KEY, DEEPSEEK_KEY, HUGGING_FACE_TOKEN
+        )
     }
 }
 

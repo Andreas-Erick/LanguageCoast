@@ -17,12 +17,16 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="datastore/" />
+        <exclude domain="sharedpref" path="languagecoast_secrets.xml" />
+        <exclude domain="sharedpref" path="local_model_downloads.xml" />
         <exclude domain="external" path="local_models/" />
         <exclude domain="file" path="local_models/" />
         <exclude domain="file" path="model.litertlm" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="datastore/" />
+        <exclude domain="sharedpref" path="languagecoast_secrets.xml" />
+        <exclude domain="sharedpref" path="local_model_downloads.xml" />
         <exclude domain="external" path="local_models/" />
         <exclude domain="file" path="local_models/" />
         <exclude domain="file" path="model.litertlm" />

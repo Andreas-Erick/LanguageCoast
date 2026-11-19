@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -32,6 +34,7 @@ import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.islandEmoji
+import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
@@ -57,12 +60,21 @@ fun EditCardSheet(
     var targetText by rememberSaveable { mutableStateOf(card.targetText) }
     var alternatives by rememberSaveable { mutableStateOf(card.alternatives.joinToString("\n")) }
     var islandId by rememberSaveable { mutableStateOf(card.islandId) }
+    var nativeBlurred by remember { mutableStateOf(false) }
+    var targetBlurred by remember { mutableStateOf(false) }
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val initialAlternatives = remember(card.cardId) { card.alternatives.joinToString("\n") }
+    val isDirty = nativeText != card.nativeText || targetText != card.targetText || alternatives != initialAlternatives || islandId != card.islandId
     val edit = remember(nativeText, targetText, alternatives, islandId) {
         cardEditOf(card, nativeText, targetText, alternatives, islandId)
     }
 
+    fun requestDismiss() {
+        if (isDirty) confirmDiscard = true else onDismiss()
+    }
+
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = ::requestDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         Column(
@@ -78,13 +90,23 @@ fun EditCardSheet(
                 value = nativeText,
                 onValueChange = { nativeText = it },
                 label = { Text(nativeLanguage) },
-                modifier = Modifier.fillMaxWidth()
+                supportingText = if (nativeBlurred && nativeText.isBlank()) {
+                    { Text("Enter the $nativeLanguage side to save.", color = CoralText) }
+                } else null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { if (!it.isFocused && nativeText != card.nativeText) nativeBlurred = true }
             )
             CoastTextField(
                 value = targetText,
                 onValueChange = { targetText = it },
                 label = { Text("$targetLanguage translation") },
-                modifier = Modifier.fillMaxWidth()
+                supportingText = if (targetBlurred && targetText.isBlank()) {
+                    { Text("Enter the $targetLanguage translation to save.", color = CoralText) }
+                } else null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { if (!it.isFocused && targetText != card.targetText) targetBlurred = true }
             )
             CoastTextField(
                 value = alternatives,
@@ -107,7 +129,7 @@ fun EditCardSheet(
             }
             Spacer(modifier = Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = TextPrimary)) {
+                TextButton(onClick = ::requestDismiss, colors = ButtonDefaults.textButtonColors(contentColor = TextPrimary)) {
                     Text("Cancel")
                 }
                 Spacer(modifier = Modifier.width(8.dp))
@@ -116,6 +138,25 @@ fun EditCardSheet(
                 }
             }
         }
+    }
+
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text("Discard changes?") },
+            text = { Text("Your edits to this card haven't been saved yet.", color = TextSecondary) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDiscard = false
+                    onDismiss()
+                }) { Text("Discard", color = CoralText, style = MaterialTheme.typography.labelMedium) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDiscard = false }) {
+                    Text("Keep editing", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        )
     }
 }
 
