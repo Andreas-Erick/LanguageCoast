@@ -684,9 +684,9 @@ class DataStoreSettingsRepository(
         /** One key per profile blank, named after the placeholder. */
         val PROFILE_KEYS: Map<String, Preferences.Key<String>> =
             Profile.PLACEHOLDERS.associateWith { stringPreferencesKey("profile_" + it.replace(' ', '_')) }
-        /** One key per question the app asks about the user. */
+        /** One key per answer about the user (questions and per-island extra notes). */
         val ANSWER_KEYS: Map<String, Preferences.Key<String>> =
-            PersonalIslands.QUESTIONS.associate { it.key to stringPreferencesKey("about_" + it.key) }
+            PersonalIslands.ANSWER_KEYS.associateWith { stringPreferencesKey("about_$it") }
         val PERSONAL_ISLANDS_BUILT = stringSetPreferencesKey("personal_islands_built")
         val WORDING = stringPreferencesKey("about_wording")
         val PACE = stringPreferencesKey("study_pace")
