@@ -39,20 +39,30 @@ class PersonalIsland(
     /** Whether the island is written from what the user answered, rather than on a theme anyone needs. */
     val isAboutUser: Boolean get() = questions.isNotEmpty()
 
+    /** Key where free-form extra details for this island are stored in [SettingsRepository.personalAnswers] (empty for theme islands). */
+    val extraKey: String get() = if (isAboutUser) "${id}_extra" else ""
+
+    /** Anything else the user wrote for this island beyond [questions], trimmed, or null if blank. */
+    fun extraAnswer(answers: Map<String, String>): String? =
+        if (!isAboutUser) null else answers[extraKey]?.trim()?.takeIf { it.isNotEmpty() }
+
     /** The questions of this island that [answers] (by [PersonalQuestion.key]) has something for. */
     fun answered(answers: Map<String, String>): List<PersonalQuestion> = questions.filter { !answers[it.key].isNullOrBlank() }
 
-    /** Whether the island can be written: at least one of its questions is answered (a theme island always can). */
-    fun isUnlocked(answers: Map<String, String>): Boolean = !isAboutUser || answered(answers).isNotEmpty()
+    /** Whether the island can be written: at least one of its questions is answered, or something else was added (a theme island always can). */
+    fun isUnlocked(answers: Map<String, String>): Boolean =
+        !isAboutUser || answered(answers).isNotEmpty() || extraAnswer(answers) != null
 
     /**
      * What is known about the user for this island, as label and value: the profile's fields it uses, then
-     * the answered questions. Empty answers are left out.
+     * the answered questions, then anything else the user added. Empty answers are left out.
      */
     fun facts(profile: Profile, answers: Map<String, String>): List<Pair<String, String>> {
         val fillers = profile.fillers()
         val fromProfile = profileFields.mapNotNull { field -> fillers[field]?.let { profileLabel(field) to it } }
-        return fromProfile + answered(answers).map { it.label to answers.getValue(it.key).trim() }
+        val fromQuestions = answered(answers).map { it.label to answers.getValue(it.key).trim() }
+        val fromExtra = extraAnswer(answers)?.let { listOf(EXTRA_FACT_LABEL to it) }.orEmpty()
+        return fromProfile + fromQuestions + fromExtra
     }
 
     /**
@@ -65,6 +75,9 @@ class PersonalIsland(
 
 /** Sentences an island about the user aims for; fewer when the answers don't honestly support that many. */
 const val PERSONAL_ISLAND_SENTENCES = 25
+
+/** Label for the optional free-form field on each category of "About you", and in the facts written from it. */
+const val EXTRA_FACT_LABEL = "Something else"
 
 /**
  * The islands about the user that level A2 asks for: who they are, the people around them, where they
@@ -354,6 +367,9 @@ object PersonalIslands {
 
     /** Every question the app asks, in the order of the form. */
     val QUESTIONS: List<PersonalQuestion> = ALL.flatMap { it.questions }
+
+    /** Every key an answer about the user can be stored under: each [PersonalQuestion.key] and each island's [PersonalIsland.extraKey]. */
+    val ANSWER_KEYS: List<String> = ALL.flatMap { island -> island.questions.map { it.key } + island.extraKey }
 
     /** The island with [id], about the user or on a theme, if there is one. */
     fun byId(id: String): PersonalIsland? = (ALL + WRITTEN).firstOrNull { it.id == id }

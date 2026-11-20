@@ -1,9 +1,11 @@
 package com.andreaserick.languagecoast.data
 
+import com.andreaserick.languagecoast.ui.about.AboutYouUiState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PersonalIslandsTest {
@@ -17,6 +19,9 @@ class PersonalIslandsTest {
         assertEquals(islands.size, islands.distinctBy { it.id }.size)
         assertEquals(islands.size, islands.distinctBy { it.name }.size)
         assertEquals(PersonalIslands.QUESTIONS.size, PersonalIslands.QUESTIONS.distinctBy { it.key }.size)
+        assertEquals(PersonalIslands.QUESTIONS.size + islands.size, PersonalIslands.ANSWER_KEYS.distinct().size)
+        assertTrue(islands.all { it.extraKey.isNotBlank() })
+        assertTrue(PersonalIslands.WRITTEN.all { it.extraKey.isEmpty() && it.extraAnswer(mapOf("" to "x")) == null })
         assertTrue(islands.all { it.questions.size >= 2 })
         // An island about the user must not land on a starter topic's island.
         assertTrue(islands.none { PhraseBank.theme(it.name) != null })
@@ -92,5 +97,28 @@ class PersonalIslandsTest {
         assertEquals(listOf("I have one sister.", "Do you have brothers or sisters?"), sentences.map { it.nativeText })
         assertEquals("Tengo una hermana.", sentences.first().targetText)
         assertTrue(sentences.all { it.category == "My Family" && it.emoji == "👪" })
+    }
+
+    @Test
+    fun extraDetailsUnlockAnIslandAppearInFactsAndCountWhenFilled() {
+        assertFalse(work.isUnlocked(mapOf(work.extraKey to "   ")))
+        assertNull(work.extraAnswer(mapOf(work.extraKey to "   ")))
+
+        val onlyExtra = mapOf(work.extraKey to "  I volunteer at the library twice a week  ")
+        assertTrue(work.isUnlocked(onlyExtra))
+        assertEquals(
+            listOf("Your job" to "nurse", EXTRA_FACT_LABEL to "I volunteer at the library twice a week"),
+            work.facts(Profile(job = "nurse"), onlyExtra)
+        )
+        assertNotEquals(work.fingerprint(Profile(job = "nurse"), emptyMap()), work.fingerprint(Profile(job = "nurse"), onlyExtra))
+
+        val baseTotal = Profile.PLACEHOLDERS.size + PersonalIslands.QUESTIONS.size
+        val emptyState = AboutYouUiState()
+        assertEquals(0, emptyState.answeredCount)
+        assertEquals(baseTotal, emptyState.questionCount)
+
+        val withExtra = AboutYouUiState(profile = Profile(name = "Anna"), answers = mapOf("work_place" to "hospital") + onlyExtra)
+        assertEquals(3, withExtra.answeredCount)
+        assertEquals(baseTotal + 1, withExtra.questionCount)
     }
 }

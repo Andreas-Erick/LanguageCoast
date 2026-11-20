@@ -359,6 +359,7 @@ private fun PaceSection() {
 @Composable
 private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
@@ -1336,36 +1337,21 @@ private fun ReminderSection(
     val notifications = rememberNotificationAccess()
     val time = reminder.time
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .toggleable(
-                value = reminder.enabled,
-                role = Role.Switch,
-                onValueChange = { enabled ->
-                    onEnabledChange(enabled)
-                    // The moment to ask: the user has just said they want reminders.
-                    if (enabled && !notifications.allowed) notifications.request()
-                }
-            )
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text("Daily reminder", style = MaterialTheme.typography.titleSmall)
-            Text(
-                text = when {
-                    !reminder.enabled -> "Off"
-                    time == null -> "At a surprise time between ${formatTime(LocalTime(RANDOM_WINDOW_START_HOUR, 0))} " +
-                        "and ${formatTime(LocalTime(RANDOM_WINDOW_END_HOUR + 1, 0))}"
-                    else -> "Every day at ${formatTime(time)}"
-                },
-                color = TextSecondary,
-                style = MaterialTheme.typography.bodySmall
-            )
+    ToggleRow(
+        title = "Daily reminder",
+        subtitle = when {
+            !reminder.enabled -> "Off"
+            time == null -> "At a surprise time between ${formatTime(LocalTime(RANDOM_WINDOW_START_HOUR, 0))} " +
+                "and ${formatTime(LocalTime(RANDOM_WINDOW_END_HOUR + 1, 0))}"
+            else -> "Every day at ${formatTime(time)}"
+        },
+        checked = reminder.enabled,
+        onCheckedChange = { enabled ->
+            onEnabledChange(enabled)
+            // The moment to ask: the user has just said they want reminders.
+            if (enabled && !notifications.allowed) notifications.request()
         }
-        Switch(checked = reminder.enabled, onCheckedChange = null)
-    }
+    )
 
     if (reminder.enabled && !notifications.allowed) {
         Spacer(modifier = Modifier.height(10.dp))

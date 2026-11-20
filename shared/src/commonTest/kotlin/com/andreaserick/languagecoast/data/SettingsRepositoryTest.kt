@@ -45,12 +45,18 @@ class SettingsRepositoryTest {
 
     @Test
     fun anAnswerAboutTheUserIsStoredOnItsOwn() = runTest {
-        val settings = repository()
+        val settings = memorySettings()
 
         settings.setPersonalAnswer("pets_which", "a cat called Milo")
+        settings.setPersonalAnswer("pets_extra", "we also foster kittens in spring")
 
-        assertEquals(mapOf("pets_which" to "a cat called Milo"), settings.personalAnswers.first())
-        assertEquals(mapOf("pets_which" to "a cat called Milo"), settings.backupSettings().personalAnswers)
+        val expected = mapOf("pets_which" to "a cat called Milo", "pets_extra" to "we also foster kittens in spring")
+        assertEquals(expected, settings.personalAnswers.first())
+        assertEquals(expected, settings.backupSettings().personalAnswers)
+
+        val restored = memorySettings()
+        restored.restoreSettings(settings.backupSettings())
+        assertEquals(expected, restored.personalAnswers.first())
     }
 
     @Test

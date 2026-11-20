@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,14 +20,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +40,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -43,6 +49,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andreaserick.languagecoast.data.EXTRA_FACT_LABEL
 import com.andreaserick.languagecoast.data.PERSONAL_ISLAND_SENTENCES
 import com.andreaserick.languagecoast.data.PersonalIsland
 import com.andreaserick.languagecoast.data.PersonalIslands
@@ -256,7 +263,7 @@ private fun BasicsCard(
 
 /**
  * The questions behind one island about the user. Closed, it shows the island and how many of its
- * questions are answered; open, a field per question.
+ * questions are answered; open, a field per question and an option to write anything else not covered.
  */
 @Composable
 private fun IslandQuestionsCard(
@@ -266,7 +273,27 @@ private fun IslandQuestionsCard(
     onToggle: () -> Unit,
     onAnswer: (key: String, value: String) -> Unit
 ) {
-    val answered = island.answered(answers).size
+    val savedExtra = answers[island.extraKey].orEmpty()
+    val hasExtra = island.extraAnswer(answers) != null
+    val answered = island.answered(answers).size + if (hasExtra) 1 else 0
+    val total = island.questions.size + if (hasExtra) 1 else 0
+    var showExtra by rememberSaveable(island.id) { mutableStateOf(savedExtra.isNotBlank()) }
+    var hasLocalExtra by rememberSaveable(island.id) { mutableStateOf(savedExtra.isNotBlank()) }
+    var focusExtra by remember { mutableStateOf(false) }
+    val extraFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(savedExtra) {
+        if (savedExtra.isNotBlank()) {
+            showExtra = true
+            hasLocalExtra = true
+        }
+    }
+    LaunchedEffect(expanded) {
+        if (!expanded && !hasLocalExtra && savedExtra.isBlank()) {
+            showExtra = false
+        }
+    }
+
     ContentCard(padding = PaddingValues(0.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -284,9 +311,9 @@ private fun IslandQuestionsCard(
             Spacer(modifier = Modifier.width(8.dp))
             // Always there, so the first answer doesn't push the text beside it onto another line.
             when (answered) {
-                0 -> Pill("0/${island.questions.size}", container = SurfaceRaised, content = TextSecondary)
-                island.questions.size -> Pill("$answered/${island.questions.size}", container = Seafoam, content = OnSeafoam)
-                else -> Pill("$answered/${island.questions.size}", container = SurfaceSelected, content = TextPrimary)
+                0 -> Pill("0/$total", container = SurfaceRaised, content = TextSecondary)
+                total -> Pill("$answered/$total", container = Seafoam, content = OnSeafoam)
+                else -> Pill("$answered/$total", container = SurfaceSelected, content = TextPrimary)
             }
             Icon(
                 imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -297,20 +324,60 @@ private fun IslandQuestionsCard(
         }
         AnimatedVisibility(visible = expanded) {
             Column(
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 18.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = if (showExtra) 18.dp else 6.dp)
             ) {
-                island.questions.forEach { question ->
-                    Column {
-                        Text(question.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 6.dp))
-                        DraftField(
-                            saved = answers[question.key].orEmpty(),
-                            onChange = { onAnswer(question.key, it) },
-                            label = null,
-                            example = question.example,
-                            singleLine = false,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    island.questions.forEach { question ->
+                        Column {
+                            Text(question.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 6.dp))
+                            DraftField(
+                                saved = answers[question.key].orEmpty(),
+                                onChange = { onAnswer(question.key, it) },
+                                label = null,
+                                example = question.example,
+                                singleLine = false,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                    if (showExtra) {
+                        LaunchedEffect(focusExtra) {
+                            if (focusExtra) {
+                                focusExtra = false
+                                runCatching { extraFocusRequester.requestFocus() }
+                            }
+                        }
+                        Column {
+                            Text(EXTRA_FACT_LABEL, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 6.dp))
+                            DraftField(
+                                saved = savedExtra,
+                                onChange = {
+                                    hasLocalExtra = it.isNotBlank()
+                                    onAnswer(island.extraKey, it)
+                                },
+                                label = null,
+                                example = "Anything else not covered by the questions above",
+                                singleLine = false,
+                                modifier = Modifier.fillMaxWidth().focusRequester(extraFocusRequester)
+                            )
+                        }
+                    }
+                }
+                if (!showExtra) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    TextButton(
+                        onClick = {
+                            showExtra = true
+                            focusExtra = true
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = SunlitText),
+                        contentPadding = PaddingValues(start = 4.dp, end = 12.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Write something else", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }

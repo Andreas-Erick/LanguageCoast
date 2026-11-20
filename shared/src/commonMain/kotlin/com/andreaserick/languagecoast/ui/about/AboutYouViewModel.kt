@@ -38,9 +38,12 @@ data class AboutYouUiState(
     val engineProblem: String? = null,
     val isLoading: Boolean = true
 ) {
+    private val questionAnsweredCount: Int get() = PersonalIslands.QUESTIONS.count { !answers[it.key].isNullOrBlank() }
+    private val extraAnsweredCount: Int get() = PersonalIslands.ALL.count { it.extraAnswer(answers) != null }
+
     /** How many of the questions and basics are filled in, and how many there are. */
-    val answeredCount: Int get() = profile.fillers().size + answers.count { it.value.isNotBlank() }
-    val questionCount: Int get() = Profile.PLACEHOLDERS.size + PersonalIslands.QUESTIONS.size
+    val answeredCount: Int get() = profile.fillers().size + questionAnsweredCount + extraAnsweredCount
+    val questionCount: Int get() = Profile.PLACEHOLDERS.size + PersonalIslands.QUESTIONS.size + extraAnsweredCount
 }
 
 /** The "About you" screen: the basics and the questions behind the islands about the user, saved with debounced writes. */
