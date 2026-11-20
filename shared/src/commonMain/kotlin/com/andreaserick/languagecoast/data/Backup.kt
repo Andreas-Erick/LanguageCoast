@@ -132,6 +132,7 @@ fun encodeBackup(backup: Backup): String = backupJson.encodeToString(Backup.seri
 internal fun BackupSettings.isReadable(): Boolean =
     // A hundred years of days: more than that is not a streak anyone studied.
     streakCount in 0..36_500 &&
+        (weeklyGoal == null || weeklyGoal in 1..365) &&
         (lastStudyDate == null || parseDateOrNull(lastStudyDate) != null) &&
         (freezeUsedOn == null || parseDateOrNull(freezeUsedOn) != null) &&
         studyDays.all { parseDateOrNull(it) != null } &&
@@ -198,6 +199,17 @@ fun decodeBackup(text: String): Backup {
     val coastIds = backup.coasts.mapTo(HashSet()) { it.coastId }
     val islandIds = backup.islands.mapTo(HashSet()) { it.islandId }
     val validTimestamp = backup.createdAt in MIN_VALID_EPOCH_MILLIS..MAX_VALID_EPOCH_MILLIS
+    val coastsValid = backup.coasts.all { coast ->
+        coast.language.isNotBlank() &&
+            coast.creationDate in MIN_VALID_EPOCH_MILLIS..MAX_VALID_EPOCH_MILLIS &&
+            coast.bankOffered >= 0
+    }
+    val islandsValid = backup.islands.all { island ->
+        island.coastId in coastIds &&
+            island.name.isNotBlank() &&
+            island.creationDate in MIN_VALID_EPOCH_MILLIS..MAX_VALID_EPOCH_MILLIS &&
+            (island.lastStudied == null || island.lastStudied in MIN_VALID_EPOCH_MILLIS..MAX_VALID_EPOCH_MILLIS)
+    }
     val cardsValid = backup.cards.all { card ->
         card.islandId in islandIds &&
             card.lapses >= 0 &&
@@ -207,13 +219,14 @@ fun decodeBackup(text: String): Backup {
             (card.lastReviewed == null || card.lastReviewed in MIN_VALID_EPOCH_MILLIS..MAX_VALID_EPOCH_MILLIS)
     }
     val isComplete = validTimestamp &&
+        coastsValid &&
         coastIds.size == backup.coasts.size &&
         // The app keeps one coast per language; two would push each other out while being restored.
         backup.coasts.distinctBy { it.language }.size == backup.coasts.size &&
         backup.settings.isReadable() &&
         islandIds.size == backup.islands.size &&
         backup.cards.distinctBy { it.cardId }.size == backup.cards.size &&
-        backup.islands.all { it.coastId in coastIds } &&
+        islandsValid &&
         cardsValid
     if (!isComplete) throw BackupException("This backup is damaged and can't be restored.")
     return backup

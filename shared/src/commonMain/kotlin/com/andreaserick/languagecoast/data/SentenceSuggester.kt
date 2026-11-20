@@ -107,9 +107,10 @@ class SentenceSuggester(
             logError(TAG, "No suggestions from the model: ${completion.errorMessage}")
             return Attempt(emptyList(), completion.errorMessage)
         }
+        val avoidWords = avoid.mapTo(HashSet(), ::normalizedWords)
         return Attempt(
             parseSuggestionResponse(text)
-                .filterNot { proposal -> avoid.any { isSameSentence(it, proposal.nativeText) } }
+                .filterNot { proposal -> normalizedWords(proposal.nativeText) in avoidWords }
                 .take(count)
         )
     }
@@ -203,17 +204,16 @@ class SuggestionPool(
     }
 
     private suspend fun topUpLocked(coastId: Int) {
+        val now = clock.now().toEpochMilliseconds()
+        failedAt.value[coastId]?.let { if (now - it < RETRY_AFTER_MILLIS) return }
         val coast = flashcards.observeCoast(coastId).first() ?: return
         val pace = settings.pace.first()
         if (flashcards.observeSuggestions(coastId).first().size >= pace.newPerDay) return
-        val waiting = flashcards.observeAllCards().first().count { it.coastId == coastId && it.card.due == null }
-        if (waiting >= pace.newPerDay) return
-        val now = clock.now().toEpochMilliseconds()
-        failedAt.value[coastId]?.let { if (now - it < RETRY_AFTER_MILLIS) return }
+        val cards = flashcards.getPlacedCardsForCoast(coastId).first()
+        if (cards.count { it.card.due == null } >= pace.newPerDay) return
 
         _preparing.update { it + coastId }
         try {
-            val cards = flashcards.observeAllCards().first().filter { it.coastId == coastId }
             val known = flashcards.getAllSuggestions(coastId)
             val avoid = cards.map { it.card.nativeText } + known.map { it.nativeText }
             val nativeLanguage = settings.nativeLanguage.first()
@@ -238,10 +238,14 @@ class SuggestionPool(
             }
             val proposals = suggestions.sentences
             // The bank can't check the avoid list in a native language other than English, so check translations too.
-            val knownTargets = cards.map { it.card.targetText } + known.map { it.targetText }
+            val avoidWords = avoid.mapTo(HashSet(), ::normalizedWords)
+            val knownTargetWords = HashSet<List<String>>(cards.size + known.size).apply {
+                cards.forEach { add(normalizedWords(it.card.targetText)) }
+                known.forEach { add(normalizedWords(it.targetText)) }
+            }
             val fresh = proposals
                 .filterNot { proposal ->
-                    avoid.any { isSameSentence(it, proposal.nativeText) } || knownTargets.any { isSameSentence(it, proposal.targetText) }
+                    normalizedWords(proposal.nativeText) in avoidWords || normalizedWords(proposal.targetText) in knownTargetWords
                 }
                 .distinctBy { normalizedWords(it.targetText) }
             if (fresh.isEmpty()) {

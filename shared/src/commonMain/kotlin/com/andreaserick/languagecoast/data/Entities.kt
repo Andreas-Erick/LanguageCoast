@@ -163,7 +163,8 @@ data class WorksheetSourceCard(
     val stability: Double? = null,
     val difficulty: Double? = null,
     val lastReviewed: Long? = null,
-    val lapses: Int = 0
+    val lapses: Int = 0,
+    val note: String? = null
 )
 
 /** A [LanguageIsland] with its number of cards, and how many of them are due (see [isDue]). */

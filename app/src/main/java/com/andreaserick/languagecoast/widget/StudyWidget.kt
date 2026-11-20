@@ -6,16 +6,19 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 import android.widget.RemoteViews
 import com.andreaserick.languagecoast.MainActivity
 import com.andreaserick.languagecoast.R
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.logError
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.datetime.toKotlinLocalDate
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -65,21 +68,27 @@ class StudyWidgetProvider : AppWidgetProvider(), KoinComponent {
     /** Reads the counts off the main thread, then redraws every placed widget. */
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
+        val job = SupervisorJob()
+        CoroutineScope(job + Dispatchers.IO).launch {
             try {
-                // A missed day must show as a lost streak, as it would on opening the app.
-                settings.refreshStreak()
-                val content = widgetContent(
-                    dueCount = flashcards.countDueCards(clock.millis()),
-                    streak = settings.streakCount.first(),
-                    studiedToday = LocalDate.now(clock).toKotlinLocalDate() in settings.studyDays.first()
-                )
-                val views = remoteViews(context, content)
-                appWidgetIds.forEach { appWidgetManager.updateAppWidget(it, views) }
+                withTimeout(WIDGET_TIMEOUT_MILLIS) {
+                    // A missed day must show as a lost streak, as it would on opening the app.
+                    settings.refreshStreak()
+                    val content = widgetContent(
+                        dueCount = flashcards.countDueCards(clock.millis()),
+                        streak = settings.streakCount.first(),
+                        studiedToday = LocalDate.now(clock).toKotlinLocalDate() in settings.studyDays.first()
+                    )
+                    val views = remoteViews(context, content)
+                    appWidgetIds.forEach { appWidgetManager.updateAppWidget(it, views) }
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Couldn't update the widget", e)
+                logError(TAG, "Couldn't update the widget", e)
             } finally {
                 pendingResult.finish()
+                job.cancel()
             }
         }
     }
@@ -103,6 +112,7 @@ class StudyWidgetProvider : AppWidgetProvider(), KoinComponent {
 
     companion object {
         private const val TAG = "StudyWidget"
+        private const val WIDGET_TIMEOUT_MILLIS = 8_000L
 
         /** Redraws any placed widgets, e.g. after studying changed the counts. Does nothing if none are placed. */
         fun requestUpdate(context: Context) {

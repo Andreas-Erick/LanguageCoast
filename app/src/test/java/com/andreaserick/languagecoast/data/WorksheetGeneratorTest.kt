@@ -743,4 +743,95 @@ class WorksheetGeneratorTest {
         val sheet = (generator.generate(1, WorksheetOptions(count = 10)) as WorksheetResult.Ready).worksheet
         assertEquals(1, sheet.sentences.size)
     }
+
+    @Test
+    fun spareSelectionDropsOffAnchorAndUnglossedLinesAndKeepsInflectedWordHelp() = runTest {
+        translator.completionFor = { prompt ->
+            val dealt = anchors(prompt)
+            // 5 anchors dealt for count = 3: line 1 ignores its anchor completely, line 2 leaves its new word unglossed,
+            // and lines 3..5 honour their anchors (including an umlauted verb with dictionary-form word help).
+            val replies = dealt.mapIndexed { idx, anchor ->
+                val cardText = anchor.substringAfter(": ")
+                val nativeSide = prompt.lines().first { it.startsWith("$cardText = ") }.substringAfter(" = ")
+                when (idx) {
+                    0 -> "1 || Morgen scheint die Sonne hell. || Tomorrow the sun shines brightly. || morgen = tomorrow; Sonne = sun"
+                    1 -> "2 || Leider: $cardText || Unfortunately: $nativeSide || -"
+                    2 -> "3 || Fährt das Kind? $cardText || Does the child go? $nativeSide || fahren = to go"
+                    else -> "${idx + 1} || Heute: $cardText || Today: $nativeSide || heute = today"
+                }
+            }
+            Completion(replies.joinToString("\n"))
+        }
+
+        val sheet = (generator.generate(1, WorksheetOptions(count = 3, difficulty = WorksheetDifficulty.Medium)) as WorksheetResult.Ready).worksheet
+
+        assertEquals(3, sheet.sentences.size)
+        assertFalse(sheet.sentences.any { "Sonne" in it.targetText })
+        assertFalse(sheet.sentences.any { "Leider" in it.targetText })
+        // Dictionary-form "fahren" was kept for surface "Fährt" because accent-folded stem matching linked them.
+        assertEquals(listOf(WordHelp("fahren", "to go")), sheet.sentences.first().newWords)
+    }
+
+    @Test
+    fun consecutiveSheetsRotateAcrossStudiedCardsAndAvoidPreviousSheetSentences() = runTest {
+        flashcards.islands.value = listOf(LanguageIsland(islandId = 1, coastId = 1, name = "Travel"))
+        flashcards.cards.value = (1..10).map { idx ->
+            studied(
+                Flashcard(cardId = idx, islandId = 1, nativeText = "native $idx", targetText = "Station$idx ist nah."),
+                daysAgo = 30,
+                lapses = 2
+            )
+        }
+        translator.completionFor = { prompt ->
+            val dealt = anchors(prompt)
+            Completion(
+                dealt.mapIndexed { idx, anchor ->
+                    val cardText = anchor.substringAfter(": ")
+                    "${idx + 1} || Heute $cardText || Today $cardText || heute = today"
+                }.joinToString("\n")
+            )
+        }
+
+        val firstSheet = (generator.generate(1, WorksheetOptions(count = 3)) as WorksheetResult.Ready).worksheet
+        val firstCards = firstSheet.sentences.mapNotNull { it.card?.targetText }.toSet()
+        assertEquals(3, firstCards.size)
+
+        translator.prompts.clear()
+        val secondSheet = (generator.generate(1, WorksheetOptions(count = 3)) as WorksheetResult.Ready).worksheet
+        val secondCards = secondSheet.sentences.mapNotNull { it.card?.targetText }.toSet()
+
+        // Second sheet rotates to studied cards that were not anchored on the first sheet, and tells the prompt to avoid Sheet #1's sentences.
+        assertEquals(3, secondCards.size)
+        assertTrue("Expected fresh studied anchors, got $firstCards vs $secondCards", (firstCards intersect secondCards).isEmpty())
+        val secondPrompt = translator.prompts.first()
+        firstSheet.sentences.forEach { sentence ->
+            assertTrue(sentence.targetText in secondPrompt)
+        }
+    }
+
+    @Test
+    fun goalCardNotesAndEstimatedCustomDeckLevelReachThePrompt() = runTest {
+        flashcards.setCoastGoal(1, goal = "Working in a Vienna hospital", region = "Austria")
+        flashcards.islands.value = listOf(LanguageIsland(islandId = 1, coastId = 1, name = "Imported Deck"))
+        flashcards.cards.value = (1..60).map { idx ->
+            Flashcard(
+                cardId = idx,
+                islandId = 1,
+                nativeText = "When does the train arrive $idx?",
+                targetText = "Wann kommt der Zug heute an $idx?",
+                stability = 10.0,
+                difficulty = 5.0,
+                lastReviewed = TEST_CLOCK.now().toEpochMilliseconds() - 5 * 86_400_000L,
+                note = if (idx <= 40) "Polite Sie form" else null
+            )
+        }
+        translator.completion = Completion("")
+
+        generator.generate(1, WorksheetOptions(count = 20))
+
+        val prompt = translator.prompts.first()
+        assertTrue("Their native language is English and their level is about A2. Why they are learning German: \"Working in a Vienna hospital\"." in prompt)
+        assertTrue("Its words and grammar suit level A2." in prompt)
+        assertTrue("(Note: Polite Sie form)" in prompt)
+    }
 }

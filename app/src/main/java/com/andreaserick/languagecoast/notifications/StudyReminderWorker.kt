@@ -1,7 +1,6 @@
 package com.andreaserick.languagecoast.notifications
 
 import android.content.Context
-import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -12,6 +11,7 @@ import com.andreaserick.languagecoast.data.PersonalIslands
 import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.isDue
+import com.andreaserick.languagecoast.data.logError
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -125,7 +125,7 @@ class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Couldn't show the study reminder", e)
+            logError(TAG, "Couldn't show the study reminder", e)
         }
         reminderScheduler.scheduleNext()
         return Result.success()

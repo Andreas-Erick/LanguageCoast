@@ -1,11 +1,16 @@
 package com.andreaserick.languagecoast.data
 
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 class WorksheetTest {
 
@@ -639,5 +644,288 @@ class WorksheetTest {
     fun aSheetStartsAsTenMediumSentences() {
         assertEquals(WorksheetOptions(count = 10, difficulty = WorksheetDifficulty.Medium, direction = WorksheetDirection.ToTarget), WorksheetOptions())
         assertTrue(WORKSHEET_DEFAULT_COUNT in WORKSHEET_COUNT_RANGE)
+    }
+
+    @Test
+    fun vocabularyAndWordHelpRecognizeUmlautedInflectionsAndParticiplesWithoutFalsePositives() {
+        val vocabulary = CoastVocabulary(
+            cards.map { it.targetText } + listOf(
+                "Der Zug fährt um acht.",
+                "Das Haus ist groß.",
+                "Wir haben Wasser und kaufen Brot.",
+                "Ich möchte einkaufen.",
+                "Wir öffnen die Tür."
+            )
+        )
+
+        // Umlauted plurals/conjugations and ge-/separable participles of card words count as known.
+        assertEquals(emptyList(), vocabulary.unknownWords("Züge, Häuser und Äpfel!"))
+        assertEquals(emptyList(), vocabulary.unknownWords("Wir haben Brot gekauft und eingekauft, die Tür ist geöffnet."))
+        // Words that merely start with "ge-" or share a short prefix are not mistaken for card words.
+        assertEquals(listOf("gefahr", "gestern", "derzeit"), vocabulary.unknownWords("Gefahr gestern derzeit"))
+
+        // Conversely, when the sentence uses an umlauted or participial form of a NEW word, dictionary-form word help is kept.
+        val smallerCoast = CoastVocabulary(cards.map { it.targetText })
+        assertEquals(
+            listOf(WordHelp("fahren", "to go"), WordHelp("einkaufen", "to shop")),
+            smallerCoast.wordHelp(
+                "Das Kind fährt zum Strand und hat eingekauft.",
+                listOf(
+                    WordHelp("fahren", "to go"),
+                    WordHelp("einkaufen", "to shop"),
+                    WordHelp("Strand", "beach")
+                )
+            )
+        )
+    }
+
+    @Test
+    fun sentencesThatHonourTheirAnchorCardBeatOffAnchorAndUnnumberedSpares() {
+        val trainCard = WorksheetCard("Travel", "Der Zug ist spät.", "The train is late.")
+        val known = cards.map { it.targetText } + trainCard.targetText
+        val vocabulary = CoastVocabulary(known + "Der Zug hat Verspätung.")
+        val appleCard = cards[2]
+
+        val offAnchor = WorksheetSentence("Wo ist der Strand?", "Where is the beach?", card = trainCard)
+        val unnumbered = WorksheetSentence("Das Kind geht zum Strand.", "The child is going to the beach.", card = null)
+        val viaAlternative = WorksheetSentence(
+            "Hat das Kind heute Verspätung?",
+            "Is the child delayed today?",
+            card = trainCard,
+            newWords = listOf(WordHelp("heute", "today"))
+        )
+        val viaUmlaut = WorksheetSentence("Wo sind die Äpfel?", "Where are the apples?", card = appleCard, newWords = listOf(WordHelp("sind", "are")))
+
+        val picked = pickWorksheetSentences(
+            candidates = listOf(offAnchor, unnumbered, viaAlternative, viaUmlaut),
+            vocabulary = vocabulary,
+            known = known,
+            count = 2,
+            difficulty = WorksheetDifficulty.Medium,
+            cardAlternatives = mapOf(trainCard to listOf("Der Zug hat Verspätung."))
+        )
+
+        assertEquals(listOf(viaAlternative, viaUmlaut), picked)
+    }
+
+    @Test
+    fun duplicateAnchorOnAnIslandWaitsBehindAnUnusedCardOfTheSameIsland() {
+        val known = cards.map { it.targetText }
+        val vocabulary = CoastVocabulary(known)
+        val stationCard = cards[0]
+        val beachCard = cards[1]
+
+        val firstStation = WorksheetSentence("Wo ist heute der Bahnhof?", "Where is the station today?", card = stationCard)
+        val secondStation = WorksheetSentence("Das Kind geht zum Bahnhof.", "The child is going to the station.", card = stationCard)
+        val firstBeach = WorksheetSentence("Geht das Kind zum Strand?", "Is the child going to the beach?", card = beachCard)
+
+        val picked = pickWorksheetSentences(
+            candidates = listOf(firstStation, secondStation, firstBeach),
+            vocabulary = vocabulary,
+            known = known,
+            count = 2,
+            difficulty = WorksheetDifficulty.Medium
+        )
+
+        assertEquals(listOf(firstStation, firstBeach), picked)
+    }
+
+    @Test
+    fun activeRecallIntoTargetLanguagePrefersExplainedNewWordsOverUnglossedOnes() {
+        val known = cards.map { it.targetText }
+        val vocabulary = CoastVocabulary(known)
+        val unglossed = WorksheetSentence("Wir besuchen das Kind.", "We are visiting the child.", newWords = emptyList())
+        val glossed = WorksheetSentence(
+            "Morgen geht das Kind zum Strand.",
+            "Tomorrow the child goes to the beach.",
+            newWords = listOf(WordHelp("morgen", "tomorrow"))
+        )
+
+        assertEquals(
+            listOf(glossed),
+            pickWorksheetSentences(
+                candidates = listOf(unglossed, glossed),
+                vocabulary = vocabulary,
+                known = known,
+                count = 1,
+                difficulty = WorksheetDifficulty.Medium,
+                direction = WorksheetDirection.ToTarget,
+                expectsWordHelp = true
+            )
+        )
+        // Reading comprehension (ToNative) shows the target word directly, so missing word help is less critical than order.
+        assertEquals(
+            listOf(unglossed),
+            pickWorksheetSentences(
+                candidates = listOf(unglossed, glossed),
+                vocabulary = vocabulary,
+                known = known,
+                count = 1,
+                difficulty = WorksheetDifficulty.Medium,
+                direction = WorksheetDirection.ToNative,
+                expectsWordHelp = true
+            )
+        )
+    }
+
+    @Test
+    fun pickWorksheetSentencesPreservesOrderAndCountAcrossSeededPropertyTrials() {
+        val known = cards.map { it.targetText }
+        val vocabulary = CoastVocabulary(known)
+        val wordPool = listOf("wo", "ist", "der", "bahnhof", "strand", "apfel", "kind", "heute", "morgen", "gekauft", "äpfel")
+
+        for (seed in 1..120) {
+            val rng = kotlin.random.Random(seed)
+            val candidateCount = rng.nextInt(0, 25)
+            val requested = rng.nextInt(1, 20)
+            val candidates = List(candidateCount) { idx ->
+                val len = rng.nextInt(2, 12)
+                val target = List(len) { wordPool[rng.nextInt(wordPool.size)] }.joinToString(" ") + if (rng.nextBoolean()) "?" else "."
+                val native = "Sentence $idx" + if (rng.nextBoolean()) "?" else "."
+                val anchor = if (rng.nextBoolean()) cards[rng.nextInt(cards.size)] else null
+                val help = if (rng.nextBoolean()) listOf(WordHelp("heute", "today")) else emptyList()
+                WorksheetSentence(target, native, card = anchor, newWords = help)
+            }
+
+            val picked = pickWorksheetSentences(
+                candidates = candidates,
+                vocabulary = vocabulary,
+                known = known,
+                count = requested,
+                difficulty = WorksheetDifficulty.entries[rng.nextInt(WorksheetDifficulty.entries.size)],
+                direction = WorksheetDirection.entries[rng.nextInt(WorksheetDirection.entries.size)],
+                expectsWordHelp = rng.nextBoolean()
+            )
+
+            assertEquals(minOf(candidateCount, requested), picked.size, "Seed $seed failed size invariant")
+            val indices = picked.map { candidates.indexOf(it) }
+            assertEquals(indices.sorted(), indices, "Seed $seed failed relative order preservation")
+        }
+    }
+
+    @Test
+    fun promptIncludesGoalAndCardNotesWhenPresentAndStaysCleanWhenBlank() {
+        val annotatedAnchors = listOf(
+            WorksheetAnchor(bill, note = "Polite register [in cafés] || informal uses Zahlen!"),
+            WorksheetAnchor(cards[0], note = "   "),
+            WorksheetAnchor(cards[2], note = null)
+        )
+        val prompt = buildWorksheetPrompt(
+            cards = cards + bill,
+            targetLanguage = "German",
+            nativeLanguage = "English",
+            count = 3,
+            difficulty = WorksheetDifficulty.Medium,
+            anchors = annotatedAnchors,
+            goal = "Moving to Vienna\nfor nursing work"
+        )
+
+        assertTrue("Their native language is English. Why they are learning German: \"Moving to Vienna for nursing work\".\n" in prompt)
+        assertTrue("1. Restaurant: Die Rechnung, bitte. (Note: Polite register (in cafés) ; informal uses Zahlen!)\n" in prompt)
+        assertTrue("2. Travel: Wo ist der Bahnhof?\n" in prompt)
+        assertFalse("(Note:    )" in prompt)
+    }
+
+    @Test
+    fun readingComprehensionAllowsAnExtraNewWordWhileActiveTranslationStaysStricter() {
+        val known = cards.map { it.targetText }
+        val vocabulary = CoastVocabulary(known)
+        val twoUnknowns = WorksheetSentence("Das Kind isst heute keinen Apfel.", "The child isn't eating an apple today.")
+        val threeUnknowns = WorksheetSentence("Morgen isst das Kind keinen schönen Apfel.", "Tomorrow the child isn't eating a nice apple.")
+        val zeroUnknowns = WorksheetSentence("Wo ist das Kind?", "Where is the child?")
+
+        // Easy allows 1 unknown word in ToTarget, but 2 in ToNative reading comprehension.
+        assertEquals(
+            listOf(zeroUnknowns),
+            pickWorksheetSentences(listOf(twoUnknowns, zeroUnknowns), vocabulary, known, count = 1, WorksheetDifficulty.Easy, direction = WorksheetDirection.ToTarget)
+        )
+        assertEquals(
+            listOf(twoUnknowns),
+            pickWorksheetSentences(listOf(twoUnknowns, zeroUnknowns), vocabulary, known, count = 1, WorksheetDifficulty.Easy, direction = WorksheetDirection.ToNative)
+        )
+
+        // Medium allows 2 unknown words in ToTarget, and 3 in ToNative reading comprehension.
+        assertEquals(
+            listOf(zeroUnknowns),
+            pickWorksheetSentences(listOf(threeUnknowns, zeroUnknowns), vocabulary, known, count = 1, WorksheetDifficulty.Medium, direction = WorksheetDirection.ToTarget)
+        )
+        assertEquals(
+            listOf(threeUnknowns),
+            pickWorksheetSentences(listOf(threeUnknowns, zeroUnknowns), vocabulary, known, count = 1, WorksheetDifficulty.Medium, direction = WorksheetDirection.ToNative)
+        )
+    }
+
+    @Test
+    fun recentSheetSentencesCountAgainstCandidatesWhenFreshOnesAreAvailable() {
+        val known = cards.map { it.targetText }
+        val vocabulary = CoastVocabulary(known)
+        val exactRepeatOfLastSheet = WorksheetSentence("Wo ist das Kind?", "Where is the child?")
+        val nearRepeatOfLastSheet = WorksheetSentence("Wo ist heute das Kind?", "Where is the child today?")
+        val fresh = WorksheetSentence("Das Kind geht zum Bahnhof.", "The child is going to the station.")
+
+        val picked = pickWorksheetSentences(
+            candidates = listOf(exactRepeatOfLastSheet, nearRepeatOfLastSheet, fresh),
+            vocabulary = vocabulary,
+            known = known,
+            count = 1,
+            difficulty = WorksheetDifficulty.Medium,
+            recentSentences = listOf("Wo ist das Kind?")
+        )
+
+        assertEquals(listOf(fresh), picked)
+    }
+
+    @Test
+    fun estimateWorksheetLevelInfersA1A2AndB1FromStudiedCustomDecksAndNullWhenUnstudied() {
+        fun deck(count: Int, stability: Double?, target: String): List<WorksheetSourceCard> =
+            (1..count).map {
+                WorksheetSourceCard(
+                    islandId = 1,
+                    islandName = "Imported",
+                    targetText = "$target $it",
+                    nativeText = "English $it",
+                    stability = stability,
+                    lastReviewed = if (stability == null) null else 1_760_000_000_000L
+                )
+            }
+
+        assertNull(estimateWorksheetLevel(deck(count = 100, stability = null, target = "Wo ist der Bahnhof")))
+        assertNull(estimateWorksheetLevel(deck(count = 30, stability = 1.5, target = "Wo ist der Bahnhof")))
+        assertEquals(Level.A1, estimateWorksheetLevel(deck(count = 20, stability = 4.0, target = "Guten Tag")))
+        assertEquals(Level.A2, estimateWorksheetLevel(deck(count = 60, stability = 9.0, target = "Wir gehen heute zum Bahnhof")))
+        assertEquals(
+            Level.B1,
+            estimateWorksheetLevel(deck(count = 160, stability = 18.0, target = "Ich komme heute später weil der Zug Verspätung hat"))
+        )
+    }
+
+    @Test
+    fun worksheetHistoryInDataStoreBoundsAnchorsAndSentencesPerCoast() = runTest {
+        val clock = object : Clock {
+            override fun now() = Instant.parse("2026-10-09T12:00:00Z")
+        }
+        val repo = DataStoreSettingsRepository(MemoryDataStore(), clock, TimeZone.UTC, InMemorySecretStore())
+
+        repo.recordWorksheet(
+            coastId = 1,
+            anchoredCards = (1..100).map { "Travel\tKarte $it" },
+            targetSentences = (1..90).map { "Satz\nNummer $it" }
+        )
+        repo.recordWorksheet(
+            coastId = 2,
+            anchoredCards = listOf("Saludos\tHola"),
+            targetSentences = listOf("Buenos días.")
+        )
+
+        val coast1 = repo.worksheetHistory(1).first()
+        val coast2 = repo.worksheetHistory(2).first()
+
+        assertEquals(80, coast1.anchoredCards.size)
+        assertEquals("Travel\tKarte 21", coast1.anchoredCards.first())
+        assertEquals("Travel\tKarte 100", coast1.anchoredCards.last())
+        assertEquals(60, coast1.targetSentences.size)
+        assertEquals("Satz Nummer 31", coast1.targetSentences.first())
+        assertEquals("Satz Nummer 90", coast1.targetSentences.last())
+        assertEquals(WorksheetHistory(listOf("Saludos\tHola"), listOf("Buenos días.")), coast2)
     }
 }

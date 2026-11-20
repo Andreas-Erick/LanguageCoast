@@ -204,7 +204,8 @@ interface LanguageCoastDao {
         SELECT flashcards.islandId AS islandId, language_islands.name AS islandName,
             flashcards.targetText AS targetText, flashcards.nativeText AS nativeText, flashcards.alternatives AS alternatives,
             flashcards.stability AS stability, flashcards.difficulty AS difficulty, flashcards.lastReviewed AS lastReviewed,
-            flashcards.lapses AS lapses
+            flashcards.lapses AS lapses,
+            COALESCE(NULLIF(TRIM(flashcards.notes), ''), NULLIF(TRIM(flashcards.note), '')) AS note
         FROM flashcards INNER JOIN language_islands ON flashcards.islandId = language_islands.islandId
         WHERE language_islands.coastId = :coastId
         ORDER BY language_islands.name, flashcards.cardId
@@ -353,6 +354,35 @@ interface LanguageCoastDao {
     suspend fun deleteImportedCards(cardIds: List<Int>, createdIslandIds: List<Int>) {
         cardIds.chunked(DELETE_CHUNK).forEach { deleteFlashcardsById(it) }
         createdIslandIds.chunked(DELETE_CHUNK).forEach { deleteEmptyIslands(it) }
+    }
+
+    /**
+     * Replaces [replacedCardIds] with [newCards] on island [name] (with [emoji]) of coast [coastId] in one
+     * atomic transaction, returning the new card IDs.
+     */
+    @Transaction
+    suspend fun replaceIslandCards(
+        coastId: Int,
+        name: String,
+        emoji: String,
+        replacedCardIds: List<Int>,
+        newCards: List<ProposedSentence>
+    ): List<Int> {
+        replacedCardIds.chunked(DELETE_CHUNK).forEach { deleteFlashcardsById(it) }
+        val existing = getIslandByName(coastId, name)
+        val island = existing ?: LanguageIsland(coastId = coastId, name = name, emoji = emoji)
+            .let { it.copy(islandId = insertIsland(it).toInt()) }
+        return newCards.map { sentence ->
+            insertFlashcard(
+                Flashcard(
+                    islandId = island.islandId,
+                    nativeText = sentence.nativeText,
+                    targetText = sentence.targetText,
+                    alternatives = sentence.alternatives,
+                    note = sentence.note
+                )
+            ).toInt()
+        }
     }
 }
 
