@@ -113,6 +113,14 @@ internal class FocusPlanner(weights: DoubleArray, random: Random) {
     /** When island [island]'s next sentence is due: the smaller, the sooner. */
     fun due(island: Int): Double = next[island]
 
+    /** Saves the scheduler's cursor so a failed request can roll back without burning island turns. */
+    fun snapshot(): DoubleArray = next.copyOf()
+
+    /** Restores a cursor captured with [snapshot]. */
+    fun restore(saved: DoubleArray) {
+        saved.copyInto(next)
+    }
+
     private companion object {
         const val MIN_WEIGHT = 1e-6
     }

@@ -303,7 +303,7 @@ private fun ColumnScope.WorksheetOptionsForm(
     }
     if (blocker == null) {
         Text(
-            text = worksheetEstimate(options.count, provider),
+            text = worksheetEstimate(options.count, provider, options.difficulty),
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
             textAlign = TextAlign.Center,
@@ -445,8 +445,12 @@ private fun DirectionSwitch(direction: WorksheetDirection, coastLanguage: String
  * model answers a batch of sentences in some seconds, a local one in most of a minute, and one that thinks
  * before it answers (Claude) in a minute or two.
  */
-internal fun worksheetEstimate(count: Int, provider: TranslationProvider): String {
-    val batch = WorksheetBatch.of(provider)
+internal fun worksheetEstimate(
+    count: Int,
+    provider: TranslationProvider,
+    difficulty: WorksheetDifficulty = WorksheetDifficulty.Medium
+): String {
+    val batch = WorksheetBatch.of(provider, difficulty)
     val requests = worksheetRequests(count, batch)
     val seconds = requests * batch.seconds
     val duration = when {
@@ -550,7 +554,15 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 16.dp)) {
         CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(10.dp))
-        Text("Asking ${provider.label}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+        Text(
+            text = if (state.written == 0 && (provider == TranslationProvider.Claude || state.options.difficulty == WorksheetDifficulty.Hard)) {
+                "Asking ${provider.label} (planning longer sentences takes a moment)…"
+            } else {
+                "Asking ${provider.label}…"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary
+        )
     }
     Text(
         text = if (state.written > 0) "${state.written} of ${plural(state.options.count, "sentence")} written so far."
@@ -558,15 +570,21 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
         style = MaterialTheme.typography.bodyLarge,
         modifier = Modifier.padding(top = 12.dp)
     )
-    // A sheet that takes several requests shows how far along it is.
-    if (worksheetRequests(state.options.count, WorksheetBatch.of(provider)) > 1) {
+    if (state.written > 0) {
         LinearProgressIndicator(
-            progress = { state.written.toFloat() / state.options.count },
+            progress = { (state.written.toFloat() / state.options.count).coerceIn(0f, 1f) },
             color = Sunlit,
             trackColor = SurfaceRaised,
             strokeCap = StrokeCap.Round,
             gapSize = 0.dp,
             drawStopIndicator = {},
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(6.dp)
+        )
+    } else {
+        LinearProgressIndicator(
+            color = Sunlit,
+            trackColor = SurfaceRaised,
+            strokeCap = StrokeCap.Round,
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(6.dp)
         )
     }

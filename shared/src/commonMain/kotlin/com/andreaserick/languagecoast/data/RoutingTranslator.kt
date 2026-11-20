@@ -31,6 +31,9 @@ class RoutingTranslator(
     override suspend fun complete(engine: TranslationEngine, prompt: String): Completion =
         settings.withdrawn(engine)?.let { Completion.failure(it) } ?: translatorFor(engine).complete(engine, prompt)
 
+    override suspend fun complete(engine: TranslationEngine, prompt: String, onPartialText: ((String) -> Unit)?): Completion =
+        settings.withdrawn(engine)?.let { Completion.failure(it) } ?: translatorFor(engine).complete(engine, prompt, onPartialText)
+
     override suspend fun prepare(engine: TranslationEngine) = translatorFor(engine).prepare(engine)
 
     private fun translatorFor(engine: TranslationEngine): Translator = when (engine) {

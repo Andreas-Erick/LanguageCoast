@@ -28,14 +28,22 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult =
         complete(request.engine, buildTranslationPrompt(request), patient = false).toTranslation()
 
-    override suspend fun complete(engine: TranslationEngine, prompt: String): Completion = complete(engine, prompt, patient = true)
+    override suspend fun complete(engine: TranslationEngine, prompt: String): Completion = complete(engine, prompt, patient = true, onPartialText = null)
+
+    override suspend fun complete(engine: TranslationEngine, prompt: String, onPartialText: ((String) -> Unit)?): Completion =
+        complete(engine, prompt, patient = true, onPartialText = onPartialText)
 
     /**
      * @param patient Whether the answer may take as long as a model that thinks over a batch of sentences
      *     needs (see [claudeCompletion]). One sentence's translation keeps the two minutes every request has:
      *     the screen that asks for it has no way out while it waits.
      */
-    private suspend fun complete(engine: TranslationEngine, prompt: String, patient: Boolean): Completion {
+    private suspend fun complete(
+        engine: TranslationEngine,
+        prompt: String,
+        patient: Boolean,
+        onPartialText: ((String) -> Unit)? = null
+    ): Completion {
         return when (engine) {
             is TranslationEngine.OpenAI -> callOpenAiCompatible(
                 providerName = "OpenAI",
@@ -62,7 +70,8 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
                 apiKey = engine.apiKey.trim(),
                 model = engine.model.trim().ifBlank { SettingsDefaults.CLAUDE_MODEL },
                 prompt = prompt,
-                patient = patient
+                patient = patient,
+                onPartialText = onPartialText
             )
             else -> Completion.failure("This provider can't answer here.")
         }
@@ -81,7 +90,7 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
         return try {
             val (status, responseText, retryAfter) = retryHttpWithBackoff(
                 shouldRetry = { (code, _, retryHeader) ->
-                    code in setOf(408, 502, 503, 504) ||
+                    code in setOf(502, 503) ||
                         (code == 429 && (parseRetryAfterMillis(retryHeader) ?: 0L) <= 2_000L)
                 },
                 retryAfterMillis = { (_, _, retryHeader) -> parseRetryAfterMillis(retryHeader) }
@@ -96,12 +105,14 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
             cloudChatAnswer(providerName, status, responseText, retryAfter = retryAfter)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: HttpRequestTimeoutException) {
-            logError(TAG, "$providerName took too long to answer", e)
-            Completion.tooLarge(tookTooLongMessage(providerName))
         } catch (e: Exception) {
-            logError(TAG, "$providerName translation request failed", e)
-            Completion.failure("Couldn't reach $providerName. Check your internet connection and try again.")
+            if (ranOutOfTime(e)) {
+                logError(TAG, "$providerName took too long to answer", e)
+                Completion.tooLarge(tookTooLongMessage(providerName))
+            } else {
+                logError(TAG, "$providerName translation request failed", e)
+                Completion.failure("Couldn't reach $providerName. Check your internet connection and try again.")
+            }
         }
     }
 
@@ -109,13 +120,21 @@ class MultiCloudTranslator(private val client: HttpClient) : Translator {
         apiKey: String,
         model: String,
         prompt: String,
-        patient: Boolean
+        patient: Boolean,
+        onPartialText: ((String) -> Unit)? = null
     ): Completion {
         if (apiKey.isBlank()) {
             return Completion.failure("Claude needs an API key. Add one in Settings.")
         }
-        return if (patient) client.claudeCompletion(apiKey, model, prompt)
-        else client.claudeCompletion(apiKey, model, prompt, requestTimeoutMillis = CLAUDE_SHORT_TIMEOUT_MILLIS, silenceMillis = CLAUDE_SHORT_SILENCE_MILLIS)
+        return if (patient) client.claudeCompletion(apiKey, model, prompt, onPartialText = onPartialText)
+        else client.claudeCompletion(
+            apiKey,
+            model,
+            prompt,
+            requestTimeoutMillis = CLAUDE_SHORT_TIMEOUT_MILLIS,
+            silenceMillis = CLAUDE_SHORT_SILENCE_MILLIS,
+            onPartialText = onPartialText
+        )
     }
 
     private companion object {
@@ -186,6 +205,10 @@ internal fun cloudChatAnswer(providerName: String, status: Int, body: String, re
         val outOfCredit = parsed?.error?.type == "insufficient_quota"
         if (status == 429 && !outOfCredit) {
             return Completion.busy("$providerName rate limit reached. Wait a moment and try again.", retryAfterHeaderSeconds(retryAfter))
+        }
+        if (status == 408 || status == 504) {
+            logError("CloudTranslators", "$providerName answered $status: ${errMsg.orEmpty()}")
+            return Completion.tooLarge(tookTooLongMessage(providerName))
         }
         val message = when (status) {
             401 -> "$providerName didn't accept the API key. Check your key in Settings."
@@ -306,7 +329,8 @@ internal suspend fun HttpClient.claudeCompletion(
     prompt: String,
     endpoint: String = CLAUDE_ENDPOINT,
     requestTimeoutMillis: Long = CLAUDE_TIMEOUT_MILLIS,
-    silenceMillis: Long = CLAUDE_SILENCE_MILLIS
+    silenceMillis: Long = CLAUDE_SILENCE_MILLIS,
+    onPartialText: ((String) -> Unit)? = null
 ): Completion {
     // Set once Claude has begun to answer. A time limit that runs out before that is a connection that couldn't
     // be made, which both platforms report as a timeout too: asking for less would not help then.
@@ -327,7 +351,7 @@ internal suspend fun HttpClient.claudeCompletion(
             if (response.status.value >= 400 || !isStream) {
                 claudeAnswer(response.status.value, response.bodyAsText(), retryAfter = response.headers["retry-after"])
             } else {
-                val stream = ClaudeStream()
+                val stream = ClaudeStream(onPartialText)
                 val channel = response.bodyAsChannel()
                 while (true) {
                     val line = channel.readUTF8Line() ?: break
@@ -356,14 +380,17 @@ internal suspend fun HttpClient.claudeCompletion(
 private const val CLAUDE_TAG = "ClaudeCompletion"
 
 /**
- * Whether [error] says an answer took too long or stopped coming. Each platform's networking says that its
- * own way, and while an answer is being read it arrives wrapped ("channel closed: Read timed out"), so the
- * causes are looked through as well.
+ * Whether [error] says an answer took too long or stopped coming, rather than failing to connect at all.
+ * Each platform's networking says that its own way, and while an answer is being read it arrives wrapped
+ * ("channel closed: Read timed out"), so the causes are looked through as well.
  */
-private fun ranOutOfTime(error: Throwable): Boolean =
+internal fun ranOutOfTime(error: Throwable): Boolean =
     generateSequence(error) { it.cause }.take(8).any {
-        it is HttpRequestTimeoutException || it is SocketTimeoutException ||
-            it::class.simpleName?.contains("Timeout") == true || it.message?.contains("timed out", ignoreCase = true) == true
+        val name = it::class.simpleName.orEmpty()
+        val msg = it.message.orEmpty()
+        name != "ConnectTimeoutException" && !msg.contains("connect timed out", ignoreCase = true) &&
+            (it is HttpRequestTimeoutException || it is SocketTimeoutException ||
+                name.contains("Timeout") || msg.contains("timed out", ignoreCase = true))
     }
 
 /**
@@ -371,7 +398,7 @@ private fun ranOutOfTime(error: Throwable): Boolean =
  * a piece of the answer's text, the reason the answer stopped, and an error in mid-answer. Everything else
  * (the start of the message, thinking, pings that keep the connection open) is passed over.
  */
-internal class ClaudeStream {
+internal class ClaudeStream(private val onPartialText: ((String) -> Unit)? = null) {
     private val text = StringBuilder()
     private var stopReason: String? = null
     private var error: CloudApiError? = null
@@ -387,8 +414,19 @@ internal class ClaudeStream {
             return
         }
         when (event.type) {
-            "content_block_start" -> if (event.content_block?.type == "text") event.content_block.text?.let { text.append(it) }
-            "content_block_delta" -> if (event.delta?.type == "text_delta") event.delta.text?.let { text.append(it) }
+            "content_block_start" -> if (event.content_block?.type == "text") {
+                event.content_block.text?.let { piece ->
+                    text.append(piece)
+                    if ('\n' in piece) onPartialText?.invoke(text.toString())
+                }
+            }
+            "content_block_delta" -> if (event.delta?.type == "text_delta") {
+                event.delta.text?.let { piece ->
+                    text.append(piece)
+                    if ('\n' in piece) onPartialText?.invoke(text.toString())
+                }
+            }
+            "content_block_stop" -> if (text.isNotEmpty()) onPartialText?.invoke(text.toString())
             "message_delta" -> event.delta?.stop_reason?.let { stopReason = it }
             "error" -> error = event.error ?: CloudApiError()
         }

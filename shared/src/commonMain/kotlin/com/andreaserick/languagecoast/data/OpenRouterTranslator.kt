@@ -30,7 +30,7 @@ class OpenRouterTranslator(private val client: HttpClient) : Translator {
         return try {
             val (status, response, retryAfter) = retryHttpWithBackoff(
                 shouldRetry = { (code, _, retryHeader) ->
-                    code in setOf(408, 502, 503, 504) ||
+                    code in setOf(502, 503) ||
                         (code == 429 && (parseRetryAfterMillis(retryHeader) ?: 0L) <= 2_000L)
                 },
                 retryAfterMillis = { (_, _, retryHeader) -> parseRetryAfterMillis(retryHeader) }
@@ -40,14 +40,16 @@ class OpenRouterTranslator(private val client: HttpClient) : Translator {
             openRouterAnswer(status, response, retryAfter)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: HttpRequestTimeoutException) {
-            logError(TAG, "OpenRouter took too long to answer", e)
-            Completion.tooLarge(tookTooLongMessage("OpenRouter"))
         } catch (e: Exception) {
-            // Everything, as the other translators do: this must never throw, and a key pasted with a line break
-            // in it, for one, fails before anything is sent.
-            logError(TAG, "OpenRouter request failed", e)
-            Completion.failure("Couldn't reach OpenRouter. Check your internet connection and try again.")
+            if (ranOutOfTime(e)) {
+                logError(TAG, "OpenRouter took too long to answer", e)
+                Completion.tooLarge(tookTooLongMessage("OpenRouter"))
+            } else {
+                // Everything, as the other translators do: this must never throw, and a key pasted with a line break
+                // in it, for one, fails before anything is sent.
+                logError(TAG, "OpenRouter request failed", e)
+                Completion.failure("Couldn't reach OpenRouter. Check your internet connection and try again.")
+            }
         }
     }
 
@@ -116,6 +118,10 @@ internal fun openRouterAnswer(status: Int, body: String, retryAfter: String? = n
         val code = error?.code ?: status
         // Too many requests for now, which passes: work that sends many requests waits it out.
         if (code == 429) return Completion.busy("OpenRouter is busy. Wait a moment and try again.", retryAfterHeaderSeconds(retryAfter))
+        if (code == 408 || code == 504) {
+            logError("OpenRouterTranslator", "OpenRouter answered $code: ${error?.message.orEmpty()}")
+            return Completion.tooLarge(tookTooLongMessage("OpenRouter"))
+        }
         val message = when (code) {
             401 -> "OpenRouter didn't accept the API key. Check it in Settings."
             402 -> "Your OpenRouter account is out of credits. Add credits at openrouter.ai, or pick another provider in Settings."

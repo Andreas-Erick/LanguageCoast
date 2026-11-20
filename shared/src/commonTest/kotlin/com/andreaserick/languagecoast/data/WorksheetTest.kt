@@ -928,4 +928,31 @@ class WorksheetTest {
         assertEquals("Satz Nummer 90", coast1.targetSentences.last())
         assertEquals(WorksheetHistory(listOf("Saludos\tHola"), listOf("Buenos días.")), coast2)
     }
+
+    @Test
+    fun hardPromptAndParserHandleNaturalTwoPartGuidanceWrappedLinesAndExtraWordHelp() {
+        val hardPrompt = anchored(WorksheetDifficulty.Hard)
+        assertTrue("Never bolt \"because\" onto a direct question" in hardPrompt)
+        assertTrue("Introduce at most two or three new German content words per sentence" in hardPrompt)
+
+        // Long hard lines wrapped across a line break before || or after a standalone number still parse cleanly.
+        val wrapped = """
+            1.
+            Wir möchten bitte zahlen, weil unser Zug bald abfährt.
+            || We would like to pay, please, because our train leaves soon. || zahlen = to pay; weil = because; bald = soon; abfahren = to leave
+            2 || Obwohl der Bahnhof heute weit ist, gehen wir zusammen zu Fuß.
+            || Although the station is far today, we are walking together.
+            || obwohl = although; weit = far; zusammen = together
+        """.trimIndent()
+        val parsed = parseWorksheetResponse(wrapped, anchors)
+        assertEquals(2, parsed.size)
+        assertEquals(bill, parsed[0].card)
+        assertEquals(cards[0], parsed[1].card)
+
+        // Hard difficulty keeps up to 4 unknown words in word help (connector + 3 words).
+        val vocabulary = CoastVocabulary((cards + bill).map { it.targetText })
+        val keptHelp = vocabulary.wordHelp(parsed[0].targetText, parsed[0].newWords, maxWords = WorksheetDifficulty.Hard.wordHelpLimit)
+        assertEquals(4, keptHelp.size)
+        assertTrue(vocabulary.keepsToCoast("Obwohl der Bahnhof weit ist, gehe ich zum Strand.", WorksheetDifficulty.Hard.newWordsFor(WorksheetDirection.ToTarget)))
+    }
 }
