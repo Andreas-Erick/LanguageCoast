@@ -44,6 +44,12 @@ class ClaudeStreamingTest {
             runCatching { answer(exchange) }
             runCatching { exchange.close() }
         }
+        server.createContext("/v1beta/models/") { exchange ->
+            requestBody = exchange.requestBody.readBytes().decodeToString()
+            requestKey = exchange.requestHeaders.getFirst("x-goog-api-key")
+            runCatching { answer(exchange) }
+            runCatching { exchange.close() }
+        }
         server.start()
         // The limits sharedModule gives every request: two minutes, which a streamed answer must not be held to.
         client = HttpClient {
@@ -245,5 +251,27 @@ class ClaudeStreamingTest {
 
         // Overloaded: the same request can be sent again in a moment.
         assertEquals(CLAUDE_RETRY_SECONDS, ask().retryAfterSeconds)
+    }
+
+    @Test
+    fun partialLinesAreDeliveredLiveWhileClaudeStreams() = runBlocking {
+        answer = {
+            it.stream(
+                0L to """{"type":"message_start","message":{"id":"msg_1","content":[]}}""",
+                0L to """{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}""",
+                0L to textDelta("1 || Erster Satz || First\n"),
+                0L to textDelta("2 || Zweiter Satz || Second\n"),
+                0L to """{"type":"content_block_stop","index":0}""",
+                0L to stopped("end_turn")
+            )
+        }
+        val partials = mutableListOf<String>()
+        val completion = client.claudeCompletion("sk-test", "claude-fable-5-2", "Write.", endpoint, 20_000, 10_000) {
+            partials += it
+        }
+
+        assertEquals("1 || Erster Satz || First\n2 || Zweiter Satz || Second", completion.text)
+        assertTrue(partials.size >= 2, partials.toString())
+        assertTrue(partials.first().startsWith("1 || Erster Satz"))
     }
 }

@@ -539,12 +539,27 @@ class FakeTranslator(
     var completion: Completion = Completion("A short explanation.")
     /** Answers by prompt, when a test needs different replies to different prompts; null uses [completion]. */
     var completionFor: ((String) -> Completion)? = null
+    /** When true, delivers [Completion.text] line by line through `onPartialText` before returning. */
+    var streamLines: Boolean = false
     val prompts = mutableListOf<String>()
     val prepared = mutableListOf<TranslationEngine>()
 
     override suspend fun complete(engine: TranslationEngine, prompt: String): Completion {
         prompts += prompt
         return completionFor?.invoke(prompt) ?: completion
+    }
+
+    override suspend fun complete(engine: TranslationEngine, prompt: String, onPartialText: ((String) -> Unit)?): Completion {
+        val result = complete(engine, prompt)
+        val text = result.text
+        if (streamLines && onPartialText != null && text != null) {
+            val acc = StringBuilder()
+            for (line in text.lines()) {
+                acc.append(line).append('\n')
+                onPartialText(acc.toString())
+            }
+        }
+        return result
     }
 
     override suspend fun prepare(engine: TranslationEngine) { prepared += engine }

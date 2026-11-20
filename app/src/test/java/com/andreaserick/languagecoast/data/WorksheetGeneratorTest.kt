@@ -834,4 +834,88 @@ class WorksheetGeneratorTest {
         assertTrue("Its words and grammar suit level A2." in prompt)
         assertTrue("(Note: Polite Sie form)" in prompt)
     }
+
+    @Test
+    fun largeHardSheetUsesSmallerBatchesStreamsLiveProgressAndCompletesAllSentences() = runTest {
+        flashcards.islands.value = listOf(
+            LanguageIsland(islandId = 1, coastId = 1, name = "Travel"),
+            LanguageIsland(islandId = 2, coastId = 1, name = "Food")
+        )
+        flashcards.cards.value = (1..40).map { idx ->
+            Flashcard(
+                cardId = idx,
+                islandId = if (idx <= 20) 1 else 2,
+                nativeText = "When does train $idx leave?",
+                targetText = "Wann fährt der Zug Nummer $idx ab?"
+            )
+        }
+        translator.streamLines = true
+
+        // Both Claude and Gemini finish all 35 hard sentences even when each batch drops a couple of lines,
+        // and stream sentence-by-sentence progress inside every batch.
+        for (provider in listOf(TranslationProvider.Claude, TranslationProvider.Gemini)) {
+            // Seed 60 historical sentences before each provider's run: a new large sheet must cap history in the
+            // prompt so old runs don't flood or crowd out current-sheet sentences.
+            settings.recordWorksheet(
+                coastId = 1,
+                anchoredCards = (1..10).map { "Travel\tWann fährt der Zug Nummer $it ab?" },
+                targetSentences = (1..60).map { "Alter Satz Nummer $it für gestern." }
+            )
+            settings.translationProvider.value = provider
+            settings.claudeKey.value = "sk-ant-key"
+            settings.apiKey.value = "gem-key"
+            translator.prompts.clear()
+            var call = 0
+            translator.completionFor = { prompt ->
+                call++
+                val dealt = anchors(prompt)
+                // Simulate realistic hard-sheet attrition: model returns ~75% usable lines per batch.
+                val usable = maxOf(3, dealt.size * 3 / 4)
+                Completion(
+                    (1..usable).joinToString("\n") { i ->
+                        val cardText = dealt[i - 1].substringAfter(": ")
+                        "$i || Weil es spät ist ($call-$i), $cardText || Because it is late ($call-$i), $cardText || weil = because; spät = late"
+                    }
+                )
+            }
+            val progress = mutableListOf<Int>()
+
+            val result = generator.generate(1, WorksheetOptions(count = 35, difficulty = WorksheetDifficulty.Hard)) {
+                progress += it
+            }
+
+            val sheet = (result as WorksheetResult.Ready).worksheet
+            assertEquals("Provider $provider", 35, sheet.sentences.size)
+            val expectedMaxBatch = WorksheetBatch.of(provider, WorksheetDifficulty.Hard).sentences
+            assertTrue(
+                "Provider $provider asked too many at once: ${translator.prompts.map { anchors(it).size }}",
+                translator.prompts.all { anchors(it).size <= expectedMaxBatch + expectedMaxBatch / 4 }
+            )
+            // Streaming progress ticked up one sentence at a time rather than jumping only between batches.
+            assertEquals((1..35).toList(), progress.distinct())
+            // First prompt only carried a bounded tail of past-sheet history, not all 60 old sentences.
+            assertFalse("Alter Satz Nummer 1 für gestern." in translator.prompts.first())
+            assertTrue("Alter Satz Nummer 60 für gestern." in translator.prompts.first())
+        }
+    }
+
+    @Test
+    fun failedBatchRestoresDealtPriorityAnchorsForHalvedRetry() = runTest {
+        flashcards.cards.value = flashcards.cards.value.map {
+            if (it.cardId == 2 || it.cardId == 5) studied(it, daysAgo = 90, lapses = 4) else it
+        }
+        var call = 0
+        translator.completionFor = { prompt ->
+            call++
+            val dealt = anchors(prompt)
+            if (call == 1) Completion.tooLarge("Too slow")
+            else Completion(dealt.mapIndexed { idx, a -> "${idx + 1} || Heute: ${a.substringAfter(": ")} ($call-$idx) || Today ($call-$idx) || -" }.joinToString("\n"))
+        }
+
+        val sheet = (generator.generate(1, WorksheetOptions(count = 4, difficulty = WorksheetDifficulty.Hard)) as WorksheetResult.Ready).worksheet
+
+        assertEquals(4, sheet.sentences.size)
+        // The overdue studied cards dealt in the failed first attempt were restored and still led the halved retry.
+        assertEquals(listOf("Food: Ich möchte einen Kaffee.", "Travel: Ich gehe zum Strand."), anchors(translator.prompts[1]).take(2))
+    }
 }

@@ -37,11 +37,23 @@ import kotlin.time.Clock
  * @property words How long a sentence is to be, in words; the prompt says so and the pick checks it.
  * @property newWords How many words that are on no card a sentence may bring before it counts as straying.
  */
-enum class WorksheetDifficulty(val label: String, val hint: String, internal val words: IntRange, internal val newWords: Int) {
+enum class WorksheetDifficulty(
+    val label: String,
+    val hint: String,
+    internal val words: IntRange,
+    internal val newWords: Int,
+    internal val wordHelpLimit: Int = WORKSHEET_WORD_HELP
+) {
     Easy("Easy", "Short sentences that stay close to your cards.", 3..7, 1),
     Medium("Medium", "Your cards turned into new everyday sentences: questions, negations, other people.", 5..10, 2),
     // Measured before 3.1.0: a small model bolts a reason onto a question ("Where is the station, because my train leaves?").
-    Hard("Hard", "Longer sentences that add a reason, a condition or a contrast. Small models write these less naturally.", 9..16, 2);
+    Hard(
+        "Hard",
+        "Longer sentences that add a reason, a condition or a contrast. Small models write these less naturally.",
+        9..16,
+        3,
+        HARD_WORD_HELP
+    );
 
     /**
      * Allowed unknown words per sentence for [direction]: reading comprehension ([WorksheetDirection.ToNative])
@@ -97,12 +109,16 @@ val WORKSHEET_COUNT_RANGE = 3..500
 enum class WorksheetBatch(val sentences: Int, val seconds: Int, val hasSpares: Boolean) {
     Local(5, 40, false),
     Thinking(12, 90, true),
-    Cloud(25, 10, true);
+    HardThinking(8, 75, true),
+    Cloud(25, 10, true),
+    HardCloud(12, 35, true);
 
     companion object {
-        fun of(provider: TranslationProvider): WorksheetBatch = when (provider) {
-            TranslationProvider.LocalAi -> Local
-            TranslationProvider.Claude -> Thinking
+        fun of(provider: TranslationProvider, difficulty: WorksheetDifficulty = WorksheetDifficulty.Medium): WorksheetBatch = when {
+            provider == TranslationProvider.LocalAi -> Local
+            provider == TranslationProvider.Claude && difficulty == WorksheetDifficulty.Hard -> HardThinking
+            provider == TranslationProvider.Claude -> Thinking
+            difficulty == WorksheetDifficulty.Hard -> HardCloud
             else -> Cloud
         }
     }
@@ -142,6 +158,9 @@ const val WORKSHEET_NEW_WORDS = 1
 
 /** Word help is printed for at most this many words of a sentence; more would give the exercise away. */
 const val WORKSHEET_WORD_HELP = 3
+
+/** Two-clause hard sentences legitimately carry a connector plus two or three new words. */
+internal const val HARD_WORD_HELP = 4
 
 /** A word of a sheet's sentence that is on none of the learner's cards, and what it means. */
 data class WordHelp(val word: String, val meaning: String)
@@ -325,7 +344,9 @@ private fun changeRule(difficulty: WorksheetDifficulty): String = when (difficul
             "(he, she, we or they), or add a time or a place. For each line pick the change that gives the most natural sentence, and vary the changes over the exercise."
     WorksheetDifficulty.Hard ->
         " Give each sentence a second part that belongs to the first: a reason (because), a condition (if, when), a contrast (but, although) or " +
-            "what happens next. For each line pick the one that fits the flashcard best, and vary them over the exercise."
+            "what happens next. For each line pick the one that fits the flashcard best, and vary them over the exercise. " +
+            "Never bolt \"because\" onto a direct question, and when a flashcard is a short greeting, thanks or polite phrase, " +
+            "weave it into a natural situation (such as why the speaker is leaving, apologising or asking politely) rather than forcing an awkward clause onto it."
 }
 
 /**
@@ -427,6 +448,14 @@ fun buildWorksheetPrompt(
                     else "written in $nativeLanguage: what (formal) or (to a friend) would be in $nativeLanguage."
             )
         }
+        if (difficulty == WorksheetDifficulty.Hard) {
+            add(
+                "- Build the second part from a realistic everyday situation and, only where they genuinely fit together, words from the other flashcards above; " +
+                    "never stitch two unrelated flashcards into a contrived scene just to reuse vocabulary. " +
+                    "Introduce at most two or three new $targetLanguage content words per sentence so the learner is not overwhelmed" +
+                    (if (wordHelp) ", and list every new $targetLanguage word in the last field." else ".")
+            )
+        }
         if (avoid.isNotEmpty()) add("- Do not repeat any of these, which are already in the exercise: " + avoid.joinToString(" | "))
     }
     val newWords = if (wordHelp) "; list them after the translation" else ""
@@ -459,11 +488,47 @@ fun buildWorksheetPrompt(
  * side missing, both sides the same, or the format line itself; so are repeats.
  */
 fun parseWorksheetResponse(text: String, anchors: List<WorksheetAnchor> = emptyList()): List<WorksheetSentence> =
-    text.replace("```", "").replace("**", "").lines()
-        .map { it.trim() }
+    coalesceWrappedWorksheetLines(text.replace("```", "").replace("**", "").lines())
         .filter { it.contains("||") }
         .mapNotNull { line -> parseWorksheetLine(line, anchors) }
         .distinctBy { normalizedWords(it.targetText) }
+
+/**
+ * Rejoins long hard-sheet lines that a model wrapped across a line break: a continuation line starting
+ * with `||`, or a standalone line number (`12.` / `[12]`) followed on the next line by its sentence pair.
+ */
+private fun coalesceWrappedWorksheetLines(rawLines: List<String>): List<String> {
+    val result = ArrayList<String>(rawLines.size)
+    var pendingNumber: String? = null
+    for (raw in rawLines) {
+        val line = raw.trim()
+        if (line.isEmpty()) {
+            pendingNumber = null
+            continue
+        }
+        if (line.startsWith("||") && result.isNotEmpty()) {
+            result[result.lastIndex] = "${result.last()} $line"
+            pendingNumber = null
+            continue
+        }
+        if ("||" !in line) {
+            val cleaned = unwrapped(line.replace(BULLET, "").trim())
+            val num = NUMBER_ALONE.matchEntire(cleaned)?.groupValues?.get(1)
+            if (num != null) {
+                pendingNumber = num
+                continue
+            }
+            result += if (pendingNumber != null) "$pendingNumber || $line" else line
+            pendingNumber = null
+            continue
+        }
+        val firstField = unwrapped(line.substringBefore("||").replace(BULLET, "").trim())
+        val hasOwnNumber = NUMBER_ALONE.matches(firstField) || NUMBER_LEADING.matches(firstField)
+        result += if (pendingNumber != null && !hasOwnNumber) "$pendingNumber || $line" else line
+        pendingNumber = null
+    }
+    return result
+}
 
 private fun parseWorksheetLine(line: String, anchors: List<WorksheetAnchor>): WorksheetSentence? {
     var parts = line.split("||").map { unwrapped(it.trim()) }
@@ -671,7 +736,7 @@ class CoastVocabulary(texts: List<String>) {
      * on none of the coast's cards. A model also lists small words the learner has ("nicht = not"), and now
      * and then a word that isn't in the sentence; neither helps. At most [WORKSHEET_WORD_HELP] are kept.
      */
-    fun wordHelp(sentence: String, help: List<WordHelp>): List<WordHelp> {
+    fun wordHelp(sentence: String, help: List<WordHelp>, maxWords: Int = WORKSHEET_WORD_HELP): List<WordHelp> {
         if (help.isEmpty()) return help
         val inSentence = normalizedWords(sentence)
         val written = sentence.lowercase()
@@ -687,7 +752,7 @@ class CoastVocabulary(texts: List<String>) {
                 }
             }
             .distinctBy { normalizedWords(it.word) }
-            .take(WORKSHEET_WORD_HELP)
+            .take(maxWords)
     }
 
     private fun isKnown(word: String): Boolean {
@@ -865,7 +930,7 @@ fun pickWorksheetSentences(
             val text = sentence.targetText
             val strays = if (vocabulary.keepsToCoast(text, newWords)) 0.0 else vocabulary.unknownShare(text)
             val anchorPenalty = if (anyAnchored && !matchesAnchor[index]) ANCHOR_FAULT else 0.0
-            val helpPenalty = if (expectsWordHelp && direction == WorksheetDirection.ToTarget && strays == 0.0 &&
+            val helpPenalty = if (expectsWordHelp && direction == WorksheetDirection.ToTarget &&
                 vocabulary.hasUnexplainedUnknownWords(text, sentence.newWords)
             ) UNEXPLAINED_FAULT else 0.0
             val recentPenalty = when {
@@ -978,8 +1043,25 @@ internal class WorksheetCardDealer(
     private val characters: Int,
     now: Long,
     private val random: Random,
-    private val recentAnchors: Set<String> = emptySet()
+    private val recentAnchors: Set<String> = emptySet(),
+    private val difficulty: WorksheetDifficulty = WorksheetDifficulty.Medium
 ) {
+    internal class Snapshot(
+        val prompts: Int,
+        val lastShown: IntArray,
+        val anchored: Set<Int>,
+        val planner: DoubleArray
+    )
+
+    fun snapshot(): Snapshot = Snapshot(prompts, lastShown.copyOf(), HashSet(anchored), planner.snapshot())
+
+    fun restore(saved: Snapshot) {
+        prompts = saved.prompts
+        saved.lastShown.copyInto(lastShown)
+        anchored.clear()
+        anchored.addAll(saved.anchored)
+        planner.restore(saved.planner)
+    }
     private val lines = cards.map { WorksheetCard(it.islandName, oneLine(it.targetText), oneLine(it.nativeText)) }
     private val notes = cards.map { it.note }
     private val sizes = IntArray(lines.size) { lines[it].targetText.length + lines[it].nativeText.length + SEPARATOR_LENGTH }
@@ -1091,14 +1173,28 @@ internal class WorksheetCardDealer(
                 }
             }
         }
+        fun isRichForHard(index: Int): Boolean {
+            if (difficulty != WorksheetDifficulty.Hard) return true
+            val target = lines[index].targetText
+            if (target.any { it in '\u0E00'..'\u0EFF' || it in '\u1000'..'\u109F' || it in '\u1780'..'\u17FF' || it in '\u3040'..'\u30FF' || it in '\u3400'..'\u4DBF' || it in '\u4E00'..'\u9FFF' }) {
+                return target.length >= 2
+            }
+            val words = normalizedWords(target)
+            return words.size >= 2 || (words.singleOrNull()?.length ?: 0) >= 5
+        }
         // First the cards no sentence of this sheet was built from yet (preferring studied cards that weren't
-        // anchored on a recent sheet, then studied cards that were, before unstudied cards), then the ones this
-        // prompt doesn't have yet; only an island with fewer cards than the prompt wants has a card twice.
+        // anchored on a recent sheet, then studied cards that were, before unstudied cards; on Hard, bare short
+        // interjections like "Hi" or "Ja" wait behind multi-word or content cards), then the ones this prompt
+        // doesn't have yet; only an island with fewer cards than the prompt wants has a card twice.
         if (recentAnchors.isEmpty()) {
+            if (difficulty == WorksheetDifficulty.Hard) takeMatching(::isRichForHard)
             takeMatching { true }
         } else {
+            if (difficulty == WorksheetDifficulty.Hard) takeMatching { needs[it] != NOT_STUDIED && lines[it].historyKey() !in recentAnchors && isRichForHard(it) }
             takeMatching { needs[it] != NOT_STUDIED && lines[it].historyKey() !in recentAnchors }
+            if (difficulty == WorksheetDifficulty.Hard) takeMatching { needs[it] != NOT_STUDIED && isRichForHard(it) }
             takeMatching { needs[it] != NOT_STUDIED }
+            if (difficulty == WorksheetDifficulty.Hard) takeMatching { lines[it].historyKey() !in recentAnchors && isRichForHard(it) }
             takeMatching { lines[it].historyKey() !in recentAnchors }
             takeMatching { true }
         }
@@ -1303,11 +1399,12 @@ class WorksheetGenerator(
                     characters = if (isLocal) LOCAL_CHARACTER_LIMIT else CHARACTER_LIMIT,
                     now = nowMillis,
                     random = random,
-                    recentAnchors = history.anchoredCards.toHashSet()
+                    recentAnchors = history.anchoredCards.toHashSet(),
+                    difficulty = options.difficulty
                 )
             )
         }
-        val batch = WorksheetBatch.of(provider)
+        val batch = WorksheetBatch.of(provider, options.difficulty)
         val wanted = worksheetSentencesWanted(count, batch)
         // Fewer after a request that was too much for the model (see below).
         var perRequest = batch.sentences
@@ -1323,24 +1420,31 @@ class WorksheetGenerator(
         // Until the sheet is full, and through the planned requests for the sentences to spare, unless only a
         // few of those are left: a request for one or two would carry every card once more for them.
         fun moreNeeded() = written.size < count || (requests < planned && wanted - written.size > perRequest / 4)
-        // The requests to spare are counted in batches: after a halving there are twice as many, of half the size.
-        while (moreNeeded() && requests < planned + EXTRA_REQUESTS * (batch.sentences / perRequest) && barren < MAX_BARREN_REQUESTS) {
+        // Extra requests scale with sheet size so a 30+ sentence hard sheet whose batches average slightly fewer
+        // unique lines than asked still finishes all requested sentences while progress continues.
+        fun maxRequests() = planned + maxOf(EXTRA_REQUESTS, (planned + 1) / 2) * maxOf(1, (batch.sentences + perRequest - 1) / perRequest)
+        while (moreNeeded() && requests < maxRequests() && barren < MAX_BARREN_REQUESTS) {
             requests++
             // After a request that was too much, none is made larger than the size that went through.
             val left = wanted - written.size
             val asked = if (perRequest < batch.sentences) minOf(perRequest, left) else worksheetAsk(left, perRequest)
-            val (prompt, anchors) = withContext(background) {
+            val dealSnapshot = dealer.snapshot()
+            val (prompt, anchors, baseSeen) = withContext(background) {
                 val deal = dealer.next(asked)
                 val avoidCap = if (isLocal) LOCAL_AVOID_LIMIT else AVOID_LIMIT
-                val avoidSentences = (history.targetSentences + written.map { it.targetText }).distinct().takeLast(avoidCap)
-                buildWorksheetPrompt(
+                val historyCap = if (isLocal) LOCAL_HISTORY_AVOID_LIMIT else HISTORY_AVOID_LIMIT
+                val avoidSentences = (history.targetSentences.takeLast(historyCap) + written.map { it.targetText })
+                    .distinct()
+                    .takeLast(avoidCap)
+                val builtPrompt = buildWorksheetPrompt(
                     cards = deal.cards,
                     targetLanguage = coast.language,
                     nativeLanguage = nativeLanguage,
                     count = asked,
                     difficulty = options.difficulty,
                     region = coast.region,
-                    // Recent sheet sentences plus this sheet's latest ones, so consecutive sheets stay fresh.
+                    // Recent sheet sentences plus this sheet's latest ones, so consecutive sheets stay fresh
+                    // without flooding a new sheet with 60 old sentences or evicting current-sheet lines.
                     avoid = avoidSentences,
                     quotas = deal.quotas,
                     anchors = deal.anchors,
@@ -1350,19 +1454,33 @@ class WorksheetGenerator(
                     // A small local model keeps to three fields better than to four.
                     wordHelp = !isLocal,
                     goal = coast.goal
-                ) to deal.anchors
+                )
+                Triple(builtPrompt, deal.anchors, written.mapTo(HashSet()) { normalizedWords(it.targetText) })
             }
-            var completion = translator.complete(engine, prompt)
+            var lastReported = minOf(written.size, count)
+            fun reportPartial(partial: String) {
+                val completeLines = partial.substringBeforeLast('\n', missingDelimiterValue = "")
+                if (completeLines.isEmpty()) return
+                val inBatch = parseWorksheetResponse(completeLines, anchors)
+                    .count { normalizedWords(it.targetText) !in baseSeen }
+                val nowWritten = minOf(written.size + inBatch, count)
+                if (nowWritten > lastReported) {
+                    lastReported = nowWritten
+                    onProgress(nowWritten)
+                }
+            }
+            var completion = translator.complete(engine, prompt, ::reportPartial)
             // Turned away for now (the per-minute limit is used up, or the provider is overloaded): the same
             // request goes through after the wait it names.
             while (completion.text == null && waits < MAX_WAITS) {
                 val seconds = completion.retryAfterSeconds ?: break
                 waits++
                 delay(seconds.coerceIn(1, MAX_WAIT_SECONDS) * 1_000L)
-                completion = translator.complete(engine, prompt)
+                completion = translator.complete(engine, prompt, ::reportPartial)
             }
             val text = completion.text
             if (text == null) {
+                dealer.restore(dealSnapshot)
                 lastError = completion.errorMessage
                 // The sheet has its sentences: the request was for the ones to spare, which aren't worth another try.
                 if (written.size >= count) break
@@ -1380,10 +1498,10 @@ class WorksheetGenerator(
             }
             waits = 0
             val fresh = withContext(background) {
-                val seen = written.mapTo(HashSet()) { normalizedWords(it.targetText) }
+                val seen = HashSet(baseSeen)
                 parseWorksheetResponse(text, anchors)
                     .filter { seen.add(normalizedWords(it.targetText)) }
-                    .map { it.copy(newWords = vocabulary.wordHelp(it.targetText, it.newWords)) }
+                    .map { it.copy(newWords = vocabulary.wordHelp(it.targetText, it.newWords, maxWords = options.difficulty.wordHelpLimit)) }
             }
             if (fresh.isEmpty() && written.isEmpty()) lastError = "${provider.label}'s answer couldn't be read. Try again."
             barren = if (fresh.isEmpty()) barren + 1 else 0
@@ -1446,6 +1564,10 @@ class WorksheetGenerator(
         /** A request lists this many of the sentences already written; beyond that it mostly costs tokens. */
         const val AVOID_LIMIT = 60
         const val LOCAL_AVOID_LIMIT = 15
+
+        /** Past-sheet sentences carried into a prompt's avoid list; full history still informs spare selection. */
+        const val HISTORY_AVOID_LIMIT = 15
+        const val LOCAL_HISTORY_AVOID_LIMIT = 5
 
         /** How many requests more than a sheet needs are made when answers come back short. */
         const val EXTRA_REQUESTS = 2

@@ -17,6 +17,13 @@ interface Translator {
     suspend fun complete(engine: TranslationEngine, prompt: String): Completion =
         Completion.failure("This provider only translates. Pick an AI provider in Settings to get explanations.")
 
+    /**
+     * Like [complete], calling [onPartialText] with the text received so far as streamed lines arrive.
+     * Providers that receive the answer whole ignore [onPartialText].
+     */
+    suspend fun complete(engine: TranslationEngine, prompt: String, onPartialText: ((String) -> Unit)?): Completion =
+        complete(engine, prompt)
+
     /** Gets [engine] ready ahead of its first request (loads a local model); a no-op for most providers. */
     suspend fun prepare(engine: TranslationEngine) = Unit
 }
