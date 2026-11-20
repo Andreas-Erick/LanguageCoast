@@ -140,11 +140,14 @@ class SecurityAdversarialTest {
             "hf_abcdef1234567890XYZ" to "Hugging Face token"
         )
         samples.forEach { (secret, label) ->
-            val msg = "Request failed Authorization: Bearer $secret x-goog-api-key=$secret ?key=$secret raw=$secret"
+            val msg = "Request failed Authorization: Bearer $secret x-goog-api-key=$secret ?key=$secret \"api_key\": \"$secret\" raw=$secret"
             val scrubbed = redactSecrets(msg)
             assertFalse(secret in scrubbed, "$label leaked into scrubbed log: $scrubbed")
             assertTrue("[REDACTED]" in scrubbed)
         }
+        val customJsonSecret = redactSecrets("""{"apiKey":"custom-secret-value","access_token":"tok_999"}""")
+        assertFalse("custom-secret-value" in customJsonSecret)
+        assertFalse("tok_999" in customJsonSecret)
     }
 
     @Test
@@ -203,7 +206,15 @@ class SecurityAdversarialTest {
             valid.copy(cards = listOf(valid.cards[0].copy(difficulty = 0.5))),
             valid.copy(cards = listOf(valid.cards[0].copy(difficulty = 11.0))),
             valid.copy(cards = listOf(valid.cards[0].copy(lapses = -1))),
-            valid.copy(cards = listOf(valid.cards[0].copy(due = Long.MAX_VALUE)))
+            valid.copy(cards = listOf(valid.cards[0].copy(due = Long.MAX_VALUE))),
+            valid.copy(coasts = listOf(valid.coasts[0].copy(language = "   "))),
+            valid.copy(coasts = listOf(valid.coasts[0].copy(creationDate = -1L))),
+            valid.copy(coasts = listOf(valid.coasts[0].copy(bankOffered = -5))),
+            valid.copy(islands = listOf(valid.islands[0].copy(name = ""))),
+            valid.copy(islands = listOf(valid.islands[0].copy(creationDate = Long.MAX_VALUE))),
+            valid.copy(islands = listOf(valid.islands[0].copy(lastStudied = -100L))),
+            valid.copy(settings = valid.settings.copy(weeklyGoal = 0)),
+            valid.copy(settings = valid.settings.copy(weeklyGoal = -3))
         )
         corruptedCases.forEach { bad ->
             assertFailsWith<BackupException>("Expected BackupException for corrupted backup: $bad") {

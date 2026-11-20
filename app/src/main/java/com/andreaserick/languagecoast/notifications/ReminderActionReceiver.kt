@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Grade
+import com.andreaserick.languagecoast.data.logError
 import com.andreaserick.languagecoast.data.reviewOutcomes
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import kotlinx.coroutines.CancellationException
@@ -63,7 +64,7 @@ class ReminderActionReceiver : BroadcastReceiver(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "Failed to grade card from reminder notification", e)
+                logError(TAG, "Failed to grade card from reminder notification", e)
             } finally {
                 pending.finish()
                 job.cancel()

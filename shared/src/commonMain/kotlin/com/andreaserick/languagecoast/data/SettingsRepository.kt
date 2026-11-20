@@ -48,6 +48,15 @@ data class ReminderSettings(
     val time: LocalTime? = null
 )
 
+/**
+ * Bounded per-coast memory of recent practice sheets, so back-to-back sheets rotate across due/slipping
+ * cards ([anchoredCards]) and steer clear of sentences just printed ([targetSentences]).
+ */
+data class WorksheetHistory(
+    val anchoredCards: List<String> = emptyList(),
+    val targetSentences: List<String> = emptyList()
+)
+
 /** User preferences: native language, active coast, translation provider, reminders and the study streak. */
 interface SettingsRepository {
     /** The language the user's cards are translated from. */
@@ -233,6 +242,12 @@ interface SettingsRepository {
 
     /** Moves any legacy plaintext secrets out of DataStore into hardware-backed [SecretStore]. */
     suspend fun migrateLegacySecrets() {}
+
+    /** Recent practice-sheet anchors and target sentences for coast [coastId], bounded in size. */
+    fun worksheetHistory(coastId: Int): Flow<WorksheetHistory> = flowOf(WorksheetHistory())
+
+    /** Appends [anchoredCards] and [targetSentences] to coast [coastId]'s bounded practice-sheet history. */
+    suspend fun recordWorksheet(coastId: Int, anchoredCards: List<String>, targetSentences: List<String>) = Unit
 }
 
 /** [SettingsRepository] backed by Preferences DataStore and hardware-backed [SecretStore]; days are counted in [timeZone]. */
@@ -445,6 +460,36 @@ class DataStoreSettingsRepository(
     /** One model id per line. Not part of a backup: a check for new models brings the list back. */
     private fun modelOptionsKey(provider: TranslationProvider) = stringPreferencesKey("model_options_${provider.name.lowercase()}")
 
+    override fun worksheetHistory(coastId: Int): Flow<WorksheetHistory> =
+        dataStore.data.map { preferences ->
+            WorksheetHistory(
+                anchoredCards = preferences[worksheetAnchorsKey(coastId)]?.lines()?.filter { it.isNotBlank() }.orEmpty(),
+                targetSentences = preferences[worksheetSentencesKey(coastId)]?.lines()?.filter { it.isNotBlank() }.orEmpty()
+            )
+        }
+
+    override suspend fun recordWorksheet(coastId: Int, anchoredCards: List<String>, targetSentences: List<String>) {
+        if (anchoredCards.isEmpty() && targetSentences.isEmpty()) return
+        dataStore.edit { preferences ->
+            if (anchoredCards.isNotEmpty()) {
+                val anchorsKey = worksheetAnchorsKey(coastId)
+                val existing = preferences[anchorsKey]?.lines()?.filter { it.isNotBlank() }.orEmpty()
+                val merged = mergeBoundedRing(existing, anchoredCards, WORKSHEET_ANCHORS_KEPT)
+                preferences[anchorsKey] = merged.joinToString("\n")
+            }
+            if (targetSentences.isNotEmpty()) {
+                val sentencesKey = worksheetSentencesKey(coastId)
+                val existing = preferences[sentencesKey]?.lines()?.filter { it.isNotBlank() }.orEmpty()
+                val merged = mergeBoundedRing(existing, targetSentences, WORKSHEET_SENTENCES_KEPT)
+                preferences[sentencesKey] = merged.joinToString("\n")
+            }
+        }
+    }
+
+    /** Not part of a backup: local freshness ring buffers per coast. */
+    private fun worksheetAnchorsKey(coastId: Int) = stringPreferencesKey("worksheet_anchors_$coastId")
+    private fun worksheetSentencesKey(coastId: Int) = stringPreferencesKey("worksheet_sentences_$coastId")
+
     override suspend fun setReminderSettings(reminder: ReminderSettings) {
         dataStore.edit { preferences ->
             preferences[REMINDER_ENABLED] = reminder.enabled
@@ -651,6 +696,14 @@ class DataStoreSettingsRepository(
         /** Not part of a backup, like the keys it goes with: permission is given on the phone that sends the text. */
         val AI_SHARING_ALLOWED = stringSetPreferencesKey("ai_sharing_allowed")
         const val STUDY_DAYS_KEPT = 28
+        const val WORKSHEET_ANCHORS_KEPT = 80
+        const val WORKSHEET_SENTENCES_KEPT = 60
+
+        fun mergeBoundedRing(existing: List<String>, added: List<String>, limit: Int): List<String> {
+            val sanitized = added.map { it.replace('\n', ' ').replace('\r', ' ').trim() }.filter { it.isNotEmpty() }
+            val addedSet = sanitized.toHashSet()
+            return (existing.filterNot { it in addedSet } + sanitized.distinct()).takeLast(limit)
+        }
 
         /** The preference holding [provider]'s API key; null for the providers that need none. */
         fun apiKeyPreference(provider: TranslationProvider): Preferences.Key<String>? = when (provider) {

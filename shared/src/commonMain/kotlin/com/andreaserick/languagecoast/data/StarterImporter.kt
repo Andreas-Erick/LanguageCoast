@@ -85,9 +85,9 @@ class StarterImporter(
         if (themes.isEmpty()) return
         val nativeLanguage = settings.nativeLanguage.first()
         val wording = settings.wording.first()
-        val known = flashcards.observeAllCards().first().filter { it.coastId == coastId }.map { it.card.nativeText }
+        val knownWords = flashcards.getPlacedCardsForCoast(coastId).first().mapTo(HashSet()) { normalizedWords(it.card.nativeText) }
         val plan = themes.map { theme ->
-            theme to usableSentences(theme, coast.language, fillers).filterNot { sentence -> known.any { isSameSentence(it, sentence) } }
+            theme to usableSentences(theme, coast.language, fillers).filterNot { sentence -> normalizedWords(sentence) in knownWords }
         }
         val total = plan.sumOf { it.second.size }
         var progress = ImportProgress(coastId, themes.first().category, done = 0, total = total, topicCount = themes.size)

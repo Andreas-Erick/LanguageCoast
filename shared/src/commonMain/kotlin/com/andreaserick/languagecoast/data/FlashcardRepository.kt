@@ -118,6 +118,23 @@ interface FlashcardRepository {
     /** Deletes [card], returning it for [restore]. */
     suspend fun deleteFlashcard(card: Flashcard): DeletedContent
 
+    /**
+     * Replaces [replaced] on the island named [category] (with [emoji]) of coast [coastId] with [sentences] in
+     * one atomic database transaction, returning the new cards' IDs.
+     */
+    suspend fun replaceIslandCards(
+        coastId: Int,
+        category: String,
+        emoji: String,
+        replaced: List<Flashcard>,
+        sentences: List<ProposedSentence>
+    ): List<Int> {
+        replaced.forEach { deleteFlashcard(it) }
+        return sentences.map { sentence ->
+            addFlashcard(coastId, sentence.nativeText, sentence.targetText, category, emoji, sentence.alternatives, sentence.note).card.cardId
+        }
+    }
+
     /** Reads a single card by [cardId], or null if not found. */
     suspend fun getCardById(cardId: Int): Flashcard? =
         observeAllCards().first().firstOrNull { it.card.cardId == cardId }?.card
@@ -274,6 +291,14 @@ class OfflineFlashcardRepository(
         dao.deleteFlashcard(card)
         return DeletedContent(cards = listOf(card))
     }
+
+    override suspend fun replaceIslandCards(
+        coastId: Int,
+        category: String,
+        emoji: String,
+        replaced: List<Flashcard>,
+        sentences: List<ProposedSentence>
+    ): List<Int> = dao.replaceIslandCards(coastId, category, emoji, replaced.map { it.cardId }, sentences)
 
     override suspend fun getCardById(cardId: Int): Flashcard? = dao.getCardById(cardId)
 

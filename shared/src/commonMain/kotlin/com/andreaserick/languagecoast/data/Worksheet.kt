@@ -41,8 +41,18 @@ enum class WorksheetDifficulty(val label: String, val hint: String, internal val
     Easy("Easy", "Short sentences that stay close to your cards.", 3..7, 1),
     Medium("Medium", "Your cards turned into new everyday sentences: questions, negations, other people.", 5..10, 2),
     // Measured before 3.1.0: a small model bolts a reason onto a question ("Where is the station, because my train leaves?").
-    Hard("Hard", "Longer sentences that add a reason, a condition or a contrast. Small models write these less naturally.", 9..16, 2)
+    Hard("Hard", "Longer sentences that add a reason, a condition or a contrast. Small models write these less naturally.", 9..16, 2);
+
+    /**
+     * Allowed unknown words per sentence for [direction]: reading comprehension ([WorksheetDirection.ToNative])
+     * tolerates one additional contextual `i+1` word compared to active recall ([WorksheetDirection.ToTarget]).
+     */
+    internal fun newWordsFor(direction: WorksheetDirection? = null): Int =
+        newWords + if (direction == WorksheetDirection.ToNative) RECEPTIVE_EXTRA_NEW_WORDS else 0
 }
+
+/** Extra unknown words allowed when reading in the coast's language rather than producing it from scratch. */
+internal const val RECEPTIVE_EXTRA_NEW_WORDS = 1
 
 /** Which way a practice sheet is translated. */
 enum class WorksheetDirection {
@@ -256,13 +266,19 @@ class NoWorksheetPrinter : WorksheetPrinter {
 // ---------- Asking the AI for sentences ----------
 
 /** A card as the prompt shows it: its two sides and the island it is on. */
-data class WorksheetCard(val island: String, val targetText: String, val nativeText: String)
+data class WorksheetCard(val island: String, val targetText: String, val nativeText: String) {
+    /** Stable per-coast key for cross-sheet anchor freshness tracking. */
+    internal fun historyKey(): String = "$island\t$targetText"
+}
 
 /** How many of a prompt's sentences are to be about one island. */
 data class IslandQuota(val island: String, val sentences: Int)
 
-/** A numbered line of a prompt: the card one sentence is to be built from. */
-data class WorksheetAnchor(val card: WorksheetCard)
+/**
+ * A numbered line of a prompt: the card one sentence is to be built from, plus an optional register/context
+ * [note] stored on the flashcard.
+ */
+data class WorksheetAnchor(val card: WorksheetCard, val note: String? = null)
 
 /**
  * What one prompt of a sheet is made from: the cards it shows, the cards its sentences are built from
@@ -280,6 +296,10 @@ private fun shortened(text: String, limit: Int): String {
 
 /** A numbered line of the prompt shows this much of a card; the whole card is in the list above it. */
 private const val ANCHOR_LINE = 160
+
+/** Maximum length for an anchor's usage/register note or a learner's goal in the prompt. */
+private const val ANCHOR_NOTE_LINE = 80
+private const val GOAL_LINE = 120
 
 /** How long and how built a sentence of [difficulty] is, as the prompt says it after "It is". */
 private fun lengthRule(difficulty: WorksheetDifficulty): String {
@@ -340,7 +360,8 @@ fun buildWorksheetPrompt(
     level: Level? = null,
     wording: Wording = Wording.Unspecified,
     direction: WorksheetDirection = WorksheetDirection.ToTarget,
-    wordHelp: Boolean = true
+    wordHelp: Boolean = true,
+    goal: String? = null
 ): String {
     val byIsland = cards.groupBy { it.island }
     val flashcards = byIsland.entries.joinToString("\n\n") { (island, group) ->
@@ -348,9 +369,11 @@ fun buildWorksheetPrompt(
     }
     val where = region?.trim()?.takeIf { it.isNotEmpty() }?.let { " from $it" } ?: ""
     val levelClause = level?.let { " and their level is about ${it.label}" } ?: ""
+    val goalClause = goal?.let(WorksheetCardDealer::oneLine)?.takeIf { it.isNotEmpty() }
+        ?.let { " Why they are learning $targetLanguage: \"${shortened(it, GOAL_LINE)}\"." } ?: ""
     // The flashcards and the numbered lines are joined on afterwards: trimIndent would trip over their unindented lines.
     val intro = """
-        You are a native $targetLanguage speaker$where who teaches $targetLanguage to adults. You are writing a translation exercise for one learner. Their native language is $nativeLanguage$levelClause.
+        You are a native $targetLanguage speaker$where who teaches $targetLanguage to adults. You are writing a translation exercise for one learner. Their native language is $nativeLanguage$levelClause.$goalClause
 
         These are the learner's flashcards, grouped by topic, one per line, as "$targetLanguage = $nativeLanguage":
     """.trimIndent()
@@ -365,7 +388,10 @@ fun buildWorksheetPrompt(
             changeRule(difficulty)
         // In words and without the brackets of the topics' headings: a small model copies brackets into its answer.
         lines = "\n\n" + anchors.withIndex().joinToString("\n") { (index, anchor) ->
-            "${index + 1}. ${anchor.card.island}: ${shortened(anchor.card.targetText, ANCHOR_LINE)}"
+            val noteSuffix = anchor.note?.let(WorksheetCardDealer::oneLine)?.takeIf { it.isNotEmpty() }
+                ?.replace('[', '(')?.replace(']', ')')?.replace("||", ";")
+                ?.let { " (Note: ${shortened(it, ANCHOR_NOTE_LINE)})" } ?: ""
+            "${index + 1}. ${anchor.card.island}: ${shortened(anchor.card.targetText, ANCHOR_LINE)}$noteSuffix"
         }
     } else {
         val spread = when {
@@ -534,17 +560,31 @@ private fun unwrapped(value: String): String = when {
  * used for; it is not a verdict on any single sentence.
  */
 class CoastVocabulary(texts: List<String>) {
-    private val words = HashSet<String>()
+    private val wordCounts = HashMap<String, Int>()
+    private val foldedWords = HashSet<String>()
     private val stems = HashSet<String>()
+    private val foldedStems = HashSet<String>()
     private val characters = HashSet<Char>()
+    private var textCount = 0
 
     init {
         // A text at a time: a large coast's words, all in one list, would be millions.
-        for (text in texts) for (word in normalizedWords(text)) {
-            // The same words come back card after card; only a new one has stems to add.
-            if (!words.add(word)) continue
-            for (length in stemLength(word.length, STEM_SHARE)..word.length) stems += word.substring(0, length)
-            word.forEach { if (writtenWithoutSpaces(it)) characters += it }
+        val seenInText = HashSet<String>()
+        for (text in texts) {
+            seenInText.clear()
+            val normalized = normalizedWords(text)
+            if (normalized.isNotEmpty()) textCount++
+            for (word in normalized) {
+                val isFirst = word !in wordCounts
+                if (seenInText.add(word)) wordCounts[word] = (wordCounts[word] ?: 0) + 1
+                if (!isFirst) continue
+                for (length in stemLength(word.length, STEM_SHARE)..word.length) stems += word.substring(0, length)
+                val folded = foldWord(word)
+                if (folded != word && foldedWords.add(folded)) {
+                    for (length in stemLength(folded.length, STEM_SHARE)..folded.length) foldedStems += folded.substring(0, length)
+                }
+                word.forEach { if (writtenWithoutSpaces(it)) characters += it }
+            }
         }
     }
 
@@ -574,6 +614,59 @@ class CoastVocabulary(texts: List<String>) {
     }
 
     /**
+     * Whether [sentence] reuses at least one distinctive content word (or script character) from [card] or its
+     * [alternatives], matching inflected, umlauted/accented, and participial forms while ignoring ubiquitous
+     * function words ("der", "ist") when the card has more specific vocabulary.
+     */
+    fun usesCard(sentence: String, card: WorksheetCard, alternatives: List<String> = emptyList()): Boolean {
+        val perCardText = buildList {
+            add(normalizedWords(card.targetText))
+            for (alt in alternatives) add(normalizedWords(alt))
+        }
+        val cardWords = perCardText.flatten()
+        if (cardWords.isEmpty()) return false
+        val sentenceWords = normalizedWords(sentence)
+        if (sentenceWords.isEmpty()) return false
+        val candidates = cardWords.distinct().filter { it.length >= MIN_STEM || it.any(::writtenWithoutSpaces) }.ifEmpty { cardWords.distinct() }
+        fun outsideCount(term: String): Int {
+            val inCard = perCardText.count { term in it }
+            return ((wordCounts[term] ?: 0) - inCard).coerceAtLeast(0)
+        }
+        val minOutside = candidates.minOf(::outsideCount)
+        val anchorTerms = candidates.filter { term ->
+            term.any(::writtenWithoutSpaces) ||
+                outsideCount(term) == minOutside ||
+                (term.length >= 4 && outsideCount(term) <= minOutside + 1) ||
+                (textCount >= 10 && outsideCount(term) * 5 <= textCount)
+        }.ifEmpty { candidates }
+        return anchorTerms.any { term ->
+            if (term.any(::writtenWithoutSpaces)) {
+                term.any { ch -> writtenWithoutSpaces(ch) && sentence.contains(ch) }
+            } else {
+                sentenceWords.any { word -> isSameWord(word, term) }
+            }
+        }
+    }
+
+    /**
+     * Whether [sentence] contains words unknown to the coast that are missing from [help]. In active
+     * translation into the coast's language, an unglossed new word forces the learner to guess a stranger.
+     */
+    fun hasUnexplainedUnknownWords(sentence: String, help: List<WordHelp>): Boolean {
+        val unknown = unknownWords(sentence)
+        if (unknown.isEmpty()) return false
+        if (help.isEmpty()) return true
+        val helpWords = help.flatMap { normalizedWords(it.word) }
+        return unknown.any { word ->
+            if (word.length == 1 && writtenWithoutSpaces(word[0])) {
+                help.none { word in it.word }
+            } else {
+                helpWords.none { isSameWord(word, it) }
+            }
+        }
+    }
+
+    /**
      * The entries of [help] worth printing under [sentence]: the word is in the sentence, in some form, and
      * on none of the coast's cards. A model also lists small words the learner has ("nicht = not"), and now
      * and then a word that isn't in the sentence; neither helps. At most [WORKSHEET_WORD_HELP] are kept.
@@ -598,9 +691,19 @@ class CoastVocabulary(texts: List<String>) {
     }
 
     private fun isKnown(word: String): Boolean {
-        if (word in words || word.all { it.isDigit() }) return true
-        if (word.length < MIN_STEM) return false
-        return (stemLength(word.length, FORM_SHARE)..word.length).any { word.substring(0, it) in stems }
+        if (word in wordCounts || word.all { it.isDigit() }) return true
+        val folded = foldWord(word)
+        if (folded in wordCounts || folded in foldedWords) return true
+        if (word.length >= MIN_STEM && (stemLength(word.length, FORM_SHARE)..word.length).any { word.substring(0, it) in stems }) return true
+        if (folded.length >= MIN_STEM && (stemLength(folded.length, FORM_SHARE)..folded.length).any {
+                val stem = folded.substring(0, it)
+                stem in stems || stem in foldedStems
+            }
+        ) return true
+        return participleInfinitives(word).any { inf ->
+            val foldedInf = foldWord(inf)
+            inf in wordCounts || foldedInf in wordCounts || foldedInf in foldedWords
+        }
     }
 
     private companion object {
@@ -616,15 +719,85 @@ class CoastVocabulary(texts: List<String>) {
         /** How many unknown characters a new word may be in a script without spaces. */
         const val CHARACTERS_PER_NEW_WORD = 2
 
+        /** Productive separable verb prefixes before "-ge-" in Germanic past participles ("eingekauft", "angekommen"). */
+        val SEPARABLE_PREFIXES = arrayOf(
+            "zurück", "zusammen", "weiter", "wieder",
+            "statt", "teil", "fern", "fest", "nach",
+            "auf", "aus", "bei", "ein", "her", "hin", "los", "mit", "vor", "weg",
+            "ab", "an", "um", "zu"
+        )
+
         fun stemLength(length: Int, share: Double): Int = maxOf(MIN_STEM, (length * share + 0.999).toInt()).coerceAtMost(length)
 
-        /** Whether [a] and [b] are one word in two forms ("liegen", "liegt"): they start alike for most of the shorter one. */
+        /** Folds diacritics and vowel mutations ("ä" -> "a", "ø" -> "o") so umlauted/accented inflections match their base stem. */
+        fun foldWord(word: String): String {
+            if (word.all { it.code < 128 }) return word
+            val stripped = removeAccents(word)
+            if (stripped.all { it.code < 128 }) return stripped
+            return buildString(stripped.length + 2) {
+                for (ch in stripped) when (ch) {
+                    'ø' -> append('o')
+                    'æ' -> append("ae")
+                    'œ' -> append("oe")
+                    'ł' -> append('l')
+                    'đ' -> append('d')
+                    else -> append(ch)
+                }
+            }
+        }
+
+        /** Candidate verb infinitives for a Germanic past participle ("gekauft" -> "kaufen", "eingekauft" -> "einkaufen"). */
+        fun participleInfinitives(word: String): List<String> {
+            if (word.length < 6) return emptyList()
+            val stems = ArrayList<String>(2)
+            if (word.startsWith("ge")) stems += word.substring(2)
+            for (prefix in SEPARABLE_PREFIXES) {
+                if (word.length >= prefix.length + 6 && word.startsWith(prefix) && word.startsWith("ge", startIndex = prefix.length)) {
+                    stems += prefix + word.substring(prefix.length + 2)
+                    break
+                }
+            }
+            if (stems.isEmpty()) return emptyList()
+            val infinitives = ArrayList<String>(4)
+            for (raw in stems) {
+                val base = when {
+                    raw.length >= 6 && (raw.endsWith("ten") || raw.endsWith("ter") || raw.endsWith("tes") || raw.endsWith("tem")) -> raw.dropLast(2)
+                    raw.length >= 5 && raw.endsWith("te") -> raw.dropLast(1)
+                    else -> raw
+                }
+                when {
+                    base.endsWith("en") && base.length >= 5 -> infinitives += base
+                    base.endsWith("et") && base.length >= 5 -> {
+                        val root = base.dropLast(2)
+                        infinitives += "${root}en"
+                        infinitives += "${root}n"
+                    }
+                    (base.endsWith("t") || base.endsWith("d")) && base.length >= 4 -> {
+                        val root = base.dropLast(1)
+                        infinitives += "${root}en"
+                        infinitives += "${root}n"
+                    }
+                }
+            }
+            return infinitives
+        }
+
+        /**
+         * Whether [a] and [b] are one word in two forms ("liegen"/"liegt", "fahren"/"fährt", "kaufen"/"gekauft"):
+         * they start alike (raw or accent-folded) for most of the shorter one, or one is the participle of the other.
+         */
         fun isSameWord(a: String, b: String): Boolean {
             if (a == b) return true
             val shorter = minOf(a.length, b.length)
             // Korean writes a syllable as one character, so a noun is often two of them, with its particle attached: "학교", "학교에".
             if (shorter < MIN_STEM) return shorter == 2 && a[0] in '\uAC00'..'\uD7A3' && (a.startsWith(b) || b.startsWith(a))
-            return a.commonPrefixWith(b).length >= stemLength(shorter, STEM_SHARE)
+            if (a.commonPrefixWith(b).length >= stemLength(shorter, STEM_SHARE)) return true
+            val foldedA = foldWord(a)
+            val foldedB = foldWord(b)
+            val foldedShorter = minOf(foldedA.length, foldedB.length)
+            if (foldedShorter >= MIN_STEM && foldedA.commonPrefixWith(foldedB).length >= stemLength(foldedShorter, STEM_SHARE)) return true
+            return participleInfinitives(a).any { it == b || foldWord(it) == foldedB } ||
+                participleInfinitives(b).any { it == a || foldWord(it) == foldedA }
         }
 
         /** Chinese, Japanese, Thai, Lao, Khmer and Burmese write sentences without spaces between words. */
@@ -639,9 +812,11 @@ class CoastVocabulary(texts: List<String>) {
  * there are some to spare, the first to go are copies of a card ([known], the cards' translations). Then
  * come the sentences with something against them: far more words the coast doesn't have than a sentence of
  * [difficulty] may bring ([CoastVocabulary.keepsToCoast]), a length well outside what the difficulty
- * promises, or a question on one side and not on the other. Among the rest, a sentence that says nearly the
- * same as one already taken ("Where is the bus?" after "Where is the station?") waits until the others
- * are in: a sheet of one pattern over and over teaches little.
+ * promises, a question on one side and not on the other, dropping or ignoring the card the line was meant
+ * to practise, or leaving a new word unexplained when translating into the coast's language. Among the rest,
+ * a near-repeat of a sentence already taken ("Where is the bus?" after "Where is the station?"), or a second
+ * sentence for the same card while its island still has another clean card waiting, waits until the others
+ * are in: a sheet of one pattern or one card over and over teaches little.
  *
  * None of this drops a sentence that the sheet needs to reach [count]; it only decides which ones stay out.
  *
@@ -652,7 +827,11 @@ fun pickWorksheetSentences(
     vocabulary: CoastVocabulary,
     known: List<String>,
     count: Int,
-    difficulty: WorksheetDifficulty? = null
+    difficulty: WorksheetDifficulty? = null,
+    cardAlternatives: Map<WorksheetCard, List<String>> = emptyMap(),
+    direction: WorksheetDirection? = null,
+    expectsWordHelp: Boolean = false,
+    recentSentences: List<String> = emptyList()
 ): List<WorksheetSentence> {
     if (candidates.size <= count) return candidates
     // Worked out once per sentence, not once per comparison: a long sheet from a large coast has hundreds.
@@ -662,25 +841,68 @@ fun pickWorksheetSentences(
     val written = words.toHashSet()
     val copies = HashSet<List<String>>()
     for (text in known) normalizedWords(text).let { if (it in written) copies += it }
-    val newWords = difficulty?.newWords ?: WORKSHEET_NEW_WORDS
+    val recentExact = HashSet<List<String>>()
+    val recentSets = ArrayList<Set<String>>(recentSentences.size)
+    for (text in recentSentences) {
+        val w = normalizedWords(text)
+        if (w.isNotEmpty()) {
+            recentExact += w
+            recentSets += w.toHashSet()
+        }
+    }
+    val newWords = difficulty?.newWordsFor(direction)
+        ?: (WORKSHEET_NEW_WORDS + if (direction == WorksheetDirection.ToNative) RECEPTIVE_EXTRA_NEW_WORDS else 0)
+    val matchesAnchor = BooleanArray(candidates.size) { index ->
+        val card = candidates[index].card
+        card != null && vocabulary.usesCard(candidates[index].targetText, card, cardAlternatives[card].orEmpty())
+    }
+    val anyAnchored = matchesAnchor.any { it }
+    val sets = HashMap<Int, Set<String>>()
+    fun wordSet(index: Int) = sets.getOrPut(index) { words[index].toHashSet() }
     class Ranked(val index: Int, val isCopy: Boolean, val faults: Double)
     val ranked = candidates
         .mapIndexed { index, sentence ->
             val text = sentence.targetText
             val strays = if (vocabulary.keepsToCoast(text, newWords)) 0.0 else vocabulary.unknownShare(text)
-            Ranked(index, words[index] in copies, strays + lengthFault(text, words[index].size, difficulty) + questionFault(sentence))
+            val anchorPenalty = if (anyAnchored && !matchesAnchor[index]) ANCHOR_FAULT else 0.0
+            val helpPenalty = if (expectsWordHelp && direction == WorksheetDirection.ToTarget && strays == 0.0 &&
+                vocabulary.hasUnexplainedUnknownWords(text, sentence.newWords)
+            ) UNEXPLAINED_FAULT else 0.0
+            val recentPenalty = when {
+                recentExact.isEmpty() -> 0.0
+                words[index] in recentExact -> RECENT_REPEAT_FAULT
+                recentSets.any { isNearRepeat(it, wordSet(index)) } -> RECENT_NEAR_REPEAT_FAULT
+                else -> 0.0
+            }
+            Ranked(
+                index = index,
+                isCopy = words[index] in copies,
+                faults = strays + lengthFault(text, words[index].size, difficulty) + questionFault(sentence) +
+                    anchorPenalty + helpPenalty + recentPenalty
+            )
         }
         .sortedWith(compareBy({ it.isCopy }, { it.faults }, { it.index }))
     // Best first. A near-repeat of a sentence already taken waits until the other clean ones are in; ranked has
     // the clean sentences first, so those waiting are the near-repeats, then the faulty ones, then the copies.
     val taken = ArrayList<Int>(count)
     val waiting = ArrayList<Int>()
-    val sets = HashMap<Int, Set<String>>()
-    fun wordSet(index: Int) = sets.getOrPut(index) { words[index].toHashSet() }
-    for (candidate in ranked) {
+    val takenCards = HashSet<WorksheetCard>()
+    for ((position, candidate) in ranked.withIndex()) {
         if (taken.size >= count) break
-        val waits = candidate.isCopy || candidate.faults > 0.0 || taken.any { isNearRepeat(wordSet(it), wordSet(candidate.index)) }
-        if (waits) waiting += candidate.index else taken += candidate.index
+        val card = candidates[candidate.index].card
+        val repeatsCardOnIsland = card != null && card in takenCards &&
+            ranked.subList(position + 1, ranked.size)
+                .asSequence()
+                .takeWhile { !it.isCopy && it.faults == 0.0 }
+                .any { later -> candidates[later.index].card?.let { it.island == card.island && it !in takenCards } == true }
+        val waits = candidate.isCopy || candidate.faults > 0.0 || repeatsCardOnIsland ||
+            taken.any { isNearRepeat(wordSet(it), wordSet(candidate.index)) }
+        if (waits) {
+            waiting += candidate.index
+        } else {
+            taken += candidate.index
+            if (card != null) takenCards += card
+        }
     }
     for (index in waiting) if (taken.size >= count) break else taken += index
     return taken.sorted().map { candidates[it] }
@@ -688,6 +910,16 @@ fun pickWorksheetSentences(
 
 /** How much a sentence counts against itself for each thing wrong with its shape; a stray word counts by its share of the sentence. */
 private const val SHAPE_FAULT = 0.3
+
+/** Penalty when a sentence repeats or closely echoes a sentence from a recent practice sheet on the same coast. */
+private const val RECENT_REPEAT_FAULT = 0.25
+private const val RECENT_NEAR_REPEAT_FAULT = 0.05
+
+/** Penalty when a sentence dropped or ignored its assigned anchor card while other candidates honoured theirs. */
+private const val ANCHOR_FAULT = 0.15
+
+/** Penalty when a sentence into the coast's language introduces an unknown word without explaining it in word help. */
+private const val UNEXPLAINED_FAULT = 0.1
 
 /** A sentence may be this many words shorter or longer than its difficulty says before it counts as off. */
 private const val LENGTH_SLACK = 2
@@ -745,9 +977,11 @@ internal class WorksheetCardDealer(
     private val perIsland: Int,
     private val characters: Int,
     now: Long,
-    private val random: Random
+    private val random: Random,
+    private val recentAnchors: Set<String> = emptySet()
 ) {
     private val lines = cards.map { WorksheetCard(it.islandName, oneLine(it.targetText), oneLine(it.nativeText)) }
+    private val notes = cards.map { it.note }
     private val sizes = IntArray(lines.size) { lines[it].targetText.length + lines[it].nativeText.length + SEPARATOR_LENGTH }
     private val shortest = sizes.minOrNull() ?: 0
     private val fitsWhole = lines.size <= limit && sizes.sumOf { it.toLong() } <= characters
@@ -847,9 +1081,27 @@ internal class WorksheetCardDealer(
         val usable = there.filter { sizes[it] <= ANCHOR_CHARACTERS }.ifEmpty { there }
         if (usable.isEmpty()) return emptyList()
         val picked = ArrayList<Int>(wanted)
-        // First the cards no sentence of this sheet was built from yet, then the ones this prompt doesn't have yet;
-        // only an island with fewer cards than the prompt wants sentences has a card twice in it.
-        for (index in usable) if (picked.size >= wanted) break else if (index !in anchored) picked += index
+        val pickedSet = HashSet<Int>(wanted)
+        fun takeMatching(predicate: (Int) -> Boolean) {
+            for (index in usable) {
+                if (picked.size >= wanted) return
+                if (index !in anchored && index !in pickedSet && predicate(index)) {
+                    picked += index
+                    pickedSet += index
+                }
+            }
+        }
+        // First the cards no sentence of this sheet was built from yet (preferring studied cards that weren't
+        // anchored on a recent sheet, then studied cards that were, before unstudied cards), then the ones this
+        // prompt doesn't have yet; only an island with fewer cards than the prompt wants has a card twice.
+        if (recentAnchors.isEmpty()) {
+            takeMatching { true }
+        } else {
+            takeMatching { needs[it] != NOT_STUDIED && lines[it].historyKey() !in recentAnchors }
+            takeMatching { needs[it] != NOT_STUDIED }
+            takeMatching { lines[it].historyKey() !in recentAnchors }
+            takeMatching { true }
+        }
         val inPrompt = (already + picked).toHashSet()
         for (index in usable) if (picked.size >= wanted) break else if (inPrompt.add(index)) picked += index
         while (picked.size < wanted) picked += usable[(already.size + picked.size) % usable.size]
@@ -863,7 +1115,7 @@ internal class WorksheetCardDealer(
         var turn = 0
         while (true) {
             val before = mixed.size
-            for (island in byIsland) island.getOrNull(turn)?.let { mixed += WorksheetAnchor(lines[it]) }
+            for (island in byIsland) island.getOrNull(turn)?.let { mixed += WorksheetAnchor(lines[it], notes[it]) }
             if (mixed.size == before) return mixed
             turn++
         }
@@ -883,7 +1135,7 @@ internal class WorksheetCardDealer(
         return cards.sortedBy { draw[it] }
     }
 
-    private companion object {
+    internal companion object {
         /** " = " and the line break around a card's two sides. */
         const val SEPARATOR_LENGTH = 4
 
@@ -912,6 +1164,46 @@ internal class WorksheetCardDealer(
         }
     }
 }
+
+/**
+ * Estimates the learner's CEFR level ([Level.A1], [Level.A2], [Level.B1]) on custom or imported coasts
+ * where built-in route islands account for fewer than half of the cards. Returns `null` until enough cards
+ * have been studied and retained ([MIN_STUDIED_FOR_LEVEL], [MIN_MATURE_FOR_LEVEL]) so a freshly imported
+ * deck never claims a level its owner hasn't earned yet.
+ */
+internal fun estimateWorksheetLevel(cards: List<WorksheetSourceCard>): Level? {
+    val studied = cards.filter(::isStudied)
+    if (studied.size < MIN_STUDIED_FOR_LEVEL) return null
+    val mature = studied.filter { val s = it.stability; s != null && s.isFinite() && s >= MATURE_STABILITY_DAYS }
+    if (mature.size < MIN_MATURE_FOR_LEVEL) return null
+    val avgStability = mature.sumOf { it.stability ?: 0.0 } / mature.size
+    val avgWords = mature.sumOf { card ->
+        val unspaced = card.targetText.count {
+            it in '\u0E00'..'\u0EFF' || it in '\u1000'..'\u109F' || it in '\u1780'..'\u17FF' ||
+                it in '\u3040'..'\u30FF' || it in '\u3400'..'\u4DBF' || it in '\u4E00'..'\u9FFF'
+        }
+        if (unspaced > 0) unspaced / 2.5 else normalizedWords(card.targetText).size.toDouble()
+    } / mature.size
+    return when {
+        (mature.size >= B1_MATURE_CARDS && avgStability >= B1_AVG_STABILITY_DAYS && avgWords >= B1_AVG_WORDS) ||
+            (mature.size >= B1_BROAD_MATURE_CARDS && avgStability >= A2_AVG_STABILITY_DAYS) -> Level.B1
+        (mature.size >= A2_MATURE_CARDS && avgStability >= A2_AVG_STABILITY_DAYS && avgWords >= A2_AVG_WORDS) ||
+            (mature.size >= A2_BROAD_MATURE_CARDS && avgStability >= MATURE_STABILITY_DAYS) -> Level.A2
+        else -> Level.A1
+    }
+}
+
+private const val MIN_STUDIED_FOR_LEVEL = 15
+private const val MIN_MATURE_FOR_LEVEL = 10
+private const val MATURE_STABILITY_DAYS = 3.0
+private const val A2_MATURE_CARDS = 50
+private const val A2_BROAD_MATURE_CARDS = 80
+private const val A2_AVG_STABILITY_DAYS = 7.0
+private const val A2_AVG_WORDS = 4.0
+private const val B1_MATURE_CARDS = 150
+private const val B1_BROAD_MATURE_CARDS = 250
+private const val B1_AVG_STABILITY_DAYS = 14.0
+private const val B1_AVG_WORDS = 6.0
 
 /** A practice sheet, or why there is none. */
 sealed interface WorksheetResult {
@@ -977,18 +1269,29 @@ class WorksheetGenerator(
 
         val nativeLanguage = settings.nativeLanguage.first()
         val wording = settings.wording.first()
-        // The level only when the sheet's cards are mostly the route's: an imported deck says nothing about where
-        // its owner stands, and neither does one starter topic beside it.
-        val route = observeRoute(flashcards, settings, coastId, clock.now().toEpochMilliseconds()).first()
+        val history = settings.worksheetHistory(coastId).first()
+        // The route's level when the sheet's cards are mostly the route's; otherwise an empirical estimate once
+        // enough custom/imported cards have been studied and retained (null on a freshly imported deck).
+        val nowMillis = clock.now().toEpochMilliseconds()
+        val route = observeRoute(flashcards, settings, coastId, nowMillis).first()
         val routeIslands = route.levels.flatMap { it.stops }.filter { it.isOnCoast }.mapTo(HashSet()) { it.name }
-        val level = if (cards.count { it.islandName in routeIslands } * 2 >= cards.size) route.current.level else null
+        val level = if (cards.count { it.islandName in routeIslands } * 2 >= cards.size) {
+            route.current.level
+        } else {
+            estimateWorksheetLevel(cards)
+        }
         val count = options.count.coerceIn(WORKSHEET_COUNT_RANGE)
         val isLocal = engine is TranslationEngine.LocalAi
+        val alternativesByCard = HashMap<WorksheetCard, List<String>>()
         val (known, vocabulary, dealer) = withContext(background) {
             val known = ArrayList<String>(cards.size)
             cards.forEach {
                 known += it.targetText
                 known += it.alternatives
+                if (it.alternatives.isNotEmpty()) {
+                    val key = WorksheetCard(it.islandName, WorksheetCardDealer.oneLine(it.targetText), WorksheetCardDealer.oneLine(it.nativeText))
+                    alternativesByCard[key] = it.alternatives
+                }
             }
             Triple(
                 known,
@@ -998,8 +1301,9 @@ class WorksheetGenerator(
                     limit = if (isLocal) LOCAL_CARD_LIMIT else CARD_LIMIT,
                     perIsland = if (isLocal) LOCAL_ISLAND_CARDS else ISLAND_CARDS,
                     characters = if (isLocal) LOCAL_CHARACTER_LIMIT else CHARACTER_LIMIT,
-                    now = clock.now().toEpochMilliseconds(),
-                    random = random
+                    now = nowMillis,
+                    random = random,
+                    recentAnchors = history.anchoredCards.toHashSet()
                 )
             )
         }
@@ -1027,6 +1331,8 @@ class WorksheetGenerator(
             val asked = if (perRequest < batch.sentences) minOf(perRequest, left) else worksheetAsk(left, perRequest)
             val (prompt, anchors) = withContext(background) {
                 val deal = dealer.next(asked)
+                val avoidCap = if (isLocal) LOCAL_AVOID_LIMIT else AVOID_LIMIT
+                val avoidSentences = (history.targetSentences + written.map { it.targetText }).distinct().takeLast(avoidCap)
                 buildWorksheetPrompt(
                     cards = deal.cards,
                     targetLanguage = coast.language,
@@ -1034,15 +1340,16 @@ class WorksheetGenerator(
                     count = asked,
                     difficulty = options.difficulty,
                     region = coast.region,
-                    // Every repeat is dropped below anyway; the prompt names the latest ones, which a model repeats most readily.
-                    avoid = written.takeLast(AVOID_LIMIT).map { it.targetText },
+                    // Recent sheet sentences plus this sheet's latest ones, so consecutive sheets stay fresh.
+                    avoid = avoidSentences,
                     quotas = deal.quotas,
                     anchors = deal.anchors,
                     level = level,
                     wording = wording,
                     direction = options.direction,
                     // A small local model keeps to three fields better than to four.
-                    wordHelp = !isLocal
+                    wordHelp = !isLocal,
+                    goal = coast.goal
                 ) to deal.anchors
             }
             var completion = translator.complete(engine, prompt)
@@ -1084,8 +1391,25 @@ class WorksheetGenerator(
             onProgress(minOf(written.size, count))
         }
 
-        val sentences = withContext(background) { pickWorksheetSentences(written, vocabulary, known, count, options.difficulty) }
+        val sentences = withContext(background) {
+            pickWorksheetSentences(
+                candidates = written,
+                vocabulary = vocabulary,
+                known = known,
+                count = count,
+                difficulty = options.difficulty,
+                cardAlternatives = alternativesByCard,
+                direction = options.direction,
+                expectsWordHelp = !isLocal,
+                recentSentences = history.targetSentences
+            )
+        }
         if (sentences.isEmpty()) return WorksheetResult.Failed(lastError ?: "${provider.label} sent no sentences. Try again.")
+        settings.recordWorksheet(
+            coastId = coastId,
+            anchoredCards = sentences.mapNotNull { it.card?.historyKey() },
+            targetSentences = sentences.map { WorksheetCardDealer.oneLine(it.targetText) }
+        )
         return WorksheetResult.Ready(
             Worksheet(
                 coastName = coast.displayName,
@@ -1121,6 +1445,7 @@ class WorksheetGenerator(
 
         /** A request lists this many of the sentences already written; beyond that it mostly costs tokens. */
         const val AVOID_LIMIT = 60
+        const val LOCAL_AVOID_LIMIT = 15
 
         /** How many requests more than a sheet needs are made when answers come back short. */
         const val EXTRA_REQUESTS = 2

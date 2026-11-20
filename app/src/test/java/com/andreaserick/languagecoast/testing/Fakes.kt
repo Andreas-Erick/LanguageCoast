@@ -25,6 +25,7 @@ import com.andreaserick.languagecoast.data.Completion
 import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.Worksheet
+import com.andreaserick.languagecoast.data.WorksheetHistory
 import com.andreaserick.languagecoast.data.WorksheetPdf
 import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.WorksheetSourceCard
@@ -283,7 +284,8 @@ class FakeFlashcardRepository : FlashcardRepository {
             .map {
                 WorksheetSourceCard(
                     it.islandId, names.getValue(it.islandId), it.targetText, it.nativeText, it.alternatives,
-                    it.stability, it.difficulty, it.lastReviewed, it.lapses
+                    it.stability, it.difficulty, it.lastReviewed, it.lapses,
+                    note = it.notes?.trim()?.takeIf(String::isNotEmpty) ?: it.note?.trim()?.takeIf(String::isNotEmpty)
                 )
             }
     }
@@ -419,6 +421,23 @@ class FakeSettingsRepository : SettingsRepository {
         storedModelOptions.map { it[provider] ?: SettingsDefaults.models(provider) }
     override suspend fun setModelOptions(provider: TranslationProvider, models: List<String>) {
         storedModelOptions.update { it + (provider to models) }
+    }
+
+    val storedWorksheetHistory = MutableStateFlow<Map<Int, WorksheetHistory>>(emptyMap())
+    override fun worksheetHistory(coastId: Int): Flow<WorksheetHistory> =
+        storedWorksheetHistory.map { it[coastId] ?: WorksheetHistory() }
+    override suspend fun recordWorksheet(coastId: Int, anchoredCards: List<String>, targetSentences: List<String>) {
+        storedWorksheetHistory.update { all ->
+            val current = all[coastId] ?: WorksheetHistory()
+            val cleanAnchors = anchoredCards.map { it.replace('\n', ' ').replace('\r', ' ').trim() }.filter { it.isNotEmpty() }
+            val cleanSentences = targetSentences.map { it.replace('\n', ' ').replace('\r', ' ').trim() }.filter { it.isNotEmpty() }
+            val anchorSet = cleanAnchors.toHashSet()
+            val sentenceSet = cleanSentences.toHashSet()
+            all + (coastId to WorksheetHistory(
+                anchoredCards = (current.anchoredCards.filterNot { it in anchorSet } + cleanAnchors.distinct()).takeLast(80),
+                targetSentences = (current.targetSentences.filterNot { it in sentenceSet } + cleanSentences.distinct()).takeLast(60)
+            ))
+        }
     }
     override suspend fun setReminderSettings(reminder: ReminderSettings) { reminderSettings.value = reminder }
     override suspend fun setStudyReversed(reversed: Boolean) { studyReversed.value = reversed }

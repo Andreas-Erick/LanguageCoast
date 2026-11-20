@@ -202,7 +202,7 @@ class CoastViewModel(
     /** The cards the finished build wrote and kept, as they are now (a removed one drops out). */
     private val buildReview = builder.progress.flatMapLatest { progress ->
         if (progress == null || !progress.isFinished || progress.coastId != coastId) flowOf(BuildReview())
-        else flashcards.observeAllCards().map { cards ->
+        else flashcards.getPlacedCardsForCoast(coastId).map { cards ->
             val byId = cards.associate { it.card.cardId to it.card }
             BuildReview(added = progress.addedCardIds.mapNotNull(byId::get), kept = progress.keptCardIds.mapNotNull(byId::get))
         }

@@ -113,7 +113,7 @@ class PersonalIslandBuilder(
                 _progress.value = progress
                 val key = builtKey(island.id, raisedTo)
                 val built = settings.personalIslandsBuilt.first()[personalIslandKey(coastId, key)] != null
-                val coastCards = flashcards.observeAllCards().first().filter { it.coastId == coastId }
+                val coastCards = flashcards.getPlacedCardsForCoast(coastId).first()
                 val onIsland = coastCards.filter { it.islandName == island.name }.map { it.card }
                 // Only an island this builder wrote has cards it may replace; one the user made by hand is only added to,
                 // and so is an island taken a level up, whose simpler sentences stay.
@@ -142,10 +142,7 @@ class PersonalIslandBuilder(
                 // Saved whole or not at all: a Stop that lands here waits until the island's old cards are replaced
                 // by the new ones and the island is marked as written, so it is never left half-written.
                 val added = withContext(NonCancellable) {
-                    replaceable.forEach { flashcards.deleteFlashcard(it) }
-                    val cards = sentences.map { sentence ->
-                        flashcards.addFlashcard(coastId, sentence.nativeText, sentence.targetText, island.name, island.emoji, sentence.alternatives, sentence.note).card.cardId
-                    }
+                    val cards = flashcards.replaceIslandCards(coastId, island.name, island.emoji, replaceable, sentences)
                     settings.markPersonalIslandBuilt(coastId, key, island.fingerprint(profile, answers))
                     cards
                 }

@@ -12,12 +12,13 @@ import java.util.Locale
  * [Speaker] using Android's text-to-speech engine and the voices installed on the phone: free and offline.
  * The engine is started on first use and kept for the life of the app.
  */
-class AndroidSpeaker(private val context: Context) : Speaker {
+class AndroidSpeaker(context: Context) : Speaker {
 
+    private val appContext: Context = context.applicationContext
     private val ready = MutableStateFlow(false)
 
     private val tts: TextToSpeech by lazy {
-        TextToSpeech(context) { status -> ready.value = status == TextToSpeech.SUCCESS }
+        TextToSpeech(appContext) { status -> ready.value = status == TextToSpeech.SUCCESS }
     }
 
     override fun canSpeak(language: String): Flow<Boolean> {
