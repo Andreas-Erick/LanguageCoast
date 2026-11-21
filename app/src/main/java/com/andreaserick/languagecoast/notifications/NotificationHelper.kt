@@ -22,9 +22,9 @@ object NotificationHelper {
     private const val LARGE_ICON_PX = 256
 
     // The app's colours (ui/theme/Color.kt): the accent, the raised surface and the "Again" coral.
-    private const val SUNLIT = 0xFFF3C969.toInt()
-    private const val SURFACE_RAISED = 0xFF1F4560.toInt()
-    private const val CORAL = 0xFFF5A28C.toInt()
+    private const val SUNLIT = 0xFFFFB27A.toInt()
+    private const val SURFACE_RAISED = 0xFF2D3054.toInt()
+    private const val CORAL = 0xFFFF8FA0.toInt()
 
     /**
      * Creates the channel study reminders are posted to (Android 8 and later); creating it again only updates

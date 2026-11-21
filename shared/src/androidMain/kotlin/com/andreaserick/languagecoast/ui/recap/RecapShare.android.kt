@@ -50,12 +50,12 @@ actual fun rememberRecapSharer(): ((RecapShare) -> Unit)? {
 
 private const val WIDTH = 1080
 private const val HEIGHT = 1350
-private const val OCEAN_GROUND = 0xFF0C2536.toInt()
-private const val OCEAN_SURFACE = 0xFF123349.toInt()
-private const val SURFACE_CARD = 0xFF153449.toInt()
-private const val SUNLIT = 0xFFF3C969.toInt()
-private const val TEXT_PRIMARY = 0xFFF5F2EA.toInt()
-private const val TEXT_SECONDARY = 0xFFA9BDCB.toInt()
+private const val OCEAN_GROUND = 0xFF171A2E.toInt()
+private const val OCEAN_SURFACE = 0xFF1F2140.toInt()
+private const val SURFACE_CARD = 0xFF222542.toInt()
+private const val SUNLIT = 0xFFFFB27A.toInt()
+private const val TEXT_PRIMARY = 0xFFF6F1EC.toInt()
+private const val TEXT_SECONDARY = 0xFFB9B6CF.toInt()
 
 /** Draws [recap] and saves it as a PNG in the cache folder other apps are let into. Throws if the picture can't be made or written. */
 private fun drawRecap(context: Context, recap: RecapShare): Uri {

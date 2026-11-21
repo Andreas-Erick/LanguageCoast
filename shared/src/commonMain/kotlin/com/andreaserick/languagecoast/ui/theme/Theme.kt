@@ -9,20 +9,53 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.andreaserick.languagecoast.data.SunLocation
+import kotlinx.coroutines.delay
+import kotlinx.datetime.TimeZone
+import kotlin.time.Clock
+import kotlin.time.Instant
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.ui.components.LocalReducedMotion
 import com.andreaserick.languagecoast.ui.components.rememberSystemReducedMotion
 
-/** How the app is lit: as the device is set (dark or light, or switching by itself), always dark, or always light. */
+/**
+ * How the app is lit: following the sun through the day (sunrise, midday, evening, sunset, night), as the
+ * device is set (dark or light, or switching by itself), the original navy-and-gold look, always dark, or
+ * always light.
+ */
 enum class ThemeMode(val key: String, val label: String) {
-    System("system", "Automatic"),
+    Sun("sun", "Follow the sun"),
+    System("system", "Like the phone"),
+    Classic("classic", "Classic"),
     Dark("dark", "Dark"),
     Light("light", "Light");
 
     companion object {
-        fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.key == key } ?: System
+        fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.key == key } ?: Sun
     }
+}
+
+/**
+ * The palette [this] mode shows at [now] in [zone] (and at [location], if the user lets the app use it), on a
+ * phone that is itself set dark or not ([systemDark]). Dark is the night look and Light the midday one.
+ */
+fun ThemeMode.paletteAt(
+    systemDark: Boolean,
+    now: Instant = Clock.System.now(),
+    zone: TimeZone = TimeZone.currentSystemDefault(),
+    location: SunLocation? = null
+): CoastPalette = when (this) {
+    ThemeMode.Sun -> SkyClock.skyAt(now, zone, location).palette
+    ThemeMode.System -> if (systemDark) NightPalette else MiddayPalette
+    ThemeMode.Classic -> ClassicPalette
+    ThemeMode.Dark -> NightPalette
+    ThemeMode.Light -> MiddayPalette
 }
 
 /**
@@ -96,16 +129,23 @@ internal val ChipContainer: Color get() = palette.chipContainer
  * @param content The Composable content to be themed.
  */
 @Composable
-fun LanguageCoastTheme(mode: ThemeMode = ThemeMode.Dark, content: @Composable () -> Unit) {
+fun LanguageCoastTheme(mode: ThemeMode = ThemeMode.Sun, location: SunLocation? = null, content: @Composable () -> Unit) {
     val systemDark = isSystemInDarkTheme()
-    val chosen = when (mode) {
-        ThemeMode.System -> if (systemDark) DarkPalette else LightPalette
-        ThemeMode.Dark -> DarkPalette
-        ThemeMode.Light -> LightPalette
+    // Following the sun, the look moves on by itself: the clock is read again every minute, which keeps a
+    // blend (half an hour to an hour long) moving in steps too small to see.
+    var now by remember { mutableStateOf(Clock.System.now()) }
+    if (mode == ThemeMode.Sun) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                delay(SKY_TICK_MILLIS)
+                now = Clock.System.now()
+            }
+        }
     }
+    val chosen = remember(mode, systemDark, now, location) { mode.paletteAt(systemDark, now, location = location) }
     // The tokens in Color.kt read this. It is set before anything below composes, so the first frame
     // is already in the right palette; a change recomposes whatever read a token.
-    if (palette !== chosen) palette = chosen
+    if (palette != chosen) palette = chosen
     val reducedMotion = rememberSystemReducedMotion()
     CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
         MaterialTheme(
@@ -116,6 +156,8 @@ fun LanguageCoastTheme(mode: ThemeMode = ThemeMode.Dark, content: @Composable ()
         )
     }
 }
+
+private const val SKY_TICK_MILLIS = 60_000L
 
 /** Whether the theme currently showing is dark, for platform chrome such as status bar icons. */
 val isDarkPalette: Boolean get() = palette.isDark

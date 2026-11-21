@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.ui.theme.OceanGround
 import com.andreaserick.languagecoast.ui.theme.OceanSurface
-import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.palette
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import com.andreaserick.languagecoast.ui.theme.WaveLineColor
@@ -126,8 +126,9 @@ fun WaveLine(modifier: Modifier = Modifier) {
 }
 
 /**
- * The app background: deep water that is a little lighter at the top, with a faint sunlit glow in one
- * corner. Enough depth for cards to sit on, not enough to compete with them.
+ * The app background: the palette's sky at the top shading into its ground, with a faint glow in one corner
+ * (the sun's by day, the moon's at night) and, at night, a field of stars that thins out down the screen.
+ * Enough depth for cards to sit on, not enough to compete with them.
  */
 @Composable
 fun OceanBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
@@ -139,14 +140,65 @@ fun OceanBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
                 val center = Offset(size.width * 0.9f, -size.width * 0.2f)
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Sunlit.copy(alpha = 0.10f), Color.Transparent),
+                        colors = listOf(palette.glowColor, Color.Transparent),
                         center = center,
                         radius = size.width * 0.9f
                     ),
                     radius = size.width * 0.9f,
                     center = center
                 )
+                val stars = palette.stars
+                if (stars > 0f) drawStars(stars)
             },
         content = content
     )
+}
+
+/**
+ * One star of the night background, in fractions of the screen's width and of the top part of its height,
+ * with its size in dp and how bright it is. Fixed, so the sky looks the same on every screen and every start.
+ */
+private class Star(val x: Float, val y: Float, val radius: Float, val brightness: Float)
+
+/** The night sky: about seventy small stars and a handful of brighter ones with a soft halo. */
+private val NIGHT_SKY: List<Star> = run {
+    val random = kotlin.random.Random(1987)
+    List(72) { i ->
+        val bright = i % 12 == 0
+        // More stars high up than low down: y is weighted towards the top.
+        val y = random.nextFloat().let { it * it }
+        Star(
+            x = random.nextFloat(),
+            y = y,
+            radius = if (bright) 1.5f + random.nextFloat() * 0.6f else 0.5f + random.nextFloat() * 0.7f,
+            brightness = if (bright) 0.85f else 0.25f + random.nextFloat() * 0.45f
+        )
+    }
+}
+
+/** How far down the screen the stars reach, as a fraction of its height. */
+private const val STAR_DEPTH = 0.62f
+
+/** Draws [NIGHT_SKY] at [strength] (0 to 1), fading out towards the bottom of the starry part. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStars(strength: Float) {
+    val starColor = Color(0xFFE9E7FF)
+    for (star in NIGHT_SKY) {
+        val fade = 1f - star.y
+        val alpha = (star.brightness * fade * strength).coerceIn(0f, 1f)
+        if (alpha < 0.02f) continue
+        val center = Offset(star.x * size.width, star.y * size.height * STAR_DEPTH)
+        val radius = star.radius.dp.toPx()
+        if (star.radius > 1.4f) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(starColor.copy(alpha = alpha * 0.35f), Color.Transparent),
+                    center = center,
+                    radius = radius * 5f
+                ),
+                radius = radius * 5f,
+                center = center
+            )
+        }
+        drawCircle(color = starColor.copy(alpha = alpha), radius = radius, center = center)
+    }
 }

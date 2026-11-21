@@ -18,6 +18,7 @@ import com.andreaserick.languagecoast.data.NoOpLocalModelController
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.SunLocation
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Profile
 import com.andreaserick.languagecoast.data.checkForNewModels
@@ -75,7 +76,7 @@ data class SettingsUiState(
     val savedHuggingFaceToken: String = "",
     val huggingFaceTokenSaved: Boolean = false,
     val reminder: ReminderSettings = ReminderSettings(),
-    val themeMode: ThemeMode = ThemeMode.System,
+    val themeMode: ThemeMode = ThemeMode.Sun,
     val hapticsEnabled: Boolean = true,
     val soundsEnabled: Boolean = true,
     /** Islands to study per week. */
@@ -408,9 +409,19 @@ class SettingsViewModel(
         settings.setLocalAiModel(pick.model.id)
     }
 
-    /** Sets whether the app is dark, light or follows the phone. */
+    /** Sets whether the app follows the sun, follows the phone, or is dark or light. */
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settings.setThemeMode(mode.key) }
+    }
+
+    /** Whether Follow the sun uses the phone's location, and the location last read (null until one is). */
+    val sunLocation: StateFlow<Pair<Boolean, SunLocation?>> =
+        combine(settings.sunUsesLocation, settings.sunLocation) { uses, location -> uses to location }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false to null)
+
+    /** Switches the use of the phone's location for Follow the sun on or off; off forgets the location. */
+    fun setSunUsesLocation(enabled: Boolean) {
+        viewModelScope.launch { settings.setSunUsesLocation(enabled) }
     }
 
     fun setHapticsEnabled(enabled: Boolean) {

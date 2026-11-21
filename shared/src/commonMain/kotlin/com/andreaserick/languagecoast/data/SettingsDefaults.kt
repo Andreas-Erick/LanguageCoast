@@ -13,9 +13,9 @@ object SettingsDefaults {
     /** Islands to study per week. */
     const val WEEKLY_GOAL = 5
 
-    /** "system", "dark" or "light"; the coast is dark by default, as it always was. */
-    const val THEME_MODE = "dark"
-    val THEME_MODES = listOf("system", "dark", "light")
+    /** "sun", "system", "classic", "dark" or "light"; by default the app follows the sun through the day. */
+    const val THEME_MODE = "sun"
+    val THEME_MODES = listOf("sun", "system", "classic", "dark", "light")
     val WEEKLY_GOALS = listOf(3, 5, 7, 10)
 
     /** OpenRouter's Auto Router, which picks a suitable model for each request. */

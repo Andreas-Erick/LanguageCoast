@@ -131,8 +131,12 @@ interface SettingsRepository {
     val weeklyGoal: Flow<Int> get() = flowOf(SettingsDefaults.WEEKLY_GOAL)
     /** The day a streak freeze last stood in for a missed day, or null if none was ever used. */
     val freezeUsedOn: Flow<LocalDate?> get() = flowOf(null)
-    /** "system", "dark" or "light". */
+    /** "sun", "system", "dark" or "light". */
     val themeMode: Flow<String> get() = flowOf(SettingsDefaults.THEME_MODE)
+    /** Whether Follow the sun goes by the phone's approximate location rather than its time zone. */
+    val sunUsesLocation: Flow<Boolean> get() = flowOf(false)
+    /** The approximate location last read for Follow the sun, or null; see [SunLocation]. */
+    val sunLocation: Flow<SunLocation?> get() = flowOf(null)
     val hapticsEnabled: Flow<Boolean> get() = flowOf(true)
     val soundsEnabled: Flow<Boolean> get() = flowOf(true)
     /**
@@ -183,6 +187,9 @@ interface SettingsRepository {
     suspend fun setStudyReversed(reversed: Boolean)
     suspend fun setWeeklyGoal(islands: Int) = Unit
     suspend fun setThemeMode(mode: String) = Unit
+    /** Switching it off also forgets the location. */
+    suspend fun setSunUsesLocation(enabled: Boolean) = Unit
+    suspend fun setSunLocation(location: SunLocation) = Unit
     suspend fun setHapticsEnabled(enabled: Boolean) = Unit
     suspend fun setSoundsEnabled(enabled: Boolean) = Unit
 
@@ -391,6 +398,24 @@ class DataStoreSettingsRepository(
     override val freezeUsedOn: Flow<LocalDate?> = dataStore.data.map { preferences -> preferences[FREEZE_USED_ON]?.let(::parseDateOrNull) }
 
     override val themeMode: Flow<String> = dataStore.data.map { it[THEME_MODE] ?: SettingsDefaults.THEME_MODE }
+
+    override val sunUsesLocation: Flow<Boolean> = dataStore.data.map { it[SUN_USES_LOCATION] ?: false }
+
+    override val sunLocation: Flow<SunLocation?> = dataStore.data.map { SunLocation.decode(it[SUN_LOCATION]) }
+
+    override suspend fun setSunUsesLocation(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[SUN_USES_LOCATION] = enabled
+            if (!enabled) preferences.remove(SUN_LOCATION)
+        }
+    }
+
+    override suspend fun setSunLocation(location: SunLocation) {
+        dataStore.edit { preferences ->
+            // A reading that arrives just after the switch went off is not kept.
+            if (preferences[SUN_USES_LOCATION] == true) preferences[SUN_LOCATION] = location.encode()
+        }
+    }
 
     override val hapticsEnabled: Flow<Boolean> = dataStore.data.map { it[HAPTICS_ENABLED] ?: true }
 
@@ -678,6 +703,9 @@ class DataStoreSettingsRepository(
         val WEEKLY_GOAL = intPreferencesKey("weekly_goal")
         val FREEZE_USED_ON = stringPreferencesKey("freeze_used_on")
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        /** Not in backups or the settings snapshot: a location belongs to the phone it was read on. */
+        val SUN_USES_LOCATION = booleanPreferencesKey("sun_uses_location")
+        val SUN_LOCATION = stringPreferencesKey("sun_location")
         val HAPTICS_ENABLED = booleanPreferencesKey("haptics_enabled")
         val SOUNDS_ENABLED = booleanPreferencesKey("sounds_enabled")
         val STARTER_TOPICS_ADDED = stringSetPreferencesKey("starter_topics_added")

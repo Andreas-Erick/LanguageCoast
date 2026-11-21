@@ -144,6 +144,11 @@ import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import com.andreaserick.languagecoast.ui.theme.ThemeMode
+import com.andreaserick.languagecoast.ui.theme.SkyClock
+import com.andreaserick.languagecoast.ui.theme.rememberSunLocationAccess
+import com.andreaserick.languagecoast.ui.theme.sunLocationAvailable
+import kotlin.time.Clock
+import kotlinx.datetime.TimeZone
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
@@ -260,6 +265,9 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
                             shape = MaterialTheme.shapes.small
                         )
                     }
+                }
+                if (uiState.themeMode == ThemeMode.Sun) {
+                    SunSection(viewModel)
                 }
                 Spacer(modifier = Modifier.height(14.dp))
                 ToggleRow(
@@ -1320,6 +1328,49 @@ private fun FitBadge(fitLevel: ModelFitLevel) {
         ModelFitLevel.NOT_RECOMMENDED -> SurfaceSelected to TextPrimary
     }
     Pill(text = fitLevel.label, container = container, content = content)
+}
+
+/**
+ * What Follow the sun is doing now, and the switch that lets it go by the phone's approximate location
+ * instead of its time zone. Switching it on asks for the permission if it is missing.
+ */
+@Composable
+private fun SunSection(viewModel: SettingsViewModel) {
+    val (usesLocation, location) = viewModel.sunLocation.collectAsState().value
+    val access = rememberSunLocationAccess()
+    val active = usesLocation && access.allowed && location != null
+    val sky = remember(com.andreaserick.languagecoast.ui.theme.palette, active) {
+        SkyClock.skyAt(Clock.System.now(), TimeZone.currentSystemDefault(), location.takeIf { active })
+    }
+    Hint(
+        "Sunrise, midday, evening and sunset at the real times of the sun where you are, blending into each " +
+            "other, and black at night. Now: ${sky.label}."
+    )
+    if (!sunLocationAvailable) return
+    Spacer(modifier = Modifier.height(12.dp))
+    ToggleRow(
+        title = "Exact sun times from your location",
+        subtitle = when {
+            !usesLocation -> "Off: going by the phone's time zone, which can be an hour out at its edges."
+            !access.allowed -> "Waiting for permission. Until then: the time zone."
+            location == null -> "Waiting for the phone to find where it is. Until then: the time zone."
+            else -> "Going by your approximate location. It stays on this phone and is never sent anywhere."
+        },
+        checked = usesLocation,
+        onCheckedChange = { enabled ->
+            viewModel.setSunUsesLocation(enabled)
+            // The moment to ask: the user has just said they want it.
+            if (enabled && !access.allowed) access.request()
+        }
+    )
+    if (usesLocation && !access.allowed) {
+        Spacer(modifier = Modifier.height(10.dp))
+        NoticeBox(
+            text = "Location isn't allowed for Language Coast, so the sun's times come from the time zone.",
+            action = "Allow location",
+            onAction = access.request
+        )
+    }
 }
 
 /**
