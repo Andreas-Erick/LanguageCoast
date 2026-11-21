@@ -3,15 +3,15 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <!-- Matches OceanGround in ui/theme/Color.kt: the launcher icon's background and the window behind the first frame. -->
-    <color name="ocean_ground">#FF0C2536</color>
-    <!-- OceanGround of the light palette in ui/theme/Color.kt: the splash of the light theme. -->
-    <color name="daylight_ground">#FFDFDACD</color>
+    <color name="ocean_ground">#FF171A2E</color>
+    <!-- OceanGround of the midday palette in ui/theme/Color.kt: the splash of the light theme. -->
+    <color name="daylight_ground">#FFDAE4EA</color>
     <!-- The splash of the theme that follows the phone: daylight here, the dark ocean in values-night. -->
-    <color name="system_ground">#FFDFDACD</color>
+    <color name="system_ground">#FFDAE4EA</color>
     <!-- Widget colours, matching NavGround, Sunlit, TextSecondary and WaveLineColor in ui/theme/Color.kt -->
-    <color name="nav_ground">#FF0A1F2E</color>
-    <color name="sunlit">#FFF3C969</color>
-    <color name="text_primary">#FFF5F2EA</color>
-    <color name="text_secondary">#FFA9BDCB</color>
-    <color name="widget_wave">#FF2C5C7C</color>
+    <color name="nav_ground">#FF12142A</color>
+    <color name="sunlit">#FFFFB27A</color>
+    <color name="text_primary">#FFF6F1EC</color>
+    <color name="text_secondary">#FFB9B6CF</color>
+    <color name="widget_wave">#FF3C4070</color>
 </resources>

@@ -1,6 +1,6 @@
 # Privacy policy
 
-*Language Coast · Last updated November 19, 2026*
+*Language Coast · Last updated November 21, 2026*
 
 Language Coast is a flashcard app for learning languages, made by Andreas Erick. This policy explains what happens to your data when you use it on Android or iPhone.
 
@@ -70,6 +70,10 @@ The key is your own, so every request is made under your account with that provi
 ## Notifications
 
 Study reminders are scheduled on your phone. No push service is involved, and nothing is sent to anyone. The app asks for permission to show notifications after your first finished study session, or when you switch reminders on. You can turn reminders off in Settings. On Android a reminder can quote one of your cards as a quick test. It never quotes a sentence from an island about you.
+
+## Location
+
+The app's colours can follow the sun through the day (Settings > Look & feel > Follow the sun). By default the times of sunrise and sunset are worked out from your phone's time zone, and no location is read. On Android you can switch on "Exact sun times from your location". Only then does the app ask for permission to read your approximate location (the town, not your street). It reads it when you open the app, rounds it to about 10 km, and keeps it on your phone only to work out sunrise and sunset. It is never sent anywhere and is left out of backups. Switching the setting off deletes it. You can also withdraw the permission in your phone's settings.
 
 ## Security
 

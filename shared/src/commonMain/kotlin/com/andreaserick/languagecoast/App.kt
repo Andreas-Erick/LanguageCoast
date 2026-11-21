@@ -42,6 +42,7 @@ import com.andreaserick.languagecoast.data.StarterImporter
 import com.andreaserick.languagecoast.navigation.RecapScreenRoute
 import com.andreaserick.languagecoast.ui.recap.RecapScreen
 import com.andreaserick.languagecoast.ui.theme.ThemeMode
+import com.andreaserick.languagecoast.ui.theme.SunLocationUpdates
 import com.andreaserick.languagecoast.ui.components.LocalFeedback
 import com.andreaserick.languagecoast.ui.components.LocalHapticsEnabled
 import com.andreaserick.languagecoast.ui.components.rememberFeedback
@@ -147,7 +148,12 @@ private object NoHaptics : HapticFeedback {
 fun LanguageCoastApp() {
     val settings = koinInject<SettingsRepository>()
     val themeMode by settings.themeMode.collectAsState(initial = SettingsDefaults.THEME_MODE)
-    LanguageCoastTheme(mode = ThemeMode.fromKey(themeMode)) {
+    val sunUsesLocation by settings.sunUsesLocation.collectAsState(initial = false)
+    val sunLocation by settings.sunLocation.collectAsState(initial = null)
+    val mode = ThemeMode.fromKey(themeMode)
+    // The location is read again each time the app comes to the front, but only while it is being used.
+    SunLocationUpdates(active = mode == ThemeMode.Sun && sunUsesLocation)
+    LanguageCoastTheme(mode = mode, location = sunLocation.takeIf { sunUsesLocation }) {
         // The interface is English only, so it is laid out left to right on every phone. Without this, a phone
         // set to Arabic or Hebrew mirrors the screens and puts the words of a card in reverse order.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {

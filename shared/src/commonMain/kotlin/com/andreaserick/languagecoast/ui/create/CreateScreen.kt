@@ -109,6 +109,8 @@ import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.data.onDeviceTranslationAvailable
 import com.andreaserick.languagecoast.resources.Res
 import com.andreaserick.languagecoast.resources.logo_mark
+import com.andreaserick.languagecoast.resources.logo_mark_light
+import com.andreaserick.languagecoast.ui.theme.isDarkPalette
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
@@ -334,7 +336,7 @@ private fun CreateContent(
             leading = {
                 // The mark sits in the middle of its canvas, so it's drawn larger than it looks and pulled left.
                 Image(
-                    painter = painterResource(Res.drawable.logo_mark),
+                    painter = painterResource(if (isDarkPalette) Res.drawable.logo_mark else Res.drawable.logo_mark_light),
                     contentDescription = null,
                     modifier = Modifier
                         .size(52.dp)
@@ -1217,7 +1219,7 @@ private fun Onboarding(
             .padding(ScreenMargin)
     ) {
         Image(
-            painter = painterResource(Res.drawable.logo_mark),
+            painter = painterResource(if (isDarkPalette) Res.drawable.logo_mark else Res.drawable.logo_mark_light),
             contentDescription = "Language Coast",
             modifier = Modifier.size(150.dp)
         )

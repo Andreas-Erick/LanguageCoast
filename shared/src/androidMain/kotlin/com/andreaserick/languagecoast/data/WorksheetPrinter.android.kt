@@ -125,14 +125,14 @@ private class Paper(val width: Int, val height: Int) {
 }
 
 // Ink for paper: the light theme's text colours, and the sunlit accent as the one spot of colour.
-private const val INK = 0xFF16293A.toInt()
-private const val INK_SOFT = 0xFF4E6477.toInt()
-private const val WRITING_LINE = 0xFFB9C7D2.toInt()
-private const val HAIRLINE = 0xFFD5DEE5.toInt()
-private const val WAVE = 0xFFB7CAD8.toInt()
-private const val WAVE_SOFT = 0xFF9DB8CC.toInt()
-private const val SUN = 0xFFE0A93A.toInt()
-private const val SUN_PALE = 0xFFFBEFD0.toInt()
+private const val INK = 0xFF1F1C33.toInt()
+private const val INK_SOFT = 0xFF4E4A66.toInt()
+private const val WRITING_LINE = 0xFFC9C5D9.toInt()
+private const val HAIRLINE = 0xFFDEDBE8.toInt()
+private const val WAVE = 0xFFC4C2DC.toInt()
+private const val WAVE_SOFT = 0xFFABA7CF.toInt()
+private const val SUN = 0xFFF29A5B.toInt()
+private const val SUN_PALE = 0xFFFDE9DA.toInt()
 
 /** Something drawn below what came before it on a page: a sentence with its lines, an answer, a heading. */
 private class Block(val height: Float, val draw: (canvas: Canvas, top: Float) -> Unit)

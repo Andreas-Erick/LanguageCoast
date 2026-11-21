@@ -33,6 +33,8 @@ import com.andreaserick.languagecoast.notifications.ReminderScheduler
 import com.andreaserick.languagecoast.ui.theme.OceanGround
 import com.andreaserick.languagecoast.ui.theme.ThemeMode
 import com.andreaserick.languagecoast.ui.theme.isDarkPalette
+import com.andreaserick.languagecoast.ui.theme.paletteAt
+import com.andreaserick.languagecoast.data.SunLocation
 import com.andreaserick.languagecoast.widget.StudyWidgetProvider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -85,6 +87,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val storedTheme by settings.themeMode.collectAsState(initial = null)
+            val sunUsesLocation by settings.sunUsesLocation.collectAsState(initial = false)
+            val sunLocation by settings.sunLocation.collectAsState(initial = null)
             val systemDark = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
             // System bar icons must stay readable over the chosen theme: light icons on the dark coast, dark on the light.
             val dark = isDarkPalette
@@ -99,7 +103,9 @@ class MainActivity : ComponentActivity() {
                     window.setBackgroundDrawable(ColorDrawable(groundArgb))
                 }
                 val mode = storedTheme
-                if (mode != null && dark == ThemeMode.fromKey(mode).isDarkWhen(systemDark)) themeIsShown = true
+                if (mode != null && dark == ThemeMode.fromKey(mode).isDarkWhen(systemDark, sunLocation.takeIf { sunUsesLocation })) {
+                    themeIsShown = true
+                }
             }
             LaunchedEffect(storedTheme) { storedTheme?.let { matchSplashToTheme(it) } }
 
@@ -169,9 +175,10 @@ class MainActivity : ComponentActivity() {
         splashScreen.setSplashScreenTheme(
             when (theme) {
                 // The manifest's own.
-                ThemeMode.Dark -> Resources.ID_NULL
+                ThemeMode.Dark, ThemeMode.Classic -> Resources.ID_NULL
                 ThemeMode.Light -> R.style.Theme_LanguageCoast_Starting_Light
-                ThemeMode.System -> R.style.Theme_LanguageCoast_Starting_System
+                // The splash can't know the time of day; the phone's own light or dark is the nearest guess.
+                ThemeMode.System, ThemeMode.Sun -> R.style.Theme_LanguageCoast_Starting_System
             }
         )
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -219,8 +226,5 @@ class MainActivity : ComponentActivity() {
  * Whether this theme is dark on a phone that is itself set dark or not ([systemDark]). It must say what
  * LanguageCoastTheme decides, or the first frame waits for [MainActivity]'s time limit.
  */
-private fun ThemeMode.isDarkWhen(systemDark: Boolean): Boolean = when (this) {
-    ThemeMode.System -> systemDark
-    ThemeMode.Dark -> true
-    ThemeMode.Light -> false
-}
+private fun ThemeMode.isDarkWhen(systemDark: Boolean, location: SunLocation?): Boolean =
+    paletteAt(systemDark, location = location).isDark
