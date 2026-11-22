@@ -19,6 +19,7 @@ import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.SuggestedSentence
+import com.andreaserick.languagecoast.data.SunLocation
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.TranslationRequest
 import com.andreaserick.languagecoast.data.TranslationResult
@@ -363,6 +364,9 @@ class FakeSettingsRepository : SettingsRepository {
     override val weeklyGoal = MutableStateFlow(SettingsDefaults.WEEKLY_GOAL)
     override val freezeUsedOn = MutableStateFlow<LocalDate?>(null)
     override val themeMode = MutableStateFlow(SettingsDefaults.THEME_MODE)
+    override val sunUsesLocation = MutableStateFlow(false)
+    override val sunLocation = MutableStateFlow<SunLocation?>(null)
+    override val huggingFaceToken = MutableStateFlow("")
     override val hapticsEnabled = MutableStateFlow(true)
     override val soundsEnabled = MutableStateFlow(true)
 
@@ -444,6 +448,15 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setStudyReversed(reversed: Boolean) { studyReversed.value = reversed }
     override suspend fun setWeeklyGoal(islands: Int) { weeklyGoal.value = islands }
     override suspend fun setThemeMode(mode: String) { themeMode.value = mode }
+    override suspend fun setSunUsesLocation(enabled: Boolean) {
+        sunUsesLocation.value = enabled
+        if (!enabled) sunLocation.value = null
+    }
+    override suspend fun setSunLocation(location: SunLocation) {
+        if (sunUsesLocation.value) sunLocation.value = location
+    }
+    override suspend fun setHuggingFaceToken(token: String) { huggingFaceToken.value = token }
+    override suspend fun migrateLegacySecrets() = Unit
     override suspend fun setHapticsEnabled(enabled: Boolean) { hapticsEnabled.value = enabled }
     override suspend fun setSoundsEnabled(enabled: Boolean) { soundsEnabled.value = enabled }
 
