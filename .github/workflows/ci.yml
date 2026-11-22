@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   # A newer push to a pull request replaces its older run; every push to main gets a result.
@@ -12,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and test
+    name: Lint, unit tests and debug build
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -26,18 +29,19 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest :shared:testAndroidHostTest
+      # The same task a developer runs before pushing (README > Run what CI runs): lint, the unit tests of
+      # both modules and the debug APK.
+      - name: Lint, unit tests and debug APK
+        run: ./gradlew verify
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
-
-      - name: Upload test reports
+      - name: Upload test and lint reports
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: test-reports
-          path: app/build/reports/tests/
+          path: |
+            app/build/reports/
+            shared/build/reports/tests/
 
   # The unit tests above run on debug classes, so they cannot see what R8 does to a release build, and they
   # cannot run the tests that need a device. This job builds the release variant, starts it on an emulator
@@ -146,7 +150,8 @@ jobs:
       # connectedDebugAndroidTest installs the debug build and its tests, runs them and removes both again. That
       # is fine on this throwaway emulator; the release build has another application ID and is left alone.
       - name: Start the release build and run the instrumented tests
-        uses: reactivecircus/android-emulator-runner@v2
+        # A third-party action, so it is pinned to a commit; Dependabot proposes newer ones.
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           target: google_apis

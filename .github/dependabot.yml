@@ -1,0 +1,13 @@
+# Proposes updates once a month: the pinned GitHub Actions (third-party ones are pinned to a commit) and the
+# Gradle dependencies in gradle/libs.versions.toml.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
