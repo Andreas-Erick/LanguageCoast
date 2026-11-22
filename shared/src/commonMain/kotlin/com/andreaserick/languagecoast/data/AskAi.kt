@@ -40,8 +40,8 @@ sealed interface AiConnection {
         private val translator: Translator
     ) : AiConnection {
 
-        /** Whether the model runs on the phone, which reads short prompts and writes short answers. */
-        val isLocal: Boolean get() = engine is TranslationEngine.LocalAi
+        /** How much the provider's models take on at once; see [ProviderCapacity]. */
+        val capacity: ProviderCapacity get() = ProviderCapacity.of(provider)
 
         /**
          * Asks [prompt] and reads the answer with [parse] (null: it can't be read).

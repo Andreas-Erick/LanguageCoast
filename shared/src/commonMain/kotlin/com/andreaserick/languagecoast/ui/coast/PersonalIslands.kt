@@ -61,6 +61,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andreaserick.languagecoast.data.ProviderCapacity
 import com.andreaserick.languagecoast.data.BuildProgress
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.IslandOrder
@@ -231,7 +232,7 @@ internal fun PersonalIslandSheet(
 
 /** A rough duration for writing [islands] islands with [provider]: a cloud model takes two prompts each, a model on the phone several slow ones. */
 internal fun buildEstimate(islands: Int, provider: TranslationProvider): String {
-    val seconds = islands * if (provider == TranslationProvider.LocalAi) 240 else 25
+    val seconds = islands * ProviderCapacity.of(provider).secondsPerIsland
     return when {
         seconds < 50 -> "a minute"
         seconds < 3600 -> plural((seconds + 59) / 60, "minute")

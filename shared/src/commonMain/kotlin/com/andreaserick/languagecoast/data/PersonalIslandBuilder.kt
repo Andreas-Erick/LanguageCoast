@@ -181,7 +181,7 @@ class PersonalIslandBuilder(
         level: Level,
         wording: Wording
     ): Written {
-        val perPrompt = if (ai.isLocal) LOCAL_SENTENCES_PER_PROMPT else PERSONAL_ISLAND_SENTENCES
+        val perPrompt = ai.capacity.islandSentencesPerPrompt
         val sentences = ArrayList<ProposedSentence>(PERSONAL_ISLAND_SENTENCES)
         while (sentences.size < PERSONAL_ISLAND_SENTENCES) {
             val wanted = minOf(perPrompt, PERSONAL_ISLAND_SENTENCES - sentences.size)
@@ -211,8 +211,6 @@ class PersonalIslandBuilder(
 
     companion object {
         private const val TAG = "PersonalIslandBuilder"
-        /** A model on the phone answers in at most a few hundred tokens: this many two-sided lines fit. */
-        const val LOCAL_SENTENCES_PER_PROMPT = 8
         /** How many sentences the island already has are listed in a prompt at most. */
         private const val AVOID_LIMIT = 60
         const val NEEDS_MODEL_MESSAGE = "These islands are written by an AI model. Pick an AI provider under Settings › Translation first."

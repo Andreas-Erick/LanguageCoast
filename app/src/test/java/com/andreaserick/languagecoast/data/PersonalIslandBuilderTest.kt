@@ -140,7 +140,7 @@ class PersonalIslandBuilderTest {
             if ("language island" !in prompt) Completion("NONE")
             else {
                 round++
-                val lines = if (round == 1) PersonalIslandBuilder.LOCAL_SENTENCES_PER_PROMPT else 2
+                val lines = if (round == 1) ProviderCapacity.OnPhone.islandSentencesPerPrompt else 2
                 Completion((1..lines).joinToString("\n") { "$it || Sentence $round $it. || Satz $round $it." })
             }
         }
@@ -148,8 +148,8 @@ class PersonalIslandBuilderTest {
         builder.run(1, orders("pets"))
 
         assertEquals(2, round)
-        assertEquals(PersonalIslandBuilder.LOCAL_SENTENCES_PER_PROMPT + 2, flashcards.cards.value.size)
-        assertTrue("Write up to ${PersonalIslandBuilder.LOCAL_SENTENCES_PER_PROMPT} sentences" in translator.prompts.first())
+        assertEquals(ProviderCapacity.OnPhone.islandSentencesPerPrompt + 2, flashcards.cards.value.size)
+        assertTrue("Write up to ${ProviderCapacity.OnPhone.islandSentencesPerPrompt} sentences" in translator.prompts.first())
     }
 
     @Test

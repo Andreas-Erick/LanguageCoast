@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andreaserick.languagecoast.data.ProviderCapacity
 import com.andreaserick.languagecoast.data.ImportProgress
 import com.andreaserick.languagecoast.data.PROFILE_PLACEHOLDERS
 import com.andreaserick.languagecoast.data.PhraseBank
@@ -182,11 +183,7 @@ internal fun StarterTopicSheet(
 
 /** A rough duration for translating [count] sentences with [provider]: a model takes a batch at a time, the device one each. */
 internal fun importEstimate(count: Int, provider: TranslationProvider): String {
-    val seconds = when (provider) {
-        TranslationProvider.OnDevice -> count * 0.4
-        TranslationProvider.LocalAi -> (count / 15.0 + 1) * 30
-        else -> (count / 15.0 + 1) * 3
-    }
+    val seconds = ProviderCapacity.of(provider).starterSeconds(count)
     return when {
         seconds < 50 -> "a minute"
         seconds < 3600 -> plural(((seconds + 59) / 60).toInt(), "minute")

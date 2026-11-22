@@ -80,6 +80,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.andreaserick.languagecoast.data.ProviderCapacity
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.islandEmoji
@@ -555,7 +556,7 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
         CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = if (state.written == 0 && (provider == TranslationProvider.Claude || state.options.difficulty == WorksheetDifficulty.Hard)) {
+            text = if (state.written == 0 && (ProviderCapacity.of(provider).thinksFirst || state.options.difficulty == WorksheetDifficulty.Hard)) {
                 "Asking ${provider.label} (planning longer sentences takes a moment)…"
             } else {
                 "Asking ${provider.label}…"
