@@ -121,14 +121,14 @@ class SettingsAndMyCoastViewModelTest {
         val viewModel = SettingsViewModel(settings, flashcards, scheduler)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
-        viewModel.saveApiKey("  my-key  ")
+        viewModel.saveKey(TranslationProvider.Gemini, "  my-key  ")
 
         assertEquals("my-key", settings.apiKey.value)
-        assertEquals("my-key", viewModel.uiState.value.savedApiKey)
-        assertTrue(viewModel.uiState.value.apiKeySaved)
+        assertEquals("my-key", viewModel.uiState.value.savedKey(TranslationProvider.Gemini))
+        assertTrue(viewModel.uiState.value.keyJustSaved(TranslationProvider.Gemini))
 
-        viewModel.onApiKeyEdited()
-        assertFalse(viewModel.uiState.value.apiKeySaved)
+        viewModel.onKeyEdited(TranslationProvider.Gemini)
+        assertFalse(viewModel.uiState.value.keyJustSaved(TranslationProvider.Gemini))
     }
 
     @Test
@@ -137,19 +137,19 @@ class SettingsAndMyCoastViewModelTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.setTranslationProvider(TranslationProvider.OpenRouter)
-        viewModel.setOpenRouterModel("anthropic/claude-haiku")
-        viewModel.saveOpenRouterKey(" sk-or-key ")
+        viewModel.setModel(TranslationProvider.OpenRouter, "anthropic/claude-haiku")
+        viewModel.saveKey(TranslationProvider.OpenRouter, " sk-or-key ")
 
         val state = viewModel.uiState.value
         assertEquals(TranslationProvider.OpenRouter, state.translationProvider)
-        assertEquals("anthropic/claude-haiku", state.openRouterModel)
-        assertEquals("sk-or-key", state.savedOpenRouterKey)
-        assertTrue(state.openRouterSaved)
-        assertFalse(state.apiKeySaved)
+        assertEquals("anthropic/claude-haiku", state.model(TranslationProvider.OpenRouter))
+        assertEquals("sk-or-key", state.savedKey(TranslationProvider.OpenRouter))
+        assertTrue(state.keyJustSaved(TranslationProvider.OpenRouter))
+        assertFalse(state.keyJustSaved(TranslationProvider.Gemini))
         assertEquals("", settings.apiKey.value)
 
-        viewModel.onOpenRouterKeyEdited()
-        assertFalse(viewModel.uiState.value.openRouterSaved)
+        viewModel.onKeyEdited(TranslationProvider.OpenRouter)
+        assertFalse(viewModel.uiState.value.keyJustSaved(TranslationProvider.OpenRouter))
     }
 
     @Test
@@ -356,7 +356,7 @@ class SettingsAndMyCoastViewModelTest {
         val viewModel = SettingsViewModel(settings, flashcards, scheduler)
 
         viewModel.setNativeLanguage("German")
-        viewModel.setGeminiModel("gemini-3.5-flash")
+        viewModel.setModel(TranslationProvider.Gemini, "gemini-3.5-flash")
 
         assertEquals("German", settings.nativeLanguage.value)
         assertEquals("gemini-3.5-flash", settings.geminiModel.value)
