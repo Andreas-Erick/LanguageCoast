@@ -39,12 +39,7 @@ suspend fun SettingsRepository.currentEngine(provider: TranslationProvider): Eng
     val engine = when (provider) {
         TranslationProvider.OnDevice -> TranslationEngine.OnDevice
         TranslationProvider.LocalAi -> TranslationEngine.LocalAi(modelId = localAiModel.first().ifBlank { SettingsDefaults.LOCAL_AI_MODEL })
-        TranslationProvider.Gemini -> TranslationEngine.Gemini(key(provider).first(), model(provider).first())
-        TranslationProvider.OpenAI -> TranslationEngine.OpenAI(key(provider).first(), modelOrDefault(provider))
-        TranslationProvider.Claude -> TranslationEngine.Claude(key(provider).first(), modelOrDefault(provider))
-        TranslationProvider.Groq -> TranslationEngine.Groq(key(provider).first(), modelOrDefault(provider))
-        TranslationProvider.DeepSeek -> TranslationEngine.DeepSeek(key(provider).first(), modelOrDefault(provider))
-        TranslationProvider.OpenRouter -> TranslationEngine.OpenRouter(key(provider).first(), modelOrDefault(provider))
+        else -> TranslationEngine.Cloud(provider, key(provider).first(), modelOrDefault(provider))
     }
     return EngineChoice.Ready(engine)
 }
