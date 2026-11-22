@@ -15,7 +15,7 @@ room = "2.8.5"
 sqlite = "2.6.2"
 navigationCompose = "2.9.8"
 datastore = "1.2.1"
-ktor = "3.2.3"
+ktor = "3.6.1"
 # Compose Multiplatform 1.9 fails with AGP 9; 1.12 works
 composeMultiplatform = "1.12.1"
 # Multiplatform Material 3 and icons have their own (newest stable) versions
