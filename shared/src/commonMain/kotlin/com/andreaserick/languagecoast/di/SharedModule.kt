@@ -4,14 +4,12 @@ import com.andreaserick.languagecoast.data.AppDatabase
 import com.andreaserick.languagecoast.data.BackupManager
 import com.andreaserick.languagecoast.data.DataStoreSettingsRepository
 import com.andreaserick.languagecoast.data.FlashcardRepository
-import com.andreaserick.languagecoast.data.GeminiTranslator
+import com.andreaserick.languagecoast.data.CloudTranslator
 import com.andreaserick.languagecoast.data.LocalAiTranslator
 import com.andreaserick.languagecoast.data.ModelLister
-import com.andreaserick.languagecoast.data.MultiCloudTranslator
 import com.andreaserick.languagecoast.data.ProviderModelLister
 import com.andreaserick.languagecoast.data.OfflineFlashcardRepository
 import com.andreaserick.languagecoast.data.OnDeviceTranslator
-import com.andreaserick.languagecoast.data.OpenRouterTranslator
 import com.andreaserick.languagecoast.data.PersonalIslandBuilder
 import com.andreaserick.languagecoast.data.RoutingTranslator
 import com.andreaserick.languagecoast.data.SentenceSuggester
@@ -65,9 +63,7 @@ val sharedModule = module {
     factoryOf(::RoutingTranslator) { bind<Translator>() }
     singleOf(::OnDeviceTranslator)
     singleOf(::LocalAiTranslator)
-    singleOf(::GeminiTranslator)
-    singleOf(::OpenRouterTranslator)
-    singleOf(::MultiCloudTranslator)
+    single { CloudTranslator(get<HttpClient>()) }
 
     /** Asks a cloud provider which models it offers, for "Check for new models" in Settings. */
     single<ModelLister> { ProviderModelLister(get()) }

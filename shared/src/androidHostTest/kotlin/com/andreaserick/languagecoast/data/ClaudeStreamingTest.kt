@@ -19,7 +19,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * [claudeCompletion] against a server on this machine that answers the way Anthropic's does: over a real
+ * The [CloudTransport] with [ClaudeWire] against a server on this machine that answers the way Anthropic's does: over a real
  * connection, with the networking the app uses on Android and the time limits of the app's own client.
  * What a unit test of the parsing can't show is here: that an answer is read while it is still being
  * written, and what a time limit does to one.
@@ -96,7 +96,7 @@ class ClaudeStreamingTest {
     }
 
     private fun ask(requestTimeoutMillis: Long = 20_000, silenceMillis: Long = 10_000): Completion = runBlocking {
-        client.claudeCompletion("sk-test", "claude-fable-5-2", "Write two sentences.", endpoint, requestTimeoutMillis, silenceMillis)
+        CloudTransport(client).ask(ClaudeWire("sk-test", "claude-fable-5-2", endpoint), "Write two sentences.", Patience(requestTimeoutMillis, silenceMillis))
     }
 
     @Test
@@ -209,7 +209,7 @@ class ClaudeStreamingTest {
             )
         }
 
-        val asking = async { client.claudeCompletion("sk-test", "claude-fable-5-2", "Write.", endpoint, 20_000, 10_000) }
+        val asking = async { CloudTransport(client).ask(ClaudeWire("sk-test", "claude-fable-5-2", endpoint), "Write.", Patience(20_000, 10_000)) }
         delay(500)
         asking.cancel()
 
@@ -266,7 +266,7 @@ class ClaudeStreamingTest {
             )
         }
         val partials = mutableListOf<String>()
-        val completion = client.claudeCompletion("sk-test", "claude-fable-5-2", "Write.", endpoint, 20_000, 10_000) {
+        val completion = CloudTransport(client).ask(ClaudeWire("sk-test", "claude-fable-5-2", endpoint), "Write.", Patience(20_000, 10_000)) {
             partials += it
         }
 

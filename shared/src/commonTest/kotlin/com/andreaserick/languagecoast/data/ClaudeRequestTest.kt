@@ -33,11 +33,11 @@ class ClaudeRequestTest {
     @Test
     fun aStreamedAnswerHasMoreTimeThanAnyOtherRequestAndMayBeSilentWhileTheModelThinks() {
         // The client gives every request two minutes; an answer that is read as it comes gets a backstop instead.
-        assertTrue(CLAUDE_TIMEOUT_MILLIS >= 5 * 60_000L)
-        assertTrue(CLAUDE_SILENCE_MILLIS in 2 * 60_000L..CLAUDE_TIMEOUT_MILLIS)
+        assertTrue(Patience.Batch.totalMillis >= 5 * 60_000L)
+        assertTrue(Patience.Batch.silenceMillis in 2 * 60_000L..Patience.Batch.totalMillis)
         // One sentence's translation keeps the two minutes: the screen that waits for it has no way out.
-        assertEquals(120_000L, CLAUDE_SHORT_TIMEOUT_MILLIS)
-        assertTrue(CLAUDE_SHORT_SILENCE_MILLIS in CLAUDE_SHORT_TIMEOUT_MILLIS..130_000L)
+        assertEquals(120_000L, Patience.Sentence.totalMillis)
+        assertTrue(Patience.Sentence.silenceMillis in Patience.Sentence.totalMillis..130_000L)
     }
 
     @Test
@@ -142,6 +142,6 @@ class ClaudeRequestTest {
         val broken = streamed("""data: {"type":"error","error":{"type":"api_error","message":"Internal server error"}}""")
         assertNull(broken.text)
         assertNull(broken.retryAfterSeconds)
-        assertEquals("Claude returned an empty answer. Try again.", streamed(stopped("end_turn")).errorMessage)
+        assertEquals("Claude returned an empty answer. Try again or pick another model.", streamed(stopped("end_turn")).errorMessage)
     }
 }
