@@ -13,11 +13,13 @@ class OpenRouterResponseTest {
     private fun quote(text: String) = "\"" + text.replace("\n", "\\n") + "\""
 
     @Test
-    fun requestBodyHasTheModelAndPrompt() {
+    fun requestBodyHasTheModelAndPromptAndAsksForAStream() {
         assertEquals(
-            """{"model":"openrouter/auto","messages":[{"role":"user","content":"Translate \"hi\""}]}""",
-            openRouterRequestBody("openrouter/auto", "Translate \"hi\"")
+            """{"model":"openrouter/auto","messages":[{"role":"user","content":"Translate \"hi\""}],"stream":true}""",
+            chatRequestBody("openrouter/auto", "Translate \"hi\"")
         )
+        // Asked whole, "stream" is still sent: left out, some providers would stream anyway.
+        assertTrue("\"stream\":false" in chatRequestBody("gpt-5", "hi", stream = false))
     }
 
     @Test

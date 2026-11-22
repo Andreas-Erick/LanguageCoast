@@ -9,23 +9,12 @@ package com.andreaserick.languagecoast.data
 class RoutingTranslator(
     private val onDevice: OnDeviceTranslator,
     private val localAi: LocalAiTranslator,
-    private val gemini: GeminiTranslator,
-    private val openRouter: OpenRouterTranslator,
-    private val multiCloud: MultiCloudTranslator,
+    private val cloud: CloudTranslator,
     private val settings: SettingsRepository
 ) : Translator {
     override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult {
         settings.withdrawn(request.engine)?.let { return TranslationResult.failure(it) }
-        return when (request.engine) {
-            TranslationEngine.OnDevice -> onDevice.translateAndCategorize(request)
-            is TranslationEngine.LocalAi -> localAi.translateAndCategorize(request)
-            is TranslationEngine.Gemini -> gemini.translateAndCategorize(request)
-            is TranslationEngine.OpenRouter -> openRouter.translateAndCategorize(request)
-            is TranslationEngine.OpenAI,
-            is TranslationEngine.Claude,
-            is TranslationEngine.Groq,
-            is TranslationEngine.DeepSeek -> multiCloud.translateAndCategorize(request)
-        }
+        return translatorFor(request.engine).translateAndCategorize(request)
     }
 
     override suspend fun complete(engine: TranslationEngine, prompt: String): Completion =
@@ -39,12 +28,12 @@ class RoutingTranslator(
     private fun translatorFor(engine: TranslationEngine): Translator = when (engine) {
         TranslationEngine.OnDevice -> onDevice
         is TranslationEngine.LocalAi -> localAi
-        is TranslationEngine.Gemini -> gemini
-        is TranslationEngine.OpenRouter -> openRouter
+        is TranslationEngine.Gemini,
+        is TranslationEngine.OpenRouter,
         is TranslationEngine.OpenAI,
         is TranslationEngine.Claude,
         is TranslationEngine.Groq,
-        is TranslationEngine.DeepSeek -> multiCloud
+        is TranslationEngine.DeepSeek -> cloud
     }
 }
 
