@@ -1,6 +1,8 @@
 package com.andreaserick.languagecoast.ui.study
 
 import androidx.compose.ui.unit.LayoutDirection
+import com.andreaserick.languagecoast.data.splitPunctuation
+import com.andreaserick.languagecoast.data.lookupWords
 import com.andreaserick.languagecoast.data.Grade
 import kotlin.test.Test
 import kotlin.test.assertEquals

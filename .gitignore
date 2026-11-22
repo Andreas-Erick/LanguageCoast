@@ -32,3 +32,6 @@ keystore.properties
 iosApp/iosApp.xcodeproj/
 iosApp/iosApp/Info.plist
 iosApp/build/
+
+# Local notes, not part of the app
+app/AI_Guidelines

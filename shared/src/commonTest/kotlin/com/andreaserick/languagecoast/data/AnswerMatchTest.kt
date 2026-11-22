@@ -1,6 +1,5 @@
-package com.andreaserick.languagecoast.ui.study
+package com.andreaserick.languagecoast.data
 
-import com.andreaserick.languagecoast.data.Flashcard
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.Test

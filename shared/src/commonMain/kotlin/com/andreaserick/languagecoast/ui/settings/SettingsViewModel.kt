@@ -1,5 +1,7 @@
 package com.andreaserick.languagecoast.ui.settings
 
+import kotlinx.coroutines.flow.update
+import com.andreaserick.languagecoast.data.CLOUD_PROVIDERS
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.DeviceHardwareProfile
@@ -18,11 +20,11 @@ import com.andreaserick.languagecoast.data.NoOpLocalModelController
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.SunLocation
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Profile
 import com.andreaserick.languagecoast.data.checkForNewModels
-import com.andreaserick.languagecoast.data.keyOf
 import com.andreaserick.languagecoast.data.nativeLanguageOptions
 import com.andreaserick.languagecoast.data.recommendModelsForHardware
 import com.andreaserick.languagecoast.data.sharingNotAllowedMessage
@@ -46,27 +48,12 @@ data class SettingsUiState(
     /** Languages offered as native language; excludes languages that have a coast. */
     val nativeLanguageOptions: List<Language> = Languages.ALL,
     val translationProvider: TranslationProvider = TranslationProvider.OnDevice,
-    val geminiModel: String = SettingsDefaults.GEMINI_MODEL,
-    /** The saved Gemini API key. */
-    val savedApiKey: String = "",
-    /** True right after the Gemini key was saved, until it is edited again. */
-    val apiKeySaved: Boolean = false,
-    val openRouterModel: String = SettingsDefaults.OPENROUTER_MODEL,
-    val savedOpenRouterKey: String = "",
-    /** True right after the OpenRouter key was saved, until it is edited again. */
-    val openRouterSaved: Boolean = false,
-    val openAiModel: String = SettingsDefaults.OPENAI_MODEL,
-    val savedOpenAiKey: String = "",
-    val openAiSaved: Boolean = false,
-    val claudeModel: String = SettingsDefaults.CLAUDE_MODEL,
-    val savedClaudeKey: String = "",
-    val claudeSaved: Boolean = false,
-    val groqModel: String = SettingsDefaults.GROQ_MODEL,
-    val savedGroqKey: String = "",
-    val groqSaved: Boolean = false,
-    val deepSeekModel: String = SettingsDefaults.DEEPSEEK_MODEL,
-    val savedDeepSeekKey: String = "",
-    val deepSeekSaved: Boolean = false,
+    /** The model picked for each cloud provider (see [model]). */
+    val cloudModels: Map<TranslationProvider, String> = CLOUD_PROVIDERS.mapValues { it.value.defaultModel },
+    /** The API key saved for each cloud provider that has one (see [savedKey]). */
+    val savedKeys: Map<TranslationProvider, String> = emptyMap(),
+    /** The cloud providers whose key was saved in this visit and not edited since (see [keyJustSaved]). */
+    val keysJustSaved: Set<TranslationProvider> = emptySet(),
     val localAiModel: String = SettingsDefaults.LOCAL_AI_MODEL,
     val hardwareProfile: DeviceHardwareProfile? = null,
     val isScanningHardware: Boolean = false,
@@ -93,26 +80,13 @@ data class SettingsUiState(
     val keyCheck: KeyCheckState = KeyCheckState()
 ) {
     /** The saved API key of cloud [provider], or "" if it has none. */
-    fun savedKey(provider: TranslationProvider): String = when (provider) {
-        TranslationProvider.Gemini -> savedApiKey
-        TranslationProvider.OpenAI -> savedOpenAiKey
-        TranslationProvider.Claude -> savedClaudeKey
-        TranslationProvider.Groq -> savedGroqKey
-        TranslationProvider.DeepSeek -> savedDeepSeekKey
-        TranslationProvider.OpenRouter -> savedOpenRouterKey
-        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> ""
-    }
+    fun savedKey(provider: TranslationProvider): String = savedKeys[provider].orEmpty()
 
     /** Whether [provider]'s key was saved in this visit and not edited since. */
-    fun keyJustSaved(provider: TranslationProvider): Boolean = when (provider) {
-        TranslationProvider.Gemini -> apiKeySaved
-        TranslationProvider.OpenAI -> openAiSaved
-        TranslationProvider.Claude -> claudeSaved
-        TranslationProvider.Groq -> groqSaved
-        TranslationProvider.DeepSeek -> deepSeekSaved
-        TranslationProvider.OpenRouter -> openRouterSaved
-        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> false
-    }
+    fun keyJustSaved(provider: TranslationProvider): Boolean = provider in keysJustSaved
+
+    /** The model picked for cloud [provider]; "" for what runs on the phone. */
+    fun model(provider: TranslationProvider): String = cloudModels[provider].orEmpty()
 
     /** Whether the user allowed text to be sent to [provider]. What runs on the phone needs no permission. */
     fun sharingAllowed(provider: TranslationProvider): Boolean = !provider.isCloud || provider.name in aiSharingAllowed
@@ -178,12 +152,7 @@ class SettingsViewModel(
     private val modelLister: ModelLister = ModelLister { _, _ -> ModelListing.Failed("Checking for new models isn't available here.") }
 ) : ViewModel() {
 
-    private val apiKeySaved = MutableStateFlow(false)
-    private val openRouterSaved = MutableStateFlow(false)
-    private val openAiSaved = MutableStateFlow(false)
-    private val claudeSaved = MutableStateFlow(false)
-    private val groqSaved = MutableStateFlow(false)
-    private val deepSeekSaved = MutableStateFlow(false)
+    private val keysJustSaved = MutableStateFlow(emptySet<TranslationProvider>())
     private val huggingFaceTokenSaved = MutableStateFlow(false)
     private val meteredWarning = MutableStateFlow<String?>(null)
     private val modelCheck = MutableStateFlow(ModelCheckState())
@@ -228,25 +197,11 @@ class SettingsViewModel(
         meteredWarning
     ) { theme, haptics, sounds, goal, metered -> Preferences(ThemeMode.fromKey(theme), haptics, sounds, goal, metered) }
 
+    /** The key and model of every cloud provider, and which keys were just saved. */
     private data class CloudProviderState(
-        val geminiModel: String,
-        val geminiKey: String,
-        val geminiSaved: Boolean,
-        val openRouterModel: String,
-        val openRouterKey: String,
-        val openRouterSaved: Boolean,
-        val openAiModel: String,
-        val openAiKey: String,
-        val openAiSaved: Boolean,
-        val claudeModel: String,
-        val claudeKey: String,
-        val claudeSaved: Boolean,
-        val groqModel: String,
-        val groqKey: String,
-        val groqSaved: Boolean,
-        val deepSeekModel: String,
-        val deepSeekKey: String,
-        val deepSeekSaved: Boolean
+        val keys: Map<TranslationProvider, String>,
+        val models: Map<TranslationProvider, String>,
+        val justSaved: Set<TranslationProvider>
     )
 
     private data class LocalAiState(
@@ -258,38 +213,13 @@ class SettingsViewModel(
     )
 
     private val cloudState = combine(
-        combine(
-            combine(settings.geminiModel, settings.apiKey, apiKeySaved, ::Triple),
-            combine(settings.openRouterModel, settings.openRouterKey, openRouterSaved, ::Triple),
-            combine(settings.openAiModel, settings.openAiKey, openAiSaved, ::Triple),
-            ::Triple
-        ),
-        combine(
-            combine(settings.claudeModel, settings.claudeKey, claudeSaved, ::Triple),
-            combine(settings.groqModel, settings.groqKey, groqSaved, ::Triple),
-            combine(settings.deepSeekModel, settings.deepSeekKey, deepSeekSaved, ::Triple),
-            ::Triple
-        )
-    ) { (gemini, openRouter, openAi), (claude, groq, deepSeek) ->
+        combine(CLOUD_PROVIDERS.keys.map { provider -> combine(settings.key(provider), settings.model(provider)) { key, model -> Triple(provider, key, model) } }) { it.toList() },
+        keysJustSaved
+    ) { providers, justSaved ->
         CloudProviderState(
-            geminiModel = gemini.first,
-            geminiKey = gemini.second,
-            geminiSaved = gemini.third,
-            openRouterModel = openRouter.first,
-            openRouterKey = openRouter.second,
-            openRouterSaved = openRouter.third,
-            openAiModel = openAi.first,
-            openAiKey = openAi.second,
-            openAiSaved = openAi.third,
-            claudeModel = claude.first,
-            claudeKey = claude.second,
-            claudeSaved = claude.third,
-            groqModel = groq.first,
-            groqKey = groq.second,
-            groqSaved = groq.third,
-            deepSeekModel = deepSeek.first,
-            deepSeekKey = deepSeek.second,
-            deepSeekSaved = deepSeek.third
+            keys = providers.filter { it.second.isNotEmpty() }.associate { it.first to it.second },
+            models = providers.associate { it.first to it.third },
+            justSaved = justSaved
         )
     }
 
@@ -314,24 +244,9 @@ class SettingsViewModel(
             nativeLanguage = native,
             nativeLanguageOptions = nativeLanguageOptions(coasts),
             translationProvider = provider,
-            geminiModel = cloud.geminiModel,
-            savedApiKey = cloud.geminiKey,
-            apiKeySaved = cloud.geminiSaved,
-            openRouterModel = cloud.openRouterModel,
-            savedOpenRouterKey = cloud.openRouterKey,
-            openRouterSaved = cloud.openRouterSaved,
-            openAiModel = cloud.openAiModel,
-            savedOpenAiKey = cloud.openAiKey,
-            openAiSaved = cloud.openAiSaved,
-            claudeModel = cloud.claudeModel,
-            savedClaudeKey = cloud.claudeKey,
-            claudeSaved = cloud.claudeSaved,
-            groqModel = cloud.groqModel,
-            savedGroqKey = cloud.groqKey,
-            groqSaved = cloud.groqSaved,
-            deepSeekModel = cloud.deepSeekModel,
-            savedDeepSeekKey = cloud.deepSeekKey,
-            deepSeekSaved = cloud.deepSeekSaved,
+            cloudModels = cloud.models,
+            savedKeys = cloud.keys,
+            keysJustSaved = cloud.justSaved,
             localAiModel = local.activeModelId,
             hardwareProfile = local.hardwareProfile,
             isScanningHardware = local.isScanning,
@@ -374,7 +289,7 @@ class SettingsViewModel(
             val provider = settings.translationProvider.first()
             // A key saved before the app asked for permission: until the user allows it the provider gets nothing, not even the key.
             // Without a key the check itself says to save one first, and saving is the step that asks for the permission.
-            if (settings.keyOf(provider).first().isNotBlank() && provider.name !in settings.aiSharingAllowed.first()) {
+            if (settings.key(provider).first().isNotBlank() && provider.name !in settings.aiSharingAllowed.first()) {
                 modelCheck.value =
                     ModelCheckState(provider = provider, message = sharingNotAllowedMessage(provider), failed = true, needsPermission = true)
                 return@launch
@@ -422,6 +337,14 @@ class SettingsViewModel(
     /** Switches the use of the phone's location for Follow the sun on or off; off forgets the location. */
     fun setSunUsesLocation(enabled: Boolean) {
         viewModelScope.launch { settings.setSunUsesLocation(enabled) }
+    }
+
+    /** How much new a day's session brings; null until it is read, so a Fast or Sprint pick never shows Steady first. */
+    val pace: StateFlow<Pace?> = settings.pace.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Stores the pace picked in Settings. */
+    fun setPace(pace: Pace) {
+        viewModelScope.launch { settings.setPace(pace) }
     }
 
     fun setHapticsEnabled(enabled: Boolean) {
@@ -511,9 +434,12 @@ class SettingsViewModel(
         viewModelScope.launch { settings.setLocalAiModel(modelId) }
     }
 
-    /** Saves the OpenRouter model ID as typed; a blank one means [SettingsDefaults.OPENROUTER_MODEL] when translating. */
-    fun setOpenRouterModel(model: String) {
-        viewModelScope.launch { settings.setOpenRouterModel(model) }
+    /**
+     * Stores [model] for cloud [provider]: picked from its list, or typed for OpenRouter, where a blank one
+     * means the provider's default when translating.
+     */
+    fun setModel(provider: TranslationProvider, model: String) {
+        viewModelScope.launch { settings.setModel(provider, model) }
     }
 
     /**
@@ -529,7 +455,7 @@ class SettingsViewModel(
             // The permission goes first: a key stored without it would make the app ask for it once more.
             if (allowSharing) settings.allowAiSharing(provider)
             storeKey(provider, cleaned)
-            savedFlag(provider)?.value = true
+            keysJustSaved.update { it + provider }
             if (provider.name in settings.aiSharingAllowed.first()) checkKey(provider, cleaned) else forgetKeyCheck(provider)
         }
     }
@@ -541,7 +467,7 @@ class SettingsViewModel(
         if (modelCheck.value.needsPermission && modelCheck.value.provider == provider) modelCheck.value = ModelCheckState()
         viewModelScope.launch {
             settings.removeApiKey(provider)
-            savedFlag(provider)?.value = false
+            keysJustSaved.update { it - provider }
         }
     }
 
@@ -552,7 +478,7 @@ class SettingsViewModel(
 
     /** Hides the "saved" confirmation and the result of the key's check once the user edits [provider]'s key again. */
     fun onKeyEdited(provider: TranslationProvider) {
-        savedFlag(provider)?.value = false
+        keysJustSaved.update { it - provider }
         forgetKeyCheck(provider)
     }
 
@@ -583,69 +509,14 @@ class SettingsViewModel(
         keyCheck.value = KeyCheckState()
     }
 
-    private suspend fun storeKey(provider: TranslationProvider, key: String) = when (provider) {
-        TranslationProvider.Gemini -> settings.setApiKey(key)
-        TranslationProvider.OpenAI -> settings.setOpenAiKey(key)
-        TranslationProvider.Claude -> settings.setClaudeKey(key)
-        TranslationProvider.Groq -> settings.setGroqKey(key)
-        TranslationProvider.DeepSeek -> settings.setDeepSeekKey(key)
-        TranslationProvider.OpenRouter -> settings.setOpenRouterKey(key)
-        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> Unit
-    }
+    private suspend fun storeKey(provider: TranslationProvider, key: String) = settings.setKey(provider, key)
 
-    /** The "saved" confirmation of cloud [provider]'s key. */
-    private fun savedFlag(provider: TranslationProvider): MutableStateFlow<Boolean>? = when (provider) {
-        TranslationProvider.Gemini -> apiKeySaved
-        TranslationProvider.OpenAI -> openAiSaved
-        TranslationProvider.Claude -> claudeSaved
-        TranslationProvider.Groq -> groqSaved
-        TranslationProvider.DeepSeek -> deepSeekSaved
-        TranslationProvider.OpenRouter -> openRouterSaved
-        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> null
-    }
 
     /**
      * A pasted key or token without the spaces and line breaks that come along from a web page or a mail:
      * a key has none of its own, and one inside it makes the request fail before it is sent.
      */
     private fun withoutWhitespace(secret: String): String = secret.filterNot { it.isWhitespace() || it.isISOControl() }
-
-    /** Saves the OpenRouter API key and shows the "saved" confirmation. */
-    fun saveOpenRouterKey(key: String) = saveKey(TranslationProvider.OpenRouter, key)
-
-    /** Hides the "saved" confirmation once the user edits the OpenRouter key again. */
-    fun onOpenRouterKeyEdited() = onKeyEdited(TranslationProvider.OpenRouter)
-
-    /** Changes the Gemini model used for translations. */
-    fun setGeminiModel(model: String) {
-        viewModelScope.launch { settings.setGeminiModel(model) }
-    }
-
-    /** Saves the Gemini API key and shows the "saved" confirmation. */
-    fun saveApiKey(key: String) = saveKey(TranslationProvider.Gemini, key)
-
-    /** Hides the "saved" confirmation once the user edits the key again. */
-    fun onApiKeyEdited() = onKeyEdited(TranslationProvider.Gemini)
-
-    /** Changes the OpenAI model used for translations. */
-    fun setOpenAiModel(model: String) {
-        viewModelScope.launch { settings.setOpenAiModel(model) }
-    }
-
-    /** Changes the Anthropic Claude model used for translations. */
-    fun setClaudeModel(model: String) {
-        viewModelScope.launch { settings.setClaudeModel(model) }
-    }
-
-    /** Changes the Groq model used for translations. */
-    fun setGroqModel(model: String) {
-        viewModelScope.launch { settings.setGroqModel(model) }
-    }
-
-    /** Changes the DeepSeek model used for translations. */
-    fun setDeepSeekModel(model: String) {
-        viewModelScope.launch { settings.setDeepSeekModel(model) }
-    }
 
     /** Turns the daily study reminder on or off. */
     fun setRemindersEnabled(enabled: Boolean) = updateReminder { it.copy(enabled = enabled) }

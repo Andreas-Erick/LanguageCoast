@@ -130,3 +130,39 @@ fun suggestIsland(text: String, cards: List<PlacedCard>): String? {
     }
     return scores.filterValues { it > 0 }.maxByOrNull { it.value }?.key
 }
+
+/**
+ * How [typed] compares with [card]'s translation or one of its alternatives (see [checkAnswer]),
+ * or with its native text when studying [reversed]. Of a side with several lines, one line is enough
+ * (see [acceptedAnswers]).
+ */
+internal fun matchAnswer(typed: String, card: Flashcard, reversed: Boolean = false): AnswerMatch =
+    checkAnswer(typed, if (reversed) acceptedAnswers(card.nativeText) else acceptedAnswers(card.targetText) + card.alternatives)
+
+/**
+ * Whether [typed] matches [card]'s translation or one of its alternatives (see [answerMatches]),
+ * or its native text when studying [reversed].
+ */
+internal fun isCorrectAnswer(typed: String, card: Flashcard, reversed: Boolean = false): Boolean =
+    matchAnswer(typed, card, reversed) == AnswerMatch.Exact
+
+/**
+ * Whether a typed answer matches the card's translation, ignoring case, punctuation and extra spaces
+ * ("wo ist der Strand" matches "Wo ist der Strand?"). Accents and other letters must match exactly.
+ */
+internal fun answerMatches(typed: String, expected: String): Boolean = isSameSentence(typed, expected)
+
+/** Whether [word] can be looked up: a list's number ("1.") is no word. */
+internal fun isLookupWord(word: String): Boolean = word.any { it.isLetter() }
+
+/** The words of [text] that can be looked up, each once, in the order they are read. */
+internal fun lookupWords(text: String): List<String> =
+    text.split(' ', '\n', '\t').filter { it.isNotEmpty() }.map { splitPunctuation(it).second }.filter(::isLookupWord).distinct()
+
+/** Splits "¿hola," into "¿", "hola" and ",": the word is everything from the first to the last letter or digit. */
+internal fun splitPunctuation(token: String): Triple<String, String, String> {
+    val first = token.indexOfFirst { it.isLetterOrDigit() }
+    if (first == -1) return Triple(token, "", "")
+    val last = token.indexOfLast { it.isLetterOrDigit() }
+    return Triple(token.substring(0, first), token.substring(first, last + 1), token.substring(last + 1))
+}

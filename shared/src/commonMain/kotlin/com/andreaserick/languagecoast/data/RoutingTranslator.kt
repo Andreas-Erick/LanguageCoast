@@ -28,12 +28,7 @@ class RoutingTranslator(
     private fun translatorFor(engine: TranslationEngine): Translator = when (engine) {
         TranslationEngine.OnDevice -> onDevice
         is TranslationEngine.LocalAi -> localAi
-        is TranslationEngine.Gemini,
-        is TranslationEngine.OpenRouter,
-        is TranslationEngine.OpenAI,
-        is TranslationEngine.Claude,
-        is TranslationEngine.Groq,
-        is TranslationEngine.DeepSeek -> cloud
+        is TranslationEngine.Cloud -> cloud
     }
 }
 
@@ -42,15 +37,7 @@ class RoutingTranslator(
  * it the permission to send text to its provider. Null while it may be used, and for what runs on the phone.
  */
 internal suspend fun SettingsRepository.withdrawn(engine: TranslationEngine): String? {
-    val provider = when (engine) {
-        is TranslationEngine.Gemini -> TranslationProvider.Gemini
-        is TranslationEngine.OpenAI -> TranslationProvider.OpenAI
-        is TranslationEngine.Claude -> TranslationProvider.Claude
-        is TranslationEngine.Groq -> TranslationProvider.Groq
-        is TranslationEngine.DeepSeek -> TranslationProvider.DeepSeek
-        is TranslationEngine.OpenRouter -> TranslationProvider.OpenRouter
-        TranslationEngine.OnDevice, is TranslationEngine.LocalAi -> return null
-    }
+    val provider = (engine as? TranslationEngine.Cloud)?.provider ?: return null
     return (currentEngine(provider) as? EngineChoice.Missing)?.message
 }
 

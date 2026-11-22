@@ -4,6 +4,8 @@ Texts, images and form answers for Google Play and the App Store, ready to paste
 
 The texts describe 3.1.0: the permission dialog for cloud AI providers, "Report this answer", the links under Settings > About, reminders that ask after the first session, and practice sheets with word help. Do not publish them with an older build.
 
+> **Checked against 3.5.0 on November 22, 2026.** The data safety and privacy answers cover location since 3.4.0; the store descriptions were not rewritten after 3.1.0 and don't mention what came later. What changed since 3.1.0 that a listing could show: the default look is now *Follow the sun* (five time-of-day palettes; Classic, Dark and Light remain), which can use the phone's location (see the location answers below), and every cloud provider streams its answers. The screenshots and the "What's new" text are from 3.1.0; write new ones before the next store upload.
+
 Two placeholders appear in this file:
 
 - `<support e-mail>`: the address people can write to. The owner has to choose one (see [What only you can do](#what-only-you-can-do)).
@@ -202,7 +204,7 @@ Version 3.0 gave every coast a route through the levels A1, A2 and B1, showing t
 
 ## Screenshots
 
-**Status:** the eight files in `screenshots/android/` were taken from the 3.1.0 code on November 15, 2026, in the dark theme, which is the app's default. They are 1080 × 1920 px, 24-bit PNG without alpha. There are no iPhone screenshots yet.
+**Status:** the eight files in `screenshots/android/` were taken from the 3.1.0 code on November 15, 2026, in the dark theme, then the app's default (since 3.4.0 the default is Follow the sun, whose look changes with the time of day). They are 1080 × 1920 px, 24-bit PNG without alpha. There are no iPhone screenshots yet.
 
 **How the Android ones are made:** run `python docs/store/make_demo_backup.py --today <the emulator's date> --utc-offset <the emulator's time zone>`, restore the `demo-backup.json` it writes under Settings > Backup on an emulator with a 1080 × 1920 screen (the "pixel" device profile), and turn on the emulator's demo mode for a tidy status bar. The data is made for one day: the streak ends the day before and the session is ready, so make it again on the day the screenshots are taken.
 
@@ -380,7 +382,7 @@ The privacy manifest (`iosApp/iosApp/PrivacyInfo.xcprivacy`) declares the same. 
 | Advertising | No |
 | Shared location, Dating and relationships (new on November 16, 2026) | No |
 | Profanity or crude humor, Horror or fear themes | None |
-| Alcohol, tobacco, or drug use or references | Infrequent, if the starter sentences still teach beer, wine and "No smoking" (they did in 3.0.1). None if those are gone. |
+| Alcohol, tobacco, or drug use or references | Infrequent: the starter sentences teach "beer", "wine" and "No smoking" (checked in `PhraseBank.kt` for 3.5.0). |
 | Medical or treatment information, Health or wellness topics | None. Sentences about the user's own allergies are language practice, not guidance. |
 | Sexuality or nudity, Violence, Guns or other weapons | None |
 | Gambling, Simulated gambling, Contests, Loot boxes | None / No |

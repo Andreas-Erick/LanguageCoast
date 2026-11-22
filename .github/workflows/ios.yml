@@ -4,7 +4,9 @@ name: iOS
 # All jobs run on the macOS image the release workflow uses (ios-release.yml), so the Xcode and iOS SDK that
 # build the App Store upload are the ones tested here. Change the image in both files together.
 on:
+  # Pushes to main only: a pull request's pushes run through pull_request, so a branch isn't built twice.
   push:
+    branches: [main]
     paths: &ios-paths
       - "shared/**"
       - "iosApp/**"
@@ -13,6 +15,9 @@ on:
       - ".github/workflows/ios.yml"
   pull_request:
     paths: *ios-paths
+
+permissions:
+  contents: read
 
 concurrency:
   group: ios-${{ github.ref }}

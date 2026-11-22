@@ -33,33 +33,21 @@ suspend fun SettingsRepository.currentEngine(): EngineChoice = currentEngine(tra
  */
 suspend fun SettingsRepository.currentEngine(provider: TranslationProvider): EngineChoice {
     if (provider.isCloud) {
-        if (keyOf(provider).first().isBlank()) return EngineChoice.Missing(missingKeyMessage(provider))
+        if (key(provider).first().isBlank()) return EngineChoice.Missing(missingKeyMessage(provider))
         if (provider.name !in aiSharingAllowed.first()) return EngineChoice.Missing(sharingNotAllowedMessage(provider))
     }
     val engine = when (provider) {
         TranslationProvider.OnDevice -> TranslationEngine.OnDevice
         TranslationProvider.LocalAi -> TranslationEngine.LocalAi(modelId = localAiModel.first().ifBlank { SettingsDefaults.LOCAL_AI_MODEL })
-        TranslationProvider.Gemini -> TranslationEngine.Gemini(apiKey.first(), geminiModel.first())
-        TranslationProvider.OpenAI -> TranslationEngine.OpenAI(openAiKey.first(), openAiModel.first().trim().ifBlank { SettingsDefaults.OPENAI_MODEL })
-        TranslationProvider.Claude -> TranslationEngine.Claude(claudeKey.first(), claudeModel.first().trim().ifBlank { SettingsDefaults.CLAUDE_MODEL })
-        TranslationProvider.Groq -> TranslationEngine.Groq(groqKey.first(), groqModel.first().trim().ifBlank { SettingsDefaults.GROQ_MODEL })
-        TranslationProvider.DeepSeek -> TranslationEngine.DeepSeek(deepSeekKey.first(), deepSeekModel.first().trim().ifBlank { SettingsDefaults.DEEPSEEK_MODEL })
-        TranslationProvider.OpenRouter ->
-            TranslationEngine.OpenRouter(openRouterKey.first(), openRouterModel.first().trim().ifBlank { SettingsDefaults.OPENROUTER_MODEL })
+        else -> TranslationEngine.Cloud(provider, key(provider).first(), modelOrDefault(provider))
     }
     return EngineChoice.Ready(engine)
 }
 
-/** The saved API key of [provider]; "" for the providers that need none (on-device translation and Local AI). */
-fun SettingsRepository.keyOf(provider: TranslationProvider): Flow<String> = when (provider) {
-    TranslationProvider.OnDevice, TranslationProvider.LocalAi -> flowOf("")
-    TranslationProvider.Gemini -> apiKey
-    TranslationProvider.OpenAI -> openAiKey
-    TranslationProvider.Claude -> claudeKey
-    TranslationProvider.Groq -> groqKey
-    TranslationProvider.DeepSeek -> deepSeekKey
-    TranslationProvider.OpenRouter -> openRouterKey
-}
+
+/** The model picked for cloud [provider] as it is sent: its default for a blank one. */
+private suspend fun SettingsRepository.modelOrDefault(provider: TranslationProvider): String =
+    CLOUD_PROVIDERS.getValue(provider).modelOrDefault(model(provider).first())
 
 /**
  * Whether the provider picked in Settings can translate right now: always for on-device translation and
@@ -70,7 +58,7 @@ fun SettingsRepository.keyOf(provider: TranslationProvider): Flow<String> = when
 fun SettingsRepository.engineReady(): Flow<Boolean> =
     translationProvider.flatMapLatest { provider ->
         if (!provider.isCloud) flowOf(true)
-        else combine(keyOf(provider), aiSharingAllowed) { key, allowed -> key.isNotBlank() && provider.name in allowed }
+        else combine(key(provider), aiSharingAllowed) { key, allowed -> key.isNotBlank() && provider.name in allowed }
     }.distinctUntilChanged()
 
 /**
@@ -81,7 +69,7 @@ fun SettingsRepository.engineReady(): Flow<Boolean> =
 fun SettingsRepository.providerAwaitingPermission(): Flow<TranslationProvider?> =
     translationProvider.flatMapLatest { provider ->
         if (!provider.isCloud) flowOf<TranslationProvider?>(null)
-        else combine(keyOf(provider), aiSharingAllowed) { key, allowed -> provider.takeIf { key.isNotBlank() && provider.name !in allowed } }
+        else combine(key(provider), aiSharingAllowed) { key, allowed -> provider.takeIf { key.isNotBlank() && provider.name !in allowed } }
     }.distinctUntilChanged()
 
 /**

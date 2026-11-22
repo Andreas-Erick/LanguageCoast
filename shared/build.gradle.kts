@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization) // Backups
     alias(libs.plugins.ksp) // Room annotation processing
+    alias(libs.plugins.room) // Writes the schema of each database version to schemas/
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose.multiplatform) // Shared UI and its resources (font, logo)
 }
@@ -90,6 +91,12 @@ kotlin {
 // Generated accessors for composeResources (Res.font.nunito, Res.drawable.…).
 compose.resources {
     packageOfResClass = "com.andreaserick.languagecoast.resources"
+}
+
+// Each database version's schema is kept in git, so a schema change shows up in review and a migration test can
+// open the database as an older version had it.
+room {
+    schemaDirectory("$projectDir/schemas")
 }
 
 // Room generates the database code once per platform.

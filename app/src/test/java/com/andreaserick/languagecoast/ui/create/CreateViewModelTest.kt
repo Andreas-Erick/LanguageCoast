@@ -341,7 +341,7 @@ class CreateViewModelTest {
         viewModel.save()
 
         val request = translator.lastRequest!!
-        assertEquals(TranslationEngine.Gemini("key", SettingsDefaults.GEMINI_MODEL), request.engine)
+        assertEquals(TranslationEngine.Cloud(TranslationProvider.Gemini, "key", SettingsDefaults.GEMINI_MODEL), request.engine)
         assertEquals("Icelandic", request.targetLanguage)
         assertEquals(listOf("Island 2"), request.existingCategories)
         val result = viewModel.uiState.result as SaveResult.Saved
@@ -509,7 +509,7 @@ class CreateViewModelTest {
 
         viewModel.save()
 
-        assertEquals(TranslationEngine.OpenRouter("sk-or-key", SettingsDefaults.OPENROUTER_MODEL), translator.lastRequest!!.engine)
+        assertEquals(TranslationEngine.Cloud(TranslationProvider.OpenRouter, "sk-or-key", SettingsDefaults.OPENROUTER_MODEL), translator.lastRequest!!.engine)
     }
 
     @Test

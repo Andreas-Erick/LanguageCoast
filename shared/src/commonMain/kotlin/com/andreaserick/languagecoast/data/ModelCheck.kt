@@ -12,7 +12,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlin.time.Instant
 
@@ -24,13 +23,7 @@ import kotlin.time.Instant
  */
 
 /** The providers whose model is picked from a list, which a check can bring up to date. */
-val MODEL_LIST_PROVIDERS = listOf(
-    TranslationProvider.Gemini,
-    TranslationProvider.OpenAI,
-    TranslationProvider.Claude,
-    TranslationProvider.Groq,
-    TranslationProvider.DeepSeek
-)
+val MODEL_LIST_PROVIDERS: List<TranslationProvider> = CLOUD_PROVIDERS.values.filter { it.hasModelList }.map { it.provider }
 
 /**
  * A model a provider offers right now.
@@ -58,6 +51,7 @@ class ProviderModelLister(private val client: HttpClient) : ModelLister {
         val key = apiKey.trim()
         if (provider !in MODEL_LIST_PROVIDERS) return ModelListing.Failed("${provider.label} has no list of models to check.")
         if (key.isEmpty()) return ModelListing.Failed("Save your ${provider.label} API key first, then check again.")
+        val endpoint = provider.cloud?.modelList ?: return ModelListing.Failed("${provider.label} has no list of models to check.")
         return try {
             val (status, body) = retryHttpWithBackoff(
                 shouldRetry = { (code, _, retryHeader) ->
@@ -66,19 +60,7 @@ class ProviderModelLister(private val client: HttpClient) : ModelLister {
                 },
                 retryAfterMillis = { (_, _, retryHeader) -> parseRetryAfterMillis(retryHeader) }
             ) {
-                val response = when (provider) {
-                    // One page holds them all: 1000 is the most either API returns at once.
-                    TranslationProvider.Claude -> client.get("https://api.anthropic.com/v1/models?limit=1000") {
-                        header("x-api-key", key)
-                        header("anthropic-version", "2023-06-01")
-                    }
-                    TranslationProvider.Gemini -> client.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000") {
-                        header("x-goog-api-key", key)
-                    }
-                    TranslationProvider.OpenAI -> client.get("https://api.openai.com/v1/models") { header("Authorization", "Bearer $key") }
-                    TranslationProvider.Groq -> client.get("https://api.groq.com/openai/v1/models") { header("Authorization", "Bearer $key") }
-                    else -> client.get("https://api.deepseek.com/models") { header("Authorization", "Bearer $key") }
-                }
+                val response = client.get(endpoint.url) { endpoint.headers(key).forEach { (name, value) -> header(name, value) } }
                 Triple(response.status.value, response.bodyAsText(), response.headers["retry-after"])
             }
             parseModelListing(provider, status, body)
@@ -143,10 +125,10 @@ private val NOT_CHAT = listOf(
 )
 
 /** OpenAI's models for other endpoints than chat completions, which is the one this app calls. */
-private val OPENAI_OTHER_ENDPOINTS = listOf("search", "instruct", "codex", "deep-research", "-pro")
+internal val OPENAI_OTHER_ENDPOINTS = listOf("search", "instruct", "codex", "deep-research", "-pro")
 
 /** A dated or numbered copy of a model that is also listed under its plain name: "gpt-4o-2024-08-06", "gpt-4-0613", "gemini-2.0-flash-001". */
-private val SNAPSHOT = Regex("-(\\d{4}-\\d{2}-\\d{2}|\\d{2}-\\d{4}|\\d{2}-\\d{2}|\\d{3,4})(-preview)?$")
+internal val SNAPSHOT = Regex("-(\\d{4}-\\d{2}-\\d{2}|\\d{2}-\\d{4}|\\d{2}-\\d{2}|\\d{3,4})(-preview)?$")
 
 /**
  * Whether this app can use the model [id] that [provider] listed as [entry]: a model that answers a text
@@ -156,20 +138,7 @@ private val SNAPSHOT = Regex("-(\\d{4}-\\d{2}-\\d{2}|\\d{2}-\\d{4}|\\d{2}-\\d{2}
 internal fun isUsableModel(provider: TranslationProvider, id: String, entry: JsonObject = JsonObject(emptyMap())): Boolean {
     val name = id.lowercase()
     if (NOT_CHAT.any { it in name }) return false
-    return when (provider) {
-        TranslationProvider.Claude -> name.startsWith("claude-")
-        TranslationProvider.DeepSeek -> true
-        TranslationProvider.Groq -> (entry["active"] as? JsonPrimitive)?.booleanOrNull != false
-        TranslationProvider.OpenAI ->
-            (name.startsWith("gpt-") || name.startsWith("chatgpt-") || Regex("^o\\d").containsMatchIn(name)) &&
-                OPENAI_OTHER_ENDPOINTS.none { it in name } && !SNAPSHOT.containsMatchIn(name)
-        TranslationProvider.Gemini -> {
-            val methods = (entry["supportedGenerationMethods"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }
-            name.startsWith("gemini-") && (methods == null || "generateContent" in methods) &&
-                listOf("live", "vision", "-exp").none { it in name } && !SNAPSHOT.containsMatchIn(name)
-        }
-        else -> false
-    }
+    return provider.cloud?.modelList?.isUsable?.invoke(name, entry) ?: false
 }
 
 /**
@@ -205,24 +174,9 @@ fun updateModelList(known: List<String>, live: List<LiveModel>, selected: String
     return ModelListUpdate(models, added, removed = known.filterNot { it in kept }, selected = stillSelected)
 }
 
-/** The model picked for [provider]; null for a provider without a model list. Its API key is [keyOf]. */
-private fun SettingsRepository.modelOf(provider: TranslationProvider): Flow<String>? = when (provider) {
-    TranslationProvider.Gemini -> geminiModel
-    TranslationProvider.OpenAI -> openAiModel
-    TranslationProvider.Claude -> claudeModel
-    TranslationProvider.Groq -> groqModel
-    TranslationProvider.DeepSeek -> deepSeekModel
-    else -> null
-}
-
-private suspend fun SettingsRepository.pickModel(provider: TranslationProvider, model: String) = when (provider) {
-    TranslationProvider.Gemini -> setGeminiModel(model)
-    TranslationProvider.OpenAI -> setOpenAiModel(model)
-    TranslationProvider.Claude -> setClaudeModel(model)
-    TranslationProvider.Groq -> setGroqModel(model)
-    TranslationProvider.DeepSeek -> setDeepSeekModel(model)
-    else -> Unit
-}
+/** The model picked for [provider]; null for a provider without a model list. */
+private fun SettingsRepository.modelOf(provider: TranslationProvider): Flow<String>? =
+    if (provider.cloud?.hasModelList == true) model(provider) else null
 
 /** How a check for new models went, in words for the user. */
 data class ModelCheckOutcome(val message: String, val failed: Boolean = false)
@@ -235,7 +189,7 @@ data class ModelCheckOutcome(val message: String, val failed: Boolean = false)
 suspend fun checkForNewModels(provider: TranslationProvider, settings: SettingsRepository, lister: ModelLister): ModelCheckOutcome {
     val selected = settings.modelOf(provider)?.first()
         ?: return ModelCheckOutcome("${provider.label} has no list of models to check.", failed = true)
-    val key = settings.keyOf(provider).first()
+    val key = settings.key(provider).first()
     // A key saved before the app asked for permission: until the user allows it the provider gets nothing, not even the key.
     // Without a key the lister says to save one first, and saving is the step that asks for the permission.
     if (key.isNotBlank() && provider.name !in settings.aiSharingAllowed.first()) {
@@ -251,7 +205,7 @@ suspend fun checkForNewModels(provider: TranslationProvider, settings: SettingsR
     val known = settings.modelOptions(provider).first()
     val update = updateModelList(known, live, selected, preferred = SettingsDefaults.model(provider))
     settings.setModelOptions(provider, update.models)
-    if (update.selected != selected) settings.pickModel(provider, update.selected)
+    if (update.selected != selected) settings.setModel(provider, update.selected)
 
     fun models(count: Int) = if (count == 1) "1 model" else "$count models"
     val changes = when {

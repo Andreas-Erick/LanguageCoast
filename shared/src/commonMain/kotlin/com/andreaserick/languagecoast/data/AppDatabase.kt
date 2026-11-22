@@ -19,8 +19,7 @@ import kotlin.time.Clock
 /** The app's Room database: coasts, their islands, and the islands' flashcards. */
 @Database(
     entities = [Coast::class, LanguageIsland::class, Flashcard::class, SuggestedSentence::class],
-    version = 10,
-    exportSchema = false
+    version = 10
 )
 @TypeConverters(Converters::class)
 @ConstructedBy(AppDatabaseConstructor::class)

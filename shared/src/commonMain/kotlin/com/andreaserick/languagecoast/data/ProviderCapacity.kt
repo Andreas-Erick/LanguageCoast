@@ -54,15 +54,18 @@ enum class ProviderCapacity(
         if (this == OnDevice) count * 0.4 else (count.toDouble() / StarterTranslator.BATCH_SIZE + 1) * secondsPerStarterBatch
 
     companion object {
-        fun of(provider: TranslationProvider): ProviderCapacity = when (provider) {
+        /** The capacity of [provider]'s models, or of [model] where it is known (see [CloudProvider.capacity]). */
+        fun of(provider: TranslationProvider, model: String? = null): ProviderCapacity = when (provider) {
             TranslationProvider.OnDevice -> OnDevice
             TranslationProvider.LocalAi -> OnPhone
-            TranslationProvider.Claude -> Thinking
-            TranslationProvider.Gemini, TranslationProvider.OpenAI, TranslationProvider.Groq,
-            TranslationProvider.DeepSeek, TranslationProvider.OpenRouter -> Cloud
+            else -> CLOUD_PROVIDERS.getValue(provider).capacity(model)
         }
     }
 }
+
+/** Whether [model] is a Claude model from before Claude 5 ("claude-haiku-4-5", "claude-3-7-sonnet-…"). */
+internal fun isClaudeBeforeFive(model: String): Boolean =
+    Regex("""^claude-(?:[a-z]+-[1-4](?:[-.]|$)|[1-4][-.])""").containsMatchIn(model.lowercase())
 
 /**
  * How much of a coast a practice-sheet prompt carries.

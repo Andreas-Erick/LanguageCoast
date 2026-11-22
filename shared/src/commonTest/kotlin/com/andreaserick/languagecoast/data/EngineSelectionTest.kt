@@ -16,15 +16,7 @@ class EngineSelectionTest {
 
     private val cloudProviders = TranslationProvider.entries.filter { it.isCloud }
 
-    private suspend fun SettingsRepository.saveKey(provider: TranslationProvider, key: String) = when (provider) {
-        TranslationProvider.Gemini -> setApiKey(key)
-        TranslationProvider.OpenAI -> setOpenAiKey(key)
-        TranslationProvider.Claude -> setClaudeKey(key)
-        TranslationProvider.Groq -> setGroqKey(key)
-        TranslationProvider.DeepSeek -> setDeepSeekKey(key)
-        TranslationProvider.OpenRouter -> setOpenRouterKey(key)
-        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> Unit
-    }
+    private suspend fun SettingsRepository.saveKey(provider: TranslationProvider, key: String) = setKey(provider, key)
 
     @Test
     fun aCloudProviderWithoutAKeyAsksForOne() = runTest {
@@ -55,10 +47,10 @@ class EngineSelectionTest {
     @Test
     fun aKeyAndThePermissionMakeTheEngineReady() = runTest {
         val settings = memorySettings()
-        settings.setClaudeKey("sk-test")
+        settings.setKey(TranslationProvider.Claude, "sk-test")
         settings.allowAiSharing(TranslationProvider.Claude)
 
-        val engine = TranslationEngine.Claude("sk-test", SettingsDefaults.CLAUDE_MODEL)
+        val engine = TranslationEngine.Cloud(TranslationProvider.Claude, "sk-test", SettingsDefaults.CLAUDE_MODEL)
         assertEquals(EngineChoice.Ready(engine), settings.currentEngine(TranslationProvider.Claude))
         assertEquals(TranslationProvider.Claude to engine, settings.fallbackCloudEngine())
     }
@@ -66,8 +58,8 @@ class EngineSelectionTest {
     @Test
     fun thePermissionIsGivenPerProvider() = runTest {
         val settings = memorySettings()
-        settings.setClaudeKey("sk-test")
-        settings.setOpenAiKey("sk-other")
+        settings.setKey(TranslationProvider.Claude, "sk-test")
+        settings.setKey(TranslationProvider.OpenAI, "sk-other")
 
         settings.allowAiSharing(TranslationProvider.Claude)
 
@@ -96,9 +88,9 @@ class EngineSelectionTest {
         val settings = memorySettings()
         cloudProviders.forEach { settings.saveKey(it, "key of ${it.name}") }
 
-        cloudProviders.forEach { assertEquals("key of ${it.name}", settings.keyOf(it).first(), it.name) }
-        assertEquals("", settings.keyOf(TranslationProvider.OnDevice).first())
-        assertEquals("", settings.keyOf(TranslationProvider.LocalAi).first())
+        cloudProviders.forEach { assertEquals("key of ${it.name}", settings.key(it).first(), it.name) }
+        assertEquals("", settings.key(TranslationProvider.OnDevice).first())
+        assertEquals("", settings.key(TranslationProvider.LocalAi).first())
     }
 
     @Test
@@ -110,7 +102,7 @@ class EngineSelectionTest {
         assertFalse(settings.engineReady().first())
         assertNull(settings.providerAwaitingPermission().first())
 
-        settings.setGroqKey("gsk-test")
+        settings.setKey(TranslationProvider.Groq, "gsk-test")
         assertFalse(settings.engineReady().first())
         assertEquals(TranslationProvider.Groq, settings.providerAwaitingPermission().first())
 
@@ -132,21 +124,21 @@ class EngineSelectionTest {
     @Test
     fun removingAKeyClearsItAndWithdrawsThePermission() = runTest {
         val settings = memorySettings()
-        settings.setClaudeKey("sk-test")
-        settings.setOpenAiKey("sk-other")
+        settings.setKey(TranslationProvider.Claude, "sk-test")
+        settings.setKey(TranslationProvider.OpenAI, "sk-other")
         settings.allowAiSharing(TranslationProvider.Claude)
         settings.allowAiSharing(TranslationProvider.OpenAI)
 
         settings.removeApiKey(TranslationProvider.Claude)
 
-        assertEquals("", settings.claudeKey.first())
+        assertEquals("", settings.key(TranslationProvider.Claude).first())
         assertEquals(setOf("OpenAI"), settings.aiSharingAllowed.first())
         // The other provider keeps its key and its permission.
-        assertEquals("sk-other", settings.openAiKey.first())
+        assertEquals("sk-other", settings.key(TranslationProvider.OpenAI).first())
         assertTrue(settings.currentEngine(TranslationProvider.OpenAI) is EngineChoice.Ready)
 
         // A key saved again later has to be allowed again.
-        settings.setClaudeKey("sk-new")
+        settings.setKey(TranslationProvider.Claude, "sk-new")
         assertEquals(
             EngineChoice.Missing("Allow Language Coast to send text to Claude first. You can do that under Settings."),
             settings.currentEngine(TranslationProvider.Claude)
@@ -156,7 +148,7 @@ class EngineSelectionTest {
     @Test
     fun anEngineAJobStillHoldsIsTurnedAwayOnceItsKeyIsRemoved() = runTest {
         val settings = memorySettings()
-        settings.setClaudeKey("sk-test")
+        settings.setKey(TranslationProvider.Claude, "sk-test")
         settings.allowAiSharing(TranslationProvider.Claude)
         // What a job that runs for minutes read when it began, and keeps using, key included.
         val engine = (settings.currentEngine(TranslationProvider.Claude) as EngineChoice.Ready).engine
@@ -166,7 +158,7 @@ class EngineSelectionTest {
 
         assertEquals("Claude needs an API key. Add one in Settings.", settings.withdrawn(engine))
         // A key saved again is not the permission, so the job's engine still may not send.
-        settings.setClaudeKey("sk-new")
+        settings.setKey(TranslationProvider.Claude, "sk-new")
         assertEquals("Allow Language Coast to send text to Claude first. You can do that under Settings.", settings.withdrawn(engine))
         // What runs on the phone sends nothing anywhere, so there is nothing to take back.
         assertNull(settings.withdrawn(TranslationEngine.OnDevice))
@@ -200,7 +192,7 @@ class EngineSelectionTest {
             settings.removeApiKey(removed)
 
             cloudProviders.forEach { provider ->
-                assertEquals(if (provider == removed) "" else "key", settings.keyOf(provider).first(), "${removed.name} removed, ${provider.name} read")
+                assertEquals(if (provider == removed) "" else "key", settings.key(provider).first(), "${removed.name} removed, ${provider.name} read")
             }
         }
     }
@@ -208,12 +200,12 @@ class EngineSelectionTest {
     @Test
     fun savingABlankKeyRemovesItAndThePermission() = runTest {
         val settings = memorySettings()
-        settings.setApiKey("AIza-test")
+        settings.setKey(TranslationProvider.Gemini, "AIza-test")
         settings.allowAiSharing(TranslationProvider.Gemini)
 
-        settings.setApiKey(" ")
+        settings.setKey(TranslationProvider.Gemini, " ")
 
-        assertEquals("", settings.apiKey.first())
+        assertEquals("", settings.key(TranslationProvider.Gemini).first())
         assertTrue(settings.aiSharingAllowed.first().isEmpty())
     }
 
@@ -222,7 +214,7 @@ class EngineSelectionTest {
         val settings = memorySettings()
         assertTrue(settings.isEmpty())
 
-        settings.setApiKey("AIza-test")
+        settings.setKey(TranslationProvider.Gemini, "AIza-test")
         settings.allowAiSharing(TranslationProvider.Gemini)
         assertFalse(settings.isEmpty())
 
@@ -233,14 +225,14 @@ class EngineSelectionTest {
     @Test
     fun thePermissionStaysOnThePhoneThatGaveIt() = runTest {
         val settings = memorySettings()
-        settings.setClaudeKey("sk-test")
+        settings.setKey(TranslationProvider.Claude, "sk-test")
         settings.allowAiSharing(TranslationProvider.Claude)
 
         // Restoring a backup replaces the settings, but neither the keys nor the permission that goes with them.
         settings.restoreSettings(BackupSettings(nativeLanguage = "Dutch"))
 
         assertEquals("Dutch", settings.nativeLanguage.first())
-        assertEquals("sk-test", settings.claudeKey.first())
+        assertEquals("sk-test", settings.key(TranslationProvider.Claude).first())
         assertEquals(setOf("Claude"), settings.aiSharingAllowed.first())
     }
 }
