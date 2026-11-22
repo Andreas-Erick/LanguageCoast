@@ -87,6 +87,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import com.andreaserick.languagecoast.ui.components.ButtonLabel
+import com.andreaserick.languagecoast.ui.theme.tabular
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -239,7 +241,7 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
                         FilterChip(
                             selected = goal == uiState.weeklyGoal,
                             onClick = { viewModel.setWeeklyGoal(goal) },
-                            label = { Text("$goal", style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")) },
+                            label = { Text("$goal", style = MaterialTheme.typography.labelMedium.tabular) },
                             colors = coastChipColors(),
                             border = coastChipBorder(enabled = true, selected = goal == uiState.weeklyGoal),
                             shape = MaterialTheme.shapes.small
@@ -354,9 +356,10 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
 @Composable
 private fun PaceSection() {
     val settings = koinInject<SettingsRepository>()
-    val pace by settings.pace.collectAsState(initial = Pace.Steady)
+    // No placeholder pace: showing Steady for a frame would make a Fast or Sprint pick jump.
+    val pace by settings.pace.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
-    PaceOptions(pace = pace, waiting = 0, onPick = { scope.launch { settings.setPace(it) } })
+    pace?.let { current -> PaceOptions(pace = current, waiting = 0, onPick = { scope.launch { settings.setPace(it) } }) }
     Hint("How many new cards a day's session on Today introduces. Everything new comes back for review, so a faster pace means longer sessions for weeks. Miss a few days and the session shrinks by itself.")
 }
 
@@ -390,7 +393,7 @@ private fun AboutSection(onShowLicences: () -> Unit) {
     val openLink = rememberOpenLink()
     val sendFeedback = rememberSendFeedback()
     val messenger = LocalUndoMessenger.current
-    Text("Language Coast $version", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+    Text("Language Coast $version", color = TextPrimary, style = MaterialTheme.typography.titleSmall)
     Hint(
         "Cloud AI by Google Gemini, OpenAI, Anthropic Claude, Groq, DeepSeek and OpenRouter, each with your own key." +
             (if (localAiAvailable) " Local AI runs with Google LiteRT-LM." else "") +
@@ -618,6 +621,8 @@ private fun ApiKeySection(
     }
 
     if (savedKey.isNotEmpty()) {
+        // Kept apart from the save button so removing never reads as part of saving.
+        Spacer(modifier = Modifier.height(8.dp))
         TextButton(
             onClick = { confirmRemove = true },
             colors = ButtonDefaults.textButtonColors(contentColor = CoralText),
@@ -909,7 +914,8 @@ private fun ModelPicker(
     SelectionDropdown(
         options = if (selected in options) options else listOf(selected) + options,
         selected = selected,
-        onSelected = onSelected
+        onSelected = onSelected,
+        modifier = Modifier.semantics { contentDescription = label }
     )
     val check = uiState.modelCheck
     val checking = check.checking == provider
@@ -1059,7 +1065,7 @@ private fun HardwareProfileCard(
                 Icon(Icons.Default.Memory, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Memory: ${profile.availableRamGbText} free of ${profile.totalRamGbText}",
+                    text = "Memory in use, ${profile.availableRamGbText} free of ${profile.totalRamGbText}",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextSecondary,
                     modifier = Modifier.weight(1f)
@@ -1105,11 +1111,13 @@ private fun HardwareProfileCard(
                 TextButton(
                     onClick = onRescan,
                     enabled = !isScanning,
+                    // Through the button's colours, so it dims while a check runs instead of looking tappable.
+                    colors = ButtonDefaults.textButtonColors(contentColor = SunlitText),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    Icon(Icons.Default.Radar, contentDescription = null, tint = SunlitText, modifier = Modifier.size(15.dp))
+                    Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isScanning) "Checking…" else "Check again", color = SunlitText, style = MaterialTheme.typography.labelMedium)
+                    Text(if (isScanning) "Checking…" else "Check again", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -1190,8 +1198,9 @@ private fun ModelRecommendationCard(
                         label = when {
                             needsToken -> "Needs a Hugging Face token"
                             !recommendation.hasEnoughStorage -> "Not enough free storage"
-                            else -> "Download · ${model.sizeLabel}"
+                            else -> "Download"
                         },
+                        detail = model.sizeLabel.takeIf { !needsToken && recommendation.hasEnoughStorage },
                         enabled = recommendation.hasEnoughStorage && !needsToken,
                         primary = isBestMatch,
                         onClick = onInstall
@@ -1215,15 +1224,35 @@ private fun ModelRecommendationCard(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Downloading $downloadedMb / $totalMb MB ($percent%)",
+                                    // The percentage first: on a narrow screen the megabytes are what gets cut.
+                                    text = "$percent%, $downloadedMb of $totalMb MB",
                                     color = TextPrimary,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                                    style = MaterialTheme.typography.labelSmall.tabular,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
+                            var confirmCancel by remember { mutableStateOf(false) }
+                            if (confirmCancel) {
+                                AlertDialog(
+                                    onDismissRequest = { confirmCancel = false },
+                                    title = { Text("Stop downloading ${model.name}?") },
+                                    text = { Text("What has downloaded so far is thrown away.", color = TextSecondary) },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            confirmCancel = false
+                                            onCancel()
+                                        }) { Text("Stop download", color = CoralText, style = MaterialTheme.typography.labelMedium) }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { confirmCancel = false }) {
+                                            Text("Keep downloading", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                                        }
+                                    }
+                                )
+                            }
                             TextButton(
-                                onClick = onCancel,
+                                onClick = { confirmCancel = true },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                             ) {
                                 Icon(Icons.Default.Close, contentDescription = null, tint = CoralText, modifier = Modifier.size(15.dp))
@@ -1293,7 +1322,7 @@ private fun ModelRecommendationCard(
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    DownloadButton(label = "Try again · ${model.sizeLabel}", enabled = true, primary = true, onClick = onInstall)
+                    DownloadButton(label = "Try again", detail = model.sizeLabel, enabled = true, primary = false, onClick = onInstall)
                 }
             }
         }
@@ -1302,7 +1331,7 @@ private fun ModelRecommendationCard(
 
 /** The button that starts a model download: one line, never clipped, with the accent only for the best match. */
 @Composable
-private fun DownloadButton(label: String, enabled: Boolean, primary: Boolean, onClick: () -> Unit) {
+private fun DownloadButton(label: String, enabled: Boolean, primary: Boolean, onClick: () -> Unit, detail: String? = null) {
     CoastButton(
         onClick = onClick,
         enabled = enabled,
@@ -1314,7 +1343,7 @@ private fun DownloadButton(label: String, enabled: Boolean, primary: Boolean, on
     ) {
         Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(8.dp))
-        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (detail == null) Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) else ButtonLabel(label, detail)
     }
 }
 
@@ -1431,7 +1460,7 @@ private fun ReminderSection(
             FilterChip(
                 selected = reminder.time != null,
                 onClick = { showTimePicker = true },
-                label = { Text(reminder.time?.let { formatTime(it) } ?: "Pick a time", style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")) },
+                label = { Text(reminder.time?.let { formatTime(it) } ?: "Pick a time", style = MaterialTheme.typography.labelMedium.tabular) },
                 colors = chipColors,
                 border = coastChipBorder(enabled = true, selected = reminder.time != null),
                 shape = MaterialTheme.shapes.small

@@ -55,7 +55,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.Level
 import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.Route
@@ -67,6 +66,7 @@ import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.IconTile
+import com.andreaserick.languagecoast.ui.components.TileEmoji
 import com.andreaserick.languagecoast.ui.components.inLanguage
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.components.roughDuration
@@ -78,6 +78,7 @@ import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.ui.theme.tabular
 import kotlin.math.roundToInt
 
 /** "34%". */
@@ -129,7 +130,7 @@ internal fun RouteCard(
                 Text(current.level.can, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(percent(current.progress), style = MaterialTheme.typography.headlineSmall, color = SunlitText)
+            Text(percent(current.progress), style = MaterialTheme.typography.headlineSmall.tabular, color = SunlitText)
         }
         LevelStepper(route = route, modifier = Modifier.padding(top = 16.dp))
         if (waiting > 0) {
@@ -171,7 +172,8 @@ internal fun RouteCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
+                // 8dp at least between two things to tap, so the one next to it isn't hit by mistake.
+                Spacer(modifier = Modifier.width(8.dp))
             } else {
                 Text("Every island of ${current.level.label} is on your coast.", style = MaterialTheme.typography.bodySmall, color = TextSecondary, modifier = Modifier.weight(1f))
             }
@@ -367,7 +369,7 @@ private fun LevelHeader(level: RouteLevel, busy: Boolean, onAddTopics: () -> Uni
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("${level.level.title} · ${percent(level.progress)}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+                Text("${level.level.title} · ${percent(level.progress)}", style = MaterialTheme.typography.titleMedium.tabular, modifier = Modifier.semantics { heading() })
                 Text(level.level.can, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
         }
@@ -402,7 +404,7 @@ private fun StopRow(stop: RouteStop, status: String, enabled: Boolean, onClick: 
             .clickable(enabled = enabled && !done, role = Role.Button, onClick = onClick)
             .padding(vertical = 8.dp)
     ) {
-        IconTile(size = 40.dp) { Text(stop.emoji, fontSize = 20.sp) }
+        IconTile(size = 40.dp) { TileEmoji(stop.emoji, tileSize = 40.dp) }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

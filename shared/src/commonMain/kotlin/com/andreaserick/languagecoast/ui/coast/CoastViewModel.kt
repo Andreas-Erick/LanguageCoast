@@ -306,11 +306,18 @@ class CoastViewModel(
         viewModelScope.launch { Level.entries.filter { it <= level }.forEach { settings.markLevelCelebrated(coastId, it) } }
     }
 
-    /** Removes the cards with [cardIds] that the user unticked when looking over what was written. */
-    fun removeCards(cardIds: Set<Int>) {
+    /**
+     * Removes the cards with [cardIds] that the user unticked when looking over what was written. Kept cards
+     * can carry progress, so [onRemoved] gets everything removed, for an Undo through [restore].
+     */
+    fun removeCards(cardIds: Set<Int>, onRemoved: (DeletedContent) -> Unit = {}) {
         val review = uiState.value.buildReview
         val cards = (review.added + review.kept).filter { it.cardId in cardIds }
-        viewModelScope.launch { cards.forEach { flashcards.deleteFlashcard(it) } }
+        if (cards.isEmpty()) return
+        viewModelScope.launch {
+            val removed = cards.map { flashcards.deleteFlashcard(it) }
+            onRemoved(DeletedContent(cards = removed.flatMap { it.cards }))
+        }
     }
 
     /**
@@ -427,7 +434,7 @@ class CoastViewModel(
         viewModelScope.launch { onDeleted(flashcards.deleteIsland(island)) }
     }
 
-    /** Puts back a deleted island. Not tied to this ViewModel's scope, so undo works after leaving the screen. */
+    /** Puts back a deleted island or removed cards. Not tied to this ViewModel's scope, so undo works after leaving the screen. */
     suspend fun restore(content: DeletedContent) = flashcards.restore(content)
 
     /** Stops reading aloud when the screen is left. */

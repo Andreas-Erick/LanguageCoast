@@ -151,6 +151,8 @@ private fun LearnStep(
             )
             Spacer(modifier = Modifier.height(20.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // As wide as the speaker button and its gap on the other side, so the sentence stays centred on the card.
+                if (onSpeak != null) Spacer(modifier = Modifier.width(SpeakerSlot))
                 Text(
                     text = inLanguage(targetText, targetLanguage),
                     style = MaterialTheme.typography.headlineSmall,
@@ -187,7 +189,7 @@ private fun LearnStep(
         // A label that doesn't fit its half (a large font size) wraps instead of losing a word, and both
         // buttons grow to the taller one.
         Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
@@ -201,6 +203,9 @@ private fun LearnStep(
         }
     }
 }
+
+/** The room the speaker button takes beside the sentence: its 8 dp gap and the button's 48 dp touch target. */
+private val SpeakerSlot = 56.dp
 
 /** Marks a title as a heading for screen readers. A function of its own, as [LearnStep] has a text called "heading". */
 private fun Modifier.asHeading(): Modifier = semantics { heading() }

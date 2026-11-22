@@ -1,7 +1,10 @@
 package com.andreaserick.languagecoast
 
+import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -45,6 +48,7 @@ import com.andreaserick.languagecoast.ui.theme.ThemeMode
 import com.andreaserick.languagecoast.ui.theme.SunLocationUpdates
 import com.andreaserick.languagecoast.ui.components.LocalFeedback
 import com.andreaserick.languagecoast.ui.components.LocalHapticsEnabled
+import com.andreaserick.languagecoast.ui.components.LocalReducedMotion
 import com.andreaserick.languagecoast.ui.components.rememberFeedback
 import org.koin.compose.koinInject
 import androidx.compose.runtime.getValue
@@ -63,8 +67,10 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -132,6 +138,45 @@ private val topLevelDestinations = listOf(
 
 private const val TRANSITION_MILLIS = 300
 
+/** With reduced motion, screens only cross-fade, and quicker. */
+private const val REDUCED_TRANSITION_MILLIS = 150
+
+/**
+ * A screen opened on top of another: it slides in [towards] that way and back out the opposite way, and while
+ * a horizontal screen covers it, it moves aside to the left and comes back from there. Each of the four
+ * transitions is set, because a missing one falls back to another and slides the wrong way. A study session
+ * covers what is below it from the bottom, so nothing slides sideways for it. With reduced motion everything
+ * only fades.
+ */
+private inline fun <reified T : Any> NavGraphBuilder.detailScreen(
+    reducedMotion: Boolean,
+    towards: SlideDirection = SlideDirection.Start,
+    noinline content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit
+) {
+    val back = if (towards == SlideDirection.Up) SlideDirection.Down else SlideDirection.End
+    composable<T>(
+        enterTransition = {
+            if (reducedMotion) fadeIn(tween(REDUCED_TRANSITION_MILLIS))
+            else slideIntoContainer(towards, tween(TRANSITION_MILLIS)) + fadeIn()
+        },
+        exitTransition = {
+            if (reducedMotion || targetState.destination.hasRoute<StudyScreenRoute>()) {
+                fadeOut(tween(if (reducedMotion) REDUCED_TRANSITION_MILLIS else TRANSITION_MILLIS))
+            } else slideOutOfContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeOut()
+        },
+        popEnterTransition = {
+            if (reducedMotion || initialState.destination.hasRoute<StudyScreenRoute>()) {
+                fadeIn(tween(if (reducedMotion) REDUCED_TRANSITION_MILLIS else TRANSITION_MILLIS))
+            } else slideIntoContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeIn()
+        },
+        popExitTransition = {
+            if (reducedMotion) fadeOut(tween(REDUCED_TRANSITION_MILLIS))
+            else slideOutOfContainer(back, tween(TRANSITION_MILLIS)) + fadeOut()
+        },
+        content = content
+    )
+}
+
 /**
  * The widest the screens get. On a tablet, an unfolded phone or a desktop window they stay a column of this
  * width in the middle; the background, the bottom bar and snackbars still span the window.
@@ -186,6 +231,9 @@ private fun AppContent() {
     val feedback = rememberFeedback(hapticsEnabled, soundsEnabled)
     val systemHaptics = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
+    // Provided by LanguageCoastTheme, which this sits inside.
+    val reducedMotion = LocalReducedMotion.current
+    val fadeMillis = if (reducedMotion) REDUCED_TRANSITION_MILLIS else TRANSITION_MILLIS
 
     CompositionLocalProvider(
         LocalUndoMessenger provides undoMessenger,
@@ -208,8 +256,9 @@ private fun AppContent() {
                     val inStudySession = backStack.lastOrNull()?.destination?.hasRoute<StudyScreenRoute>() == true
                     AnimatedVisibility(
                         visible = !inStudySession,
-                        enter = expandVertically(tween(TRANSITION_MILLIS)),
-                        exit = shrinkVertically(tween(TRANSITION_MILLIS))
+                        // With reduced motion the bar simply goes and comes back.
+                        enter = if (reducedMotion) EnterTransition.None else expandVertically(tween(TRANSITION_MILLIS)),
+                        exit = if (reducedMotion) ExitTransition.None else shrinkVertically(tween(TRANSITION_MILLIS))
                     ) {
                         Column {
                             HorizontalDivider(color = CardEdge, thickness = 1.dp)
@@ -273,8 +322,8 @@ private fun AppContent() {
                         startDestination = CreateScreenRoute,
                         modifier = Modifier.widthIn(max = MaxContentWidth).fillMaxSize(),
                         // Tabs cross-fade; screens opened from a list slide in from the side.
-                        enterTransition = { fadeIn(tween(TRANSITION_MILLIS)) },
-                        exitTransition = { fadeOut(tween(TRANSITION_MILLIS)) }
+                        enterTransition = { fadeIn(tween(fadeMillis)) },
+                        exitTransition = { fadeOut(tween(fadeMillis)) }
                     ) {
                         composable<CreateScreenRoute> {
                             CreateScreen(
@@ -294,22 +343,13 @@ private fun AppContent() {
                                 onRecapClick = { navController.navigate(RecapScreenRoute) }
                             )
                         }
-                        composable<RecapScreenRoute>(
-                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
-                        ) {
+                        detailScreen<RecapScreenRoute>(reducedMotion) {
                             RecapScreen(onNavigateBack = { navController.popBackStack() })
                         }
-                        composable<SearchScreenRoute>(
-                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
-                        ) {
+                        detailScreen<SearchScreenRoute>(reducedMotion) {
                             SearchScreen(onNavigateBack = { navController.popBackStack() })
                         }
-                        composable<CoastScreenRoute>(
-                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
-                        ) {
+                        detailScreen<CoastScreenRoute>(reducedMotion) {
                             // CoastViewModel reads the route arguments from its SavedStateHandle.
                             CoastScreen(
                                 onIslandClick = { id, name ->
@@ -325,29 +365,20 @@ private fun AppContent() {
                                 onNavigateBack = { navController.popBackStack() }
                             )
                         }
-                        composable<AboutYouScreenRoute>(
-                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
-                        ) { entry ->
+                        detailScreen<AboutYouScreenRoute>(reducedMotion) { entry ->
                             AboutYouScreen(
                                 openAt = entry.toRoute<AboutYouScreenRoute>().islandId,
                                 onNavigateBack = { navController.popBackStack() }
                             )
                         }
-                        composable<IslandScreenRoute>(
-                            enterTransition = { slideIntoContainer(SlideDirection.Start, tween(TRANSITION_MILLIS)) + fadeIn() },
-                            popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(TRANSITION_MILLIS)) + fadeOut() }
-                        ) {
+                        detailScreen<IslandScreenRoute>(reducedMotion) {
                             // IslandViewModel reads the route arguments from its SavedStateHandle.
                             IslandScreen(onNavigateBack = { navController.popBackStack() })
                         }
                         composable<SettingsScreenRoute> {
                             SettingsScreen(onAboutYou = { navController.navigate(AboutYouScreenRoute()) })
                         }
-                        composable<StudyScreenRoute>(
-                            enterTransition = { slideIntoContainer(SlideDirection.Up, tween(TRANSITION_MILLIS)) + fadeIn() },
-                            popExitTransition = { slideOutOfContainer(SlideDirection.Down, tween(TRANSITION_MILLIS)) + fadeOut() }
-                        ) { entry ->
+                        detailScreen<StudyScreenRoute>(reducedMotion, towards = SlideDirection.Up) { entry ->
                             val route = entry.toRoute<StudyScreenRoute>()
                             // StudyViewModel reads the route arguments from its SavedStateHandle.
                             StudyScreen(

@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
 /**
@@ -52,8 +53,9 @@ fun CardOptionsMenu(
                 }
             )
             DropdownMenuItem(
-                text = { Text("Delete card") },
-                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                // Coral, like every destructive action, so it doesn't read as just another option.
+                text = { Text("Delete card", color = CoralText) },
+                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = CoralText) },
                 onClick = {
                     expanded = false
                     onDelete()

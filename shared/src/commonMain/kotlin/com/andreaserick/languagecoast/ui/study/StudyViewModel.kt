@@ -487,9 +487,16 @@ class StudyViewModel(
         viewModelScope.launch { flashcards.editCard(cardId, edit) }
     }
 
-    /** Grades the current card, saves its new schedule and moves on. */
-    fun onGrade(grade: Grade) {
+    /**
+     * Grades the current card, saves its new schedule and moves on.
+     *
+     * @param cardId The card the grade was given for. A tap that arrives once another card is current (a quick
+     *     second tap on a button that was just used) is ignored, instead of grading the card after it. Null
+     *     grades whatever card is current.
+     */
+    fun onGrade(grade: Grade, cardId: Int? = null) {
         val placed = session.value.let { it.cards.getOrNull(it.index) } ?: return
+        if (cardId != null && placed.card.cardId != cardId) return
         // Don't keep reading the old answer over the next card.
         speaker.stop()
         dismissExplanation()
@@ -504,9 +511,13 @@ class StudyViewModel(
     /**
      * Keeps the new sentence being offered: it becomes a card on the session's coast (and leaves the pool),
      * to be practiced once the last sentence is decided.
+     *
+     * @param suggestionId The sentence the tap was for; a late second tap, once the next one is offered, is
+     *     ignored. Null keeps whichever sentence is offered.
      */
-    fun keepSuggestion() {
+    fun keepSuggestion(suggestionId: Int? = null) {
         val suggestion = session.value.learning ?: return
+        if (suggestionId != null && suggestion.suggestionId != suggestionId) return
         speaker.stop()
         // Take it off the queue right away, so a second tap can't keep it twice.
         updateSession { s -> s.copy(learnQueue = s.learnQueue.drop(1), keptCount = s.keptCount + 1, pendingKeeps = s.pendingKeeps + 1) }
@@ -539,9 +550,14 @@ class StudyViewModel(
         }
     }
 
-    /** Takes on the card being introduced: it is practiced once the last new card and sentence are decided. */
-    fun learnIntroduced() {
+    /**
+     * Takes on the card being introduced: it is practiced once the last new card and sentence are decided.
+     *
+     * @param cardId The card the tap was for; a late second tap, once the next card is introduced, is ignored.
+     */
+    fun learnIntroduced(cardId: Int? = null) {
         val placed = session.value.introducing ?: return
+        if (cardId != null && placed.card.cardId != cardId) return
         speaker.stop()
         updateSession { s ->
             s.copy(introQueue = s.introQueue.drop(1), kept = s.kept + placed, islandIds = s.islandIds + placed.card.islandId, learnedCount = s.learnedCount + 1)
@@ -551,21 +567,58 @@ class StudyViewModel(
     /**
      * Says the card being introduced is known already: it is scheduled as an easy first review, days away,
      * and isn't practiced now. A speedrun shouldn't spend today on what the user can already say.
+     *
+     * @param cardId The card the tap was for; a late second tap, once the next card is introduced, is ignored.
+     * @param onKnown Receives the card as it was, so [undoKnowIntroduced] can put it back.
      */
-    fun knowIntroduced() {
+    fun knowIntroduced(cardId: Int? = null, onKnown: (PlacedCard) -> Unit = {}) {
         val placed = session.value.introducing ?: return
+        if (cardId != null && placed.card.cardId != cardId) return
         speaker.stop()
         val reviewed = reviewOutcomes(placed.card, clock.now(), timeZone).getValue(Grade.Easy).card
         updateSession { s -> s.copy(introQueue = s.introQueue.drop(1), islandIds = s.islandIds + placed.card.islandId) }
         viewModelScope.launch { flashcards.saveReview(reviewed) }
+        onKnown(placed)
     }
 
-    /** Passes on the new sentence being offered; it isn't suggested again. */
-    fun skipSuggestion() {
+    /**
+     * Takes back [knowIntroduced]: the card is never studied again, as it was, and is introduced next. Not
+     * tied to this ViewModel's scope, so undo works after leaving the screen.
+     */
+    suspend fun undoKnowIntroduced(placed: PlacedCard) {
+        updateSession { s ->
+            if (s.introQueue.any { it.card.cardId == placed.card.cardId }) s else s.copy(introQueue = listOf(placed) + s.introQueue)
+        }
+        // Writes back the schedule it had: none.
+        flashcards.saveReview(placed.card)
+    }
+
+    /**
+     * Passes on the new sentence being offered; it isn't suggested again.
+     *
+     * @param suggestionId The sentence the tap was for; a late second tap, once the next one is offered, is ignored.
+     * @param onSkipped Receives the sentence, so [undoSkipSuggestion] can offer it again.
+     */
+    fun skipSuggestion(suggestionId: Int? = null, onSkipped: (SuggestedSentence) -> Unit = {}) {
         val suggestion = session.value.learning ?: return
+        if (suggestionId != null && suggestion.suggestionId != suggestionId) return
         speaker.stop()
         updateSession { s -> s.copy(learnQueue = s.learnQueue.drop(1)) }
         viewModelScope.launch { flashcards.skipSuggestion(suggestion.suggestionId) }
+        onSkipped(suggestion)
+    }
+
+    /**
+     * Takes back [skipSuggestion]: the sentence is back in the pool and offered next. Not tied to this
+     * ViewModel's scope, so undo works after leaving the screen.
+     */
+    suspend fun undoSkipSuggestion(suggestion: SuggestedSentence) {
+        updateSession { s ->
+            if (s.learnQueue.any { it.suggestionId == suggestion.suggestionId }) s else s.copy(learnQueue = listOf(suggestion) + s.learnQueue)
+        }
+        // The pool can't clear a skip, so the sentence goes back in as it was before, under its own ID.
+        flashcards.removeSuggestion(suggestion.suggestionId)
+        flashcards.addSuggestions(listOf(suggestion.copy(skipped = false)))
     }
 
     /** Moves to the next card without grading the current one. */
@@ -663,12 +716,15 @@ class StudyViewModel(
      * Makes the checked card's translation what the check suggested. A translation that was correct but not
      * what people say stays as an alternative, with the reason as the card's note; a wrong one is dropped,
      * so it is no longer accepted as an answer.
+     *
+     * @param onApplied Receives the card's ID and what it said before, so [restoreCard] can undo the change.
      */
-    fun applyCardCheck() {
+    fun applyCardCheck(onApplied: (cardId: Int, previous: CardEdit) -> Unit = { _, _ -> }) {
         val check = cardCheck.value ?: return
         val verdict = check.verdict as? CardVerdict.Better ?: return
         val card = session.value.allCards.firstOrNull { it.card.cardId == check.cardId }?.card ?: return
         dismissCardCheck()
+        onApplied(card.cardId, CardEdit(card.nativeText, card.targetText, card.alternatives, card.note, card.islandId))
         val previous = if (verdict.currentIsWrong) emptyList() else listOf(card.targetText)
         val alternatives = (previous + card.alternatives).filterNot { isSameSentence(it, verdict.better) }
         val note = listOfNotNull(verdict.reason.takeIf { it.isNotBlank() }, card.note).joinToString(" ").ifBlank { null }
@@ -797,6 +853,12 @@ class StudyViewModel(
 
     /** Puts back a deleted card. Not tied to this ViewModel's scope, so undo works after leaving the screen. */
     suspend fun restore(content: DeletedContent) = flashcards.restore(content)
+
+    /**
+     * Puts card [cardId] back to [previous], e.g. what it said before [applyCardCheck]. Not tied to this
+     * ViewModel's scope, so undo works after leaving the screen.
+     */
+    suspend fun restoreCard(cardId: Int, previous: CardEdit) = flashcards.editCard(cardId, previous)
 
     /**
      * Applies [transform] to the session, keeping the index in range.

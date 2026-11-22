@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -33,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.daysToLearn
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
-import com.andreaserick.languagecoast.ui.theme.Sunlit
+import com.andreaserick.languagecoast.ui.theme.AccentControl
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
@@ -62,7 +63,8 @@ fun PaceOptions(pace: Pace, waiting: Int, onPick: (Pace) -> Unit, modifier: Modi
                 shape = shape,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (selected) Modifier.border(BorderStroke(1.5.dp, Sunlit), shape) else Modifier)
+                    // The control accent, not Sunlit: Sunlit is too faint against the card in the day palettes.
+                    .then(if (selected) Modifier.border(BorderStroke(1.5.dp, AccentControl), shape) else Modifier)
                     .clip(shape)
                     .selectable(selected = selected, role = Role.RadioButton, onClick = { onPick(option) })
             ) {
@@ -110,7 +112,7 @@ fun PaceSheet(pace: Pace, waiting: Int, onPick: (Pace) -> Unit, onDismiss: () ->
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )
-            CoastButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+            CoastButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) { Text("Done") }
         }
     }
 }

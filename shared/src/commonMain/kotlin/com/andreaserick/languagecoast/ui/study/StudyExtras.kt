@@ -133,7 +133,7 @@ internal fun StudyModeRow(
                 style = MaterialTheme.typography.labelMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
             )
         } else {
             TextButton(
@@ -193,6 +193,17 @@ fun ClozeStudyView(
         feedback.play(if (outcome == AnswerMatch.Wrong) FeedbackKind.Failure else FeedbackKind.Success)
     }
 
+    // One grade per card: a quick second tap would otherwise grade the same card again when Again brings it
+    // straight back. (A tap that lands on the next card is turned away by the ViewModel.)
+    var isGraded by remember(currentCard) { mutableStateOf(false) }
+    fun grade(grade: Grade, playFeedback: Boolean) {
+        if (isGraded) return
+        isGraded = true
+        // Like Type mode: a grade button buzzes and sounds; Continue was already answered by the check.
+        if (playFeedback) feedback.play(if (grade == Grade.Again) FeedbackKind.Failure else FeedbackKind.Success)
+        onGrade(grade)
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
         ContentCard(padding = PaddingValues(start = 20.dp, top = 16.dp, end = 8.dp, bottom = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 40.dp)) {
@@ -208,7 +219,7 @@ fun ClozeStudyView(
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.padding(end = 12.dp)
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = inLanguage(currentCard.nativeText, nativeLang),
                 style = MaterialTheme.typography.titleMedium,
@@ -236,14 +247,14 @@ fun ClozeStudyView(
                 enabled = userInput.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
             ) {
-                Text("Check")
+                Text("Check answer")
             }
             else -> Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().bringIntoViewRequester(result)) {
                 AnswerVerdict(outcome = outcome, expected = cloze.word, language = targetLang)
                 when (outcome) {
-                    AnswerMatch.Exact -> GradeButtons(intervals = intervals, onGrade = onGrade)
-                    is AnswerMatch.Almost -> HardContinue(onGrade = onGrade)
-                    AnswerMatch.Wrong -> AgainContinue(onGrade = onGrade)
+                    AnswerMatch.Exact -> GradeButtons(intervals = intervals, onGrade = { grade(it, playFeedback = true) })
+                    is AnswerMatch.Almost -> HardContinue(onGrade = { grade(it, playFeedback = false) })
+                    AnswerMatch.Wrong -> AgainContinue(onGrade = { grade(it, playFeedback = false) })
                 }
             }
         }
@@ -399,8 +410,8 @@ internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onR
                     explanation.text != null -> Text(explanation.text, style = MaterialTheme.typography.bodyLarge)
                     else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(explanation.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
-                        CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            Text("Try again", style = MaterialTheme.typography.labelMedium)
+                        CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                            Text("Try again")
                         }
                     }
                 }
@@ -493,8 +504,8 @@ internal fun CardCheckSheet(
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(check.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
-                            CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                                Text("Try again", style = MaterialTheme.typography.labelMedium)
+                            CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                                Text("Try again")
                             }
                         }
                     }
@@ -620,7 +631,13 @@ private fun AlternativeQuestion(check: CardCheck, accentSave: Boolean, onAsk: (S
                 Spacer(modifier = Modifier.width(10.dp))
                 Text("Asking ${check.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
-            verdict == null -> Text(asked.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+            // Like the sheet's other errors, with a way to ask the same sentence again.
+            verdict == null -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(asked.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = CoralText)
+                CoastSecondaryButton(onClick = { onAsk(asked.text) }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                    Text("Try again")
+                }
+            }
             verdict == AlternativeVerdict.OnTheCard -> Text("The card has that one already.", style = MaterialTheme.typography.bodyLarge)
             verdict is AlternativeVerdict.Correct -> {
                 AlternativeHeadline(correct = true, providerLabel = check.providerLabel, asked = asked.text, language = check.targetLanguage)
@@ -807,9 +824,9 @@ private fun CardQuestionContent(questions: CardQuestions, onAsk: (String) -> Uni
                         CoastSecondaryButton(
                             onClick = { onAsk(asked.question) },
                             enabled = !questions.isAsking,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
                         ) {
-                            Text("Try again", style = MaterialTheme.typography.labelMedium)
+                            Text("Try again")
                         }
                     }
                 }

@@ -39,6 +39,7 @@ import com.andreaserick.languagecoast.ui.theme.palette
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import com.andreaserick.languagecoast.ui.theme.WaveLineColor
+import com.andreaserick.languagecoast.ui.theme.tabular
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -88,7 +89,8 @@ fun ScreenHeader(
                     modifier = Modifier.semantics { heading() }
                 )
                 if (subtitle != null) {
-                    Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    // Subtitles are often counts ("3 of 12 answered"), so their figures keep one width as they change.
+                    Text(text = subtitle, style = MaterialTheme.typography.bodyMedium.tabular, color = TextSecondary)
                 }
             }
             actions()
@@ -148,7 +150,7 @@ fun OceanBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
                     center = center
                 )
                 val stars = palette.stars
-                if (stars > 0f) drawStars(stars)
+                if (stars > 0f) drawStars(stars, palette.starColor)
             },
         content = content
     )
@@ -179,9 +181,8 @@ private val NIGHT_SKY: List<Star> = run {
 /** How far down the screen the stars reach, as a fraction of its height. */
 private const val STAR_DEPTH = 0.62f
 
-/** Draws [NIGHT_SKY] at [strength] (0 to 1), fading out towards the bottom of the starry part. */
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStars(strength: Float) {
-    val starColor = Color(0xFFE9E7FF)
+/** Draws [NIGHT_SKY] in [starColor] at [strength] (0 to 1), fading out towards the bottom of the starry part. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStars(strength: Float, starColor: Color) {
     for (star in NIGHT_SKY) {
         val fade = 1f - star.y
         val alpha = (star.brightness * fade * strength).coerceIn(0f, 1f)

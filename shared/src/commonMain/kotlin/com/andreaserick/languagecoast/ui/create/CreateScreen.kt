@@ -1,16 +1,13 @@
 package com.andreaserick.languagecoast.ui.create
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -45,6 +42,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +56,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -81,16 +80,14 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.DailyPlan
@@ -112,6 +109,7 @@ import com.andreaserick.languagecoast.resources.logo_mark
 import com.andreaserick.languagecoast.resources.logo_mark_light
 import com.andreaserick.languagecoast.ui.theme.isDarkPalette
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
+import com.andreaserick.languagecoast.ui.components.ButtonLabel
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
@@ -119,12 +117,16 @@ import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.FeedbackKind
 import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.KeepScreenOn
+import com.andreaserick.languagecoast.ui.components.LocalReducedMotion
 import com.andreaserick.languagecoast.ui.components.LanguagePickerDialog
 import com.andreaserick.languagecoast.ui.components.LocalFeedback
 import com.andreaserick.languagecoast.ui.components.Pill
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
+import com.andreaserick.languagecoast.ui.components.TileEmoji
+import com.andreaserick.languagecoast.ui.components.collapseExit
+import com.andreaserick.languagecoast.ui.components.expandEnter
 import com.andreaserick.languagecoast.ui.components.coastChipBorder
 import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.inLanguage
@@ -133,6 +135,7 @@ import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
+import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
 import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
@@ -319,6 +322,11 @@ private fun CreateContent(
             onStartBatch = onStartBatch,
             onToggle = onToggleBatchSentence,
             onSave = onSaveBatch,
+            // Drops the empty split but keeps the sheet and the text, so it can be fixed and split again.
+            onEditText = {
+                showBatchSheet = true
+                onDismissBatch()
+            },
             onDismiss = {
                 showBatchSheet = false
                 batchText = ""
@@ -396,8 +404,8 @@ private fun CreateContent(
                 ComposerHeader(open = composerOpen, onToggle = { composerOpen = !composerOpen })
                 AnimatedVisibility(
                     visible = composerOpen,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
+                    enter = expandEnter(),
+                    exit = collapseExit()
                 ) {
                     NewCardForm(
                         uiState = uiState,
@@ -416,19 +424,21 @@ private fun CreateContent(
                 // The preview appears below the form, often off screen; scroll to it once it has expanded.
                 val resultRequester = remember { BringIntoViewRequester() }
                 val feedback = LocalFeedback.current
+                // With reduced motion the preview appears at full size at once, so there is nothing to wait for.
+                val reducedMotion = LocalReducedMotion.current
                 LaunchedEffect(uiState.result) {
                     when (uiState.result) {
                         is SaveResult.Saved -> feedback.play(FeedbackKind.Success)
                         is SaveResult.Error -> feedback.play(FeedbackKind.Failure)
                         null -> return@LaunchedEffect
                     }
-                    delay(RESULT_SCROLL_DELAY_MILLIS)
+                    if (!reducedMotion) delay(RESULT_SCROLL_DELAY_MILLIS)
                     resultRequester.bringIntoView()
                 }
                 AnimatedVisibility(
                     visible = uiState.result != null,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut(),
+                    enter = expandEnter(),
+                    exit = collapseExit(),
                     modifier = Modifier.bringIntoViewRequester(resultRequester)
                 ) {
                     when (val result = uiState.result) {
@@ -519,7 +529,7 @@ private fun DailyCard(
     val language = Languages.byName(coast.language)
     ContentCard(padding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconTile(size = 40.dp) { Text(language?.flag ?: "🌍", fontSize = 20.sp) }
+            IconTile(size = 40.dp) { TileEmoji(language?.flag ?: "🌍", tileSize = 40.dp) }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -549,7 +559,7 @@ private fun DailyCard(
                     modifier = Modifier.weight(1f).height(6.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
-                Text("${(level.progress * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                Text("${(level.progress * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium.tabular, color = TextSecondary)
             }
         }
 
@@ -568,15 +578,22 @@ private fun DailyCard(
                 )
                 if (!plan.isEmpty) {
                     // A little padding keeps the first and last glyphs clear of the button's clip; the offset lines the text up with the card's text.
-                    TextButton(onClick = onStart, contentPadding = PaddingValues(horizontal = 6.dp), modifier = Modifier.offset(x = (-6).dp)) {
-                        Text(
-                            text = "Another round · " + listOfNotNull(
-                                plan.reviewCount.takeIf { it > 0 }?.let { "$it to review" },
-                                plan.newCount.takeIf { it > 0 }?.let { "$it new" }
-                            ).joinToString(" · "),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = SunlitText
-                        )
+                    TextButton(
+                        onClick = onStart,
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = SunlitText),
+                        modifier = Modifier.offset(x = (-6).dp)
+                    ) {
+                        // The label's parts take the button's text style and colour, as a plain Text in it did before.
+                        ProvideTextStyle(MaterialTheme.typography.labelMedium) {
+                            ButtonLabel(
+                                action = "Another round",
+                                detail = listOfNotNull(
+                                    plan.reviewCount.takeIf { it > 0 }?.let { "$it to review" },
+                                    plan.newCount.takeIf { it > 0 }?.let { "$it new" }
+                                ).joinToString(", ")
+                            )
+                        }
                     }
                 }
             }
@@ -592,7 +609,7 @@ private fun DailyCard(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 CoastButton(onClick = onStart, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
-                    Text(if (plan.isWelcomeBack) "Ease back in" else "Start · about ${plural(plan.minutes, "minute")}")
+                    if (plan.isWelcomeBack) Text("Ease back in") else ButtonLabel("Start", "about ${plural(plan.minutes, "minute")}")
                 }
                 if (plan.leftOver > 0) LeftOverLine(leftOver = plan.leftOver, dueOnCoast = plan.dueOnCoast, onReviewAll = onReviewCoast)
                 WaitingLine(waiting = plan.newOnCoast, pace = pace, onChangePace = onChangePace)
@@ -622,7 +639,11 @@ private fun DailyCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
-                if (engineReady && suggestionError != null) SuggestionProblem(suggestionError, onRetry = onRetrySuggestions)
+                if (engineReady && suggestionError != null) {
+                    SuggestionProblem(suggestionError, onRetry = onRetrySuggestions)
+                    // Two actions one above the other need a gap, or a tap meant for one lands on the other.
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 TextButton(onClick = onReviewCoast, contentPadding = PaddingValues(horizontal = 0.dp)) {
                     Text("Practice anyway", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                 }
@@ -652,6 +673,7 @@ private fun DailyCard(
                 CoastSecondaryButton(onClick = onBrowseStarters, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
                     Text("Browse starter sentences")
                 }
+                Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = onAddOwn, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                     Text("Or add your own", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
                 }
@@ -663,6 +685,8 @@ private fun DailyCard(
             }
         }
         if (plan != null && dueEverywhere > plan.dueOnCoast) {
+            // It usually sits under another action (a button or a tappable line), so it keeps the same gap from it.
+            Spacer(modifier = Modifier.height(8.dp))
             TextButton(onClick = onReviewAll, contentPadding = PaddingValues(horizontal = 0.dp)) {
                 Text("${plural(dueEverywhere, "card")} due across all coasts", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
             }
@@ -705,34 +729,23 @@ private fun SuggestionProblem(reason: String, onRetry: () -> Unit) {
 
 /**
  * What the capped session leaves behind, as one quiet sentence under the Start button: "56 more cards can
- * wait for another day, or review all 68." The whole pile is a tap away inside the sentence instead of a
- * button fighting it for the row, so the line reads as one thought and wraps like prose on narrow screens.
+ * wait for another day, or review all 68." The line reads as one thought and wraps like prose on narrow
+ * screens; the accent words only show where the tap leads.
  */
 @Composable
 private fun LeftOverLine(leftOver: Int, dueOnCoast: Int, onReviewAll: () -> Unit) {
     val text = buildAnnotatedString {
         append("${plural(leftOver, "more card")} can wait for another day, or ")
-        withLink(
-            LinkAnnotation.Clickable(
-                tag = "review-all",
-                styles = TextLinkStyles(style = SpanStyle(color = SunlitText, fontWeight = FontWeight.SemiBold)),
-                linkInteractionListener = { onReviewAll() }
-            )
-        ) { append("review all $dueOnCoast") }
+        withStyle(SpanStyle(color = SunlitText, fontWeight = FontWeight.SemiBold)) { append("review all $dueOnCoast") }
         append(".")
     }
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodySmall,
-        color = TextSecondary,
-        modifier = Modifier.padding(top = 12.dp)
-    )
+    TappableLine(text = text, onClickLabel = "review all $dueOnCoast", onClick = onReviewAll)
 }
 
 /**
  * The pace, under the Start button: with new cards waiting on the coast, how long they take at this pace
  * ("212 new cards are waiting: about 10 weeks at the steady pace. Go faster."); otherwise just the pace
- * and the way to change it. The link is part of the sentence, as in [LeftOverLine].
+ * and the way to change it. Tapped as a whole, like [LeftOverLine].
  */
 @Composable
 private fun WaitingLine(waiting: Int, pace: Pace, onChangePace: () -> Unit) {
@@ -742,16 +755,31 @@ private fun WaitingLine(waiting: Int, pace: Pace, onChangePace: () -> Unit) {
         } else {
             append("${pace.label} pace, up to ${pace.newPerDay} new a day. ")
         }
-        withLink(
-            LinkAnnotation.Clickable(
-                tag = "pace",
-                styles = TextLinkStyles(style = SpanStyle(color = SunlitText, fontWeight = FontWeight.SemiBold)),
-                linkInteractionListener = { onChangePace() }
-            )
-        ) { append(if (pace == Pace.Sprint) "Change pace" else if (waiting > 0) "Go faster" else "Change pace") }
+        withStyle(SpanStyle(color = SunlitText, fontWeight = FontWeight.SemiBold)) {
+            append(if (pace == Pace.Sprint) "Change pace" else if (waiting > 0) "Go faster" else "Change pace")
+        }
         append(".")
     }
-    Text(text = text, style = MaterialTheme.typography.bodySmall, color = TextSecondary, modifier = Modifier.padding(top = 8.dp))
+    TappableLine(text = text, onClickLabel = "change the pace", onClick = onChangePace)
+}
+
+/**
+ * A quiet line of text with one action in it. A link of a few small words was too small to hit, so the
+ * whole line is the target, at least 48 dp tall; the gap above keeps it apart from the action before it.
+ */
+@Composable
+private fun TappableLine(text: AnnotatedString, onClickLabel: String, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.CenterStart,
+        modifier = Modifier
+            .padding(top = 8.dp)
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
+            .padding(vertical = 4.dp)
+    ) {
+        Text(text = text, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+    }
 }
 
 /**
@@ -762,7 +790,7 @@ private fun WaitingLine(waiting: Int, pace: Pace, onChangePace: () -> Unit) {
 private fun AboutYouInvite(onOpen: () -> Unit, onDismiss: () -> Unit) {
     ContentCard(padding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.Top) {
-            IconTile(size = 40.dp) { Text("🪪", fontSize = 20.sp) }
+            IconTile(size = 40.dp) { TileEmoji("🪪", tileSize = 40.dp) }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("Make it about you", style = MaterialTheme.typography.titleMedium)
@@ -909,9 +937,12 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
 /** The fold of the new card form: a title that opens and closes it. */
 @Composable
 private fun ComposerHeader(open: Boolean, onToggle: () -> Unit) {
+    // At least a finger tall even when open, when only the title's line is left.
     Column(
+        verticalArrangement = Arrangement.Center,
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .clickable(onClickLabel = if (open) "hide the form" else "show the form", role = Role.Button, onClick = onToggle)
             .padding(top = 4.dp)
     ) {
@@ -1098,7 +1129,8 @@ private fun NewCardForm(
 
         // Both ways in need a provider that can translate, so they aren't offered while there is none.
         if (mode != InputMode.Manual && uiState.engineReady) {
-            Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+            // A flow row, so at a large font size the second one moves to its own line instead of squeezing the first.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), modifier = Modifier.fillMaxWidth()) {
                 TextButton(onClick = onBrowseStarters, contentPadding = PaddingValues(horizontal = 8.dp)) {
                     Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = SunlitText, modifier = Modifier.padding(end = 6.dp).size(18.dp))
                     Text("Starter sentences", style = MaterialTheme.typography.labelMedium, color = SunlitText)
@@ -1125,13 +1157,14 @@ private fun CoastPicker(coasts: List<Coast>, selected: Coast, onSelected: (Coast
             Text("Change", color = SunlitText, style = MaterialTheme.typography.labelMedium, maxLines = 1)
             Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = SunlitText)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        // The same raised surface as the app's other menus (see SelectionDropdown).
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = SurfaceSelected) {
             coasts.forEach { coast ->
                 val isSelected = coast == selected
                 DropdownMenuItem(
                     text = { Text(coast.displayName, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium) },
                     trailingIcon = if (isSelected) {
-                        { Icon(Icons.Default.Check, contentDescription = "Selected") }
+                        { Icon(Icons.Default.Check, contentDescription = "Selected", tint = TextPrimary) }
                     } else null,
                     onClick = {
                         onSelected(coast)
@@ -1152,7 +1185,7 @@ private fun RecentCards(cards: List<RecentCard>, language: String) {
             cards.forEachIndexed { index, recent ->
                 if (index > 0) HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconTile(size = 40.dp) { Text(recent.emoji, fontSize = 18.sp) }
+                    IconTile(size = 40.dp) { TileEmoji(recent.emoji, tileSize = 40.dp) }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -1242,7 +1275,7 @@ private fun Onboarding(
             Spacer(modifier = Modifier.height(24.dp))
             ContentCard(onClick = { showNativePicker = true }, onClickLabel = "change your language") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconTile { Text(native?.flag ?: "🌍", fontSize = 24.sp) }
+                    IconTile { TileEmoji(native?.flag ?: "🌍") }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(nativeLanguage, style = MaterialTheme.typography.titleMedium)
@@ -1325,6 +1358,8 @@ private fun SavedCard(
                 }) {
                     Icon(Icons.Default.Edit, contentDescription = "Edit translation", tint = TextSecondary, modifier = Modifier.size(18.dp))
                 }
+                // A gap between the two targets, so reaching for Undo doesn't open the editor or the other way round.
+                Spacer(modifier = Modifier.width(8.dp))
             }
             TextButton(onClick = onUndo) {
                 Text("Undo", color = SunlitText, style = MaterialTheme.typography.labelMedium)
@@ -1335,7 +1370,8 @@ private fun SavedCard(
                 value = draft,
                 onValueChange = { draft = it },
                 label = { Text("Translation") },
-                singleLine = true,
+                // A sentence, often longer than the field is wide: it wraps so the whole of it can be checked while editing.
+                minLines = 2,
                 modifier = Modifier.fillMaxWidth().padding(end = 12.dp, top = 4.dp)
             )
             Row(modifier = Modifier.fillMaxWidth().padding(end = 12.dp, top = 4.dp), horizontalArrangement = Arrangement.End) {
@@ -1390,8 +1426,8 @@ private fun ErrorCard(message: String, fallback: TranslationProvider?, onRetry: 
             Text(text = message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(10.dp))
-        CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-            Text(if (fallback != null) "Try with ${fallback.label}" else "Try again", style = MaterialTheme.typography.labelMedium)
+        CoastSecondaryButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+            Text(if (fallback != null) "Try with ${fallback.label}" else "Try again")
         }
     }
 }
@@ -1419,6 +1455,7 @@ private fun BatchSheet(
     onStartBatch: (String) -> Unit,
     onToggle: (Int) -> Unit,
     onSave: () -> Unit,
+    onEditText: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var confirmStopBatch by remember { mutableStateOf(false) }
@@ -1488,7 +1525,11 @@ private fun BatchSheet(
                 }
                 batch.sentences.isEmpty() -> {
                     Text("No sentences were found in that text.", color = TextSecondary)
-                    CoastSecondaryButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) { Text("Close") }
+                    // Back to the field with the text still in it: closing would throw away what was pasted or read.
+                    CoastButton(onClick = onEditText, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) { Text("Edit the text") }
+                    TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text("Close", color = TextSecondary, style = MaterialTheme.typography.labelMedium)
+                    }
                 }
                 else -> {
                     val picked = batch.sentences.count { it.checked }

@@ -36,6 +36,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -162,6 +166,7 @@ actual fun CardTransferSection() {
     ) {
         Text(if (isWorking) "Working…" else "Export cards")
     }
+    if (uiState.coasts.isEmpty()) Hint("Start a coast first: there are no cards to export yet.")
 
     Spacer(modifier = Modifier.height(20.dp))
 
@@ -238,13 +243,14 @@ private fun ExportDialog(
         onDismissRequest = onDismiss,
         title = { Text("Export cards") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 FieldLabel("Cards from")
                 SelectionDropdown(
                     options = coastOptions,
                     selected = coastOptions.firstOrNull { it.coastId == coastId } ?: coastOptions.first(),
                     onSelected = { onCoastChange(it.coastId) },
-                    optionLabel = { it.label }
+                    optionLabel = { it.label },
+                    modifier = Modifier.semantics { contentDescription = "Cards from" }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 FieldLabel("Format")
@@ -272,7 +278,7 @@ private fun ExportDialog(
         },
         confirmButton = {
             TextButton(onClick = onExport, colors = ButtonDefaults.textButtonColors(contentColor = SunlitText)) {
-                Text("Export", style = MaterialTheme.typography.titleSmall)
+                Text("Export", style = MaterialTheme.typography.labelMedium)
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = TextPrimary, style = MaterialTheme.typography.labelMedium) } }
@@ -303,13 +309,14 @@ private fun ImportDialog(
         onDismissRequest = { if (!isImporting) onDismiss() },
         title = { Text("Import ${plural(cards.size, "card")}") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 FieldLabel("Add to")
                 SelectionDropdown(
                     options = coasts,
                     selected = coast,
                     onSelected = { onCoastChange(it.coastId) },
-                    optionLabel = { it.displayName }
+                    optionLabel = { it.displayName },
+                    modifier = Modifier.semantics { contentDescription = "Add to" }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 FieldLabel("First cards")

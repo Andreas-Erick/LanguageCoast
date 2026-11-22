@@ -39,7 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.Level
@@ -55,6 +54,7 @@ import com.andreaserick.languagecoast.data.TALK_MIN_CARDS
 import com.andreaserick.languagecoast.data.aboutStopId
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
+import com.andreaserick.languagecoast.ui.components.ButtonLabel
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.IconTile
@@ -62,6 +62,7 @@ import com.andreaserick.languagecoast.ui.components.KeepScreenOn
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
+import com.andreaserick.languagecoast.ui.components.TileEmoji
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
@@ -70,6 +71,7 @@ import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.ui.theme.tabular
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -241,7 +243,11 @@ fun CoastScreen(
         BuildReviewSheet(
             review = uiState.buildReview,
             coastLanguage = uiState.coastLanguage,
-            onRemove = viewModel::removeCards,
+            onRemove = { cardIds ->
+                viewModel.removeCards(cardIds) { removed ->
+                    undoMessenger.show("${plural(removed.cards.size, "card")} removed") { viewModel.restore(removed) }
+                }
+            },
             onDismiss = { showReview = false }
         )
     }
@@ -364,11 +370,7 @@ fun CoastScreen(
                                 .heightIn(min = ButtonHeight)
                                 .animateItem()
                         ) {
-                            Text(
-                                "Review the coast · $due due",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            ButtonLabel("Review the coast", "$due due")
                         }
                     }
                 }
@@ -418,7 +420,7 @@ fun IslandCard(
     val island = summary.island
     ContentCard(onClick = onClick, onClickLabel = "study", modifier = modifier.heightIn(min = 160.dp), padding = PaddingValues(start = 14.dp, top = 14.dp, bottom = 14.dp)) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
-            IconTile { Text(islandEmoji(island), fontSize = 22.sp) }
+            IconTile { TileEmoji(islandEmoji(island)) }
             Spacer(modifier = Modifier.weight(1f))
             if (level != null) Pill(level.label, container = SurfaceRaised, content = TextSecondary, modifier = Modifier.padding(top = 12.dp))
             IslandMenu(islandName = island.name, onShowCards = onShowCards, onTalk = onTalk, onDelete = onDeleteClick)
@@ -429,13 +431,15 @@ fun IslandCard(
             Text(
                 text = island.name,
                 style = MaterialTheme.typography.titleMedium,
+                // Two lines kept even for a short name, so cards side by side in the grid are the same height.
+                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Text(plural(summary.cardCount, "card"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             when {
-                summary.reviewCount > 0 -> Text("${summary.reviewCount} due", style = MaterialTheme.typography.labelMedium, color = SunlitText)
-                summary.newCount > 0 -> Text("${summary.newCount} new", style = MaterialTheme.typography.labelMedium, color = Seafoam)
+                summary.reviewCount > 0 -> Text("${summary.reviewCount} due", style = MaterialTheme.typography.labelMedium.tabular, color = SunlitText)
+                summary.newCount > 0 -> Text("${summary.newCount} new", style = MaterialTheme.typography.labelMedium.tabular, color = Seafoam)
                 else -> Text(lastStudiedLabel(island.lastStudied, today), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
             // How much of the island is learned: the cards studied at least once.

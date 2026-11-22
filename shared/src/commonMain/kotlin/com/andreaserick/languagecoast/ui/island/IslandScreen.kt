@@ -63,7 +63,12 @@ fun IslandScreen(onNavigateBack: () -> Unit, viewModel: IslandViewModel = koinVi
         when {
             // Show nothing while loading to avoid flashing the empty state.
             uiState.isLoading -> Unit
-            uiState.cards.isEmpty() -> EmptyState(icon = Icons.Default.Waves, title = "No cards on this island yet")
+            // An island is left empty when its last card is deleted or moved: say how cards get onto it.
+            uiState.cards.isEmpty() -> EmptyState(
+                icon = Icons.Default.Waves,
+                title = "No cards on this island yet",
+                body = "Create a card on Today, or move one here from another island when you edit it."
+            )
             else -> LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),

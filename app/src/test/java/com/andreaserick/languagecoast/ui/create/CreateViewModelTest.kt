@@ -613,6 +613,19 @@ class CreateViewModelTest {
     }
 
     @Test
+    fun aSplitWithNoSentencesCanBeDroppedAndTheFixedTextSplitAgain() = runTest {
+        // What "Edit the text" relies on: the empty split goes, and the screen keeps the text for another try.
+        viewModel.startBatch("12 34 !!")
+        assertTrue(viewModel.uiState.batch!!.sentences.isEmpty())
+
+        viewModel.dismissBatch()
+        assertNull(viewModel.uiState.batch)
+
+        viewModel.startBatch("12 34 !! Where is the station?")
+        assertEquals(listOf("Where is the station?"), viewModel.uiState.batch!!.sentences.map { it.text })
+    }
+
+    @Test
     fun aCardSavedWhileTypingIsFoundToo() = runTest {
         viewModel.onNativeSentenceChange("Hello")
         assertNull(viewModel.uiState.duplicate)
