@@ -16,15 +16,7 @@ class EngineSelectionTest {
 
     private val cloudProviders = TranslationProvider.entries.filter { it.isCloud }
 
-    private suspend fun SettingsRepository.saveKey(provider: TranslationProvider, key: String) = when (provider) {
-        TranslationProvider.Gemini -> setKey(TranslationProvider.Gemini, key)
-        TranslationProvider.OpenAI -> setKey(TranslationProvider.OpenAI, key)
-        TranslationProvider.Claude -> setKey(TranslationProvider.Claude, key)
-        TranslationProvider.Groq -> setKey(TranslationProvider.Groq, key)
-        TranslationProvider.DeepSeek -> setKey(TranslationProvider.DeepSeek, key)
-        TranslationProvider.OpenRouter -> setKey(TranslationProvider.OpenRouter, key)
-        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> Unit
-    }
+    private suspend fun SettingsRepository.saveKey(provider: TranslationProvider, key: String) = setKey(provider, key)
 
     @Test
     fun aCloudProviderWithoutAKeyAsksForOne() = runTest {
