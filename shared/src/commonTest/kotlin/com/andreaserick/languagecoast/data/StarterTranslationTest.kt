@@ -114,7 +114,7 @@ class StarterTranslationTest {
         }
     }
 
-    private val gemini = TranslationEngine.Gemini("key", SettingsDefaults.GEMINI_MODEL)
+    private val gemini = TranslationEngine.Cloud(TranslationProvider.Gemini, "key", SettingsDefaults.GEMINI_MODEL)
     private val fortySentences = (1..40).map { "Sentence number $it of the test." }
 
     @Test
@@ -192,13 +192,13 @@ class StarterTranslationTest {
         val busy = Completion.busy("Claude is busy or rate-limited. Wait a moment and try again.", retryAfterSeconds = 300)
         val translator = ScriptedTranslator(completion = { busy })
 
-        val answer = translator.completeWaiting(TranslationEngine.Claude("key", SettingsDefaults.CLAUDE_MODEL), "prompt")
+        val answer = translator.completeWaiting(TranslationEngine.Cloud(TranslationProvider.Claude, "key", SettingsDefaults.CLAUDE_MODEL), "prompt")
 
         assertEquals(busy, answer)
         assertEquals(1 + BUSY_MAX_WAITS, translator.prompts.size)
         // A failure that waiting can't fix is not waited on.
         val refused = ScriptedTranslator(completion = { Completion.failure("Claude didn't accept the API key. Check your Anthropic key in Settings.") })
-        assertNull(refused.completeWaiting(TranslationEngine.Claude("key", SettingsDefaults.CLAUDE_MODEL), "prompt").text)
+        assertNull(refused.completeWaiting(TranslationEngine.Cloud(TranslationProvider.Claude, "key", SettingsDefaults.CLAUDE_MODEL), "prompt").text)
         assertEquals(1, refused.prompts.size)
     }
 }

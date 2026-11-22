@@ -177,21 +177,35 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
         val model = LocalAiCatalog.byId(modelId) ?: return
         trackers[modelId]?.cancel()
         trackers[modelId] = scope.launch {
+            var failedQueries = 0
             while (isActive) {
+                // A cursor without a row means the download is gone; no cursor, or an exception, means
+                // DownloadManager couldn't answer this time. That keeps the download: it is asked again.
+                var answered = true
                 val snapshot = try {
-                    downloads.query(DownloadManager.Query().setFilterById(id))?.use { cursor ->
-                        if (!cursor.moveToFirst()) return@use null
+                    val cursor = downloads.query(DownloadManager.Query().setFilterById(id))
+                    if (cursor == null) answered = false
+                    cursor?.use { rows ->
+                        if (!rows.moveToFirst()) return@use null
                         DownloadSnapshot(
-                            status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
-                            reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
-                            downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
-                            total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                            status = rows.getInt(rows.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
+                            reason = rows.getInt(rows.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+                            downloaded = rows.getLong(rows.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                            total = rows.getLong(rows.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
                         )
                     }
                 } catch (e: Exception) {
-                    logError(TAG, "Failed to query DownloadManager for ${model.fileName}", e)
+                    // Logged once per run of failures, so a DownloadManager that is down doesn't fill the log.
+                    if (failedQueries == 0) logError(TAG, "Failed to query DownloadManager for ${model.fileName}", e)
+                    answered = false
                     null
                 }
+                if (!answered) {
+                    failedQueries++
+                    delay(QUERY_RETRY_MILLIS)
+                    continue
+                }
+                failedQueries = 0
                 if (snapshot == null) {
                     // Removed from DownloadManager, e.g. cancelled from its notification.
                     finish(modelId, id, ModelInstallStatus.NotInstalled)
@@ -329,6 +343,8 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
         const val TAG = "LocalModelController"
         const val PART_SUFFIX = ".part"
         const val MB = 1024L * 1024L
+        /** How long to wait before asking DownloadManager again after it couldn't answer. */
+        const val QUERY_RETRY_MILLIS = 2_000L
         /** A real `.litertlm` model is far larger than this; anything smaller is an error page. */
         const val MIN_MODEL_BYTES = 10L * MB
         const val NEEDS_TOKEN = "This model needs a Hugging Face token. Add one below to download it."

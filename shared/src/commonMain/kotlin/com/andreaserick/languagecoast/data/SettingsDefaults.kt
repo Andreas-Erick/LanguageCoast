@@ -69,22 +69,8 @@ object SettingsDefaults {
      * The models the app offers for [provider] until "Check for new models" in Settings has asked the
      * provider itself (see [checkForNewModels]); empty for a provider whose model isn't picked from a list.
      */
-    fun models(provider: TranslationProvider): List<String> = when (provider) {
-        TranslationProvider.Gemini -> GEMINI_MODELS
-        TranslationProvider.OpenAI -> OPENAI_MODELS
-        TranslationProvider.Claude -> CLAUDE_MODELS
-        TranslationProvider.Groq -> GROQ_MODELS
-        TranslationProvider.DeepSeek -> DEEPSEEK_MODELS
-        else -> emptyList()
-    }
+    fun models(provider: TranslationProvider): List<String> = provider.cloud?.models.orEmpty()
 
     /** The model [provider] starts with; "" for a provider whose model isn't picked from a list. */
-    fun model(provider: TranslationProvider): String = when (provider) {
-        TranslationProvider.Gemini -> GEMINI_MODEL
-        TranslationProvider.OpenAI -> OPENAI_MODEL
-        TranslationProvider.Claude -> CLAUDE_MODEL
-        TranslationProvider.Groq -> GROQ_MODEL
-        TranslationProvider.DeepSeek -> DEEPSEEK_MODEL
-        else -> ""
-    }
+    fun model(provider: TranslationProvider): String = provider.cloud?.takeIf { it.hasModelList }?.defaultModel.orEmpty()
 }

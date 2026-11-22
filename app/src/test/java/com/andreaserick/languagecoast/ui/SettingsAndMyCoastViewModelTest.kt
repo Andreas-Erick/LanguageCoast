@@ -10,6 +10,7 @@ import com.andreaserick.languagecoast.data.LocalModelController
 import com.andreaserick.languagecoast.data.ModelLister
 import com.andreaserick.languagecoast.data.ModelListing
 import com.andreaserick.languagecoast.data.NoOpLocalModelController
+import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.PersonalIslandBuilder
 import com.andreaserick.languagecoast.data.PhraseBank
 import com.andreaserick.languagecoast.data.ReminderSettings
@@ -33,6 +34,7 @@ import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import com.andreaserick.languagecoast.ui.coast.CoastViewModel
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastViewModel
+import com.andreaserick.languagecoast.ui.settings.AiSharingPromptViewModel
 import com.andreaserick.languagecoast.ui.settings.KeyCheckState
 import com.andreaserick.languagecoast.ui.settings.ModelCheckState
 import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
@@ -76,18 +78,57 @@ class SettingsAndMyCoastViewModelTest {
         )
 
     @Test
+    fun paceIsUnknownUntilReadThenPickedPaceIsStored() = runTest {
+        settings.pace.value = Pace.Sprint
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler)
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.pace.collect {} }
+
+        assertEquals(Pace.Sprint, viewModel.pace.value)
+        viewModel.setPace(Pace.Fast)
+        assertEquals(Pace.Fast, settings.pace.value)
+        assertEquals(Pace.Fast, viewModel.pace.value)
+        collector.cancel()
+    }
+
+    @Test
+    fun sharingPromptAsksForKeyedProviderWithoutPermissionAndClosesOnceAllowed() = runTest {
+        settings.translationProvider.value = TranslationProvider.Claude
+        settings.claudeKey.value = "sk-ant-test"
+        settings.aiSharingAllowed.value = emptySet()
+        val viewModel = AiSharingPromptViewModel(settings)
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.awaiting.collect {} }
+
+        assertEquals(TranslationProvider.Claude, viewModel.awaiting.value)
+        viewModel.allow(TranslationProvider.Claude)
+        assertEquals(null, viewModel.awaiting.value)
+        assertTrue(TranslationProvider.Claude.name in settings.aiSharingAllowed.value)
+        collector.cancel()
+    }
+
+    @Test
+    fun sharingPromptStaysAwayWithoutAKey() = runTest {
+        settings.translationProvider.value = TranslationProvider.Claude
+        settings.aiSharingAllowed.value = emptySet()
+        val viewModel = AiSharingPromptViewModel(settings)
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.awaiting.collect {} }
+
+        assertEquals(null, viewModel.awaiting.value)
+        collector.cancel()
+    }
+
+    @Test
     fun savingApiKeyTrimsItAndShowsConfirmationUntilEdited() = runTest {
         val viewModel = SettingsViewModel(settings, flashcards, scheduler)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
-        viewModel.saveApiKey("  my-key  ")
+        viewModel.saveKey(TranslationProvider.Gemini, "  my-key  ")
 
         assertEquals("my-key", settings.apiKey.value)
-        assertEquals("my-key", viewModel.uiState.value.savedApiKey)
-        assertTrue(viewModel.uiState.value.apiKeySaved)
+        assertEquals("my-key", viewModel.uiState.value.savedKey(TranslationProvider.Gemini))
+        assertTrue(viewModel.uiState.value.keyJustSaved(TranslationProvider.Gemini))
 
-        viewModel.onApiKeyEdited()
-        assertFalse(viewModel.uiState.value.apiKeySaved)
+        viewModel.onKeyEdited(TranslationProvider.Gemini)
+        assertFalse(viewModel.uiState.value.keyJustSaved(TranslationProvider.Gemini))
     }
 
     @Test
@@ -96,19 +137,19 @@ class SettingsAndMyCoastViewModelTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.setTranslationProvider(TranslationProvider.OpenRouter)
-        viewModel.setOpenRouterModel("anthropic/claude-haiku")
-        viewModel.saveOpenRouterKey(" sk-or-key ")
+        viewModel.setModel(TranslationProvider.OpenRouter, "anthropic/claude-haiku")
+        viewModel.saveKey(TranslationProvider.OpenRouter, " sk-or-key ")
 
         val state = viewModel.uiState.value
         assertEquals(TranslationProvider.OpenRouter, state.translationProvider)
-        assertEquals("anthropic/claude-haiku", state.openRouterModel)
-        assertEquals("sk-or-key", state.savedOpenRouterKey)
-        assertTrue(state.openRouterSaved)
-        assertFalse(state.apiKeySaved)
+        assertEquals("anthropic/claude-haiku", state.model(TranslationProvider.OpenRouter))
+        assertEquals("sk-or-key", state.savedKey(TranslationProvider.OpenRouter))
+        assertTrue(state.keyJustSaved(TranslationProvider.OpenRouter))
+        assertFalse(state.keyJustSaved(TranslationProvider.Gemini))
         assertEquals("", settings.apiKey.value)
 
-        viewModel.onOpenRouterKeyEdited()
-        assertFalse(viewModel.uiState.value.openRouterSaved)
+        viewModel.onKeyEdited(TranslationProvider.OpenRouter)
+        assertFalse(viewModel.uiState.value.keyJustSaved(TranslationProvider.OpenRouter))
     }
 
     @Test
@@ -315,7 +356,7 @@ class SettingsAndMyCoastViewModelTest {
         val viewModel = SettingsViewModel(settings, flashcards, scheduler)
 
         viewModel.setNativeLanguage("German")
-        viewModel.setGeminiModel("gemini-3.5-flash")
+        viewModel.setModel(TranslationProvider.Gemini, "gemini-3.5-flash")
 
         assertEquals("German", settings.nativeLanguage.value)
         assertEquals("gemini-3.5-flash", settings.geminiModel.value)

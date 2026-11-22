@@ -1,5 +1,10 @@
 package com.andreaserick.languagecoast.ui.study
 
+import com.andreaserick.languagecoast.data.answerMatches
+import com.andreaserick.languagecoast.data.isLookupWord
+import com.andreaserick.languagecoast.data.matchAnswer
+import com.andreaserick.languagecoast.data.lookupWords
+import com.andreaserick.languagecoast.data.splitPunctuation
 import com.andreaserick.languagecoast.data.StudyScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -113,11 +118,9 @@ import com.andreaserick.languagecoast.data.AnswerMatch
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Grade
 import com.andreaserick.languagecoast.data.SuggestedSentence
-import com.andreaserick.languagecoast.data.acceptedAnswers
 import com.andreaserick.languagecoast.data.checkAnswer
 import com.andreaserick.languagecoast.data.emojiForCategory
 import com.andreaserick.languagecoast.data.isListItem
-import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CardOptionsMenu
 import com.andreaserick.languagecoast.ui.components.CoastButton
@@ -1108,27 +1111,6 @@ private fun AlternativesSheet(
 }
 
 /**
- * How [typed] compares with [card]'s translation or one of its alternatives (see [checkAnswer]),
- * or with its native text when studying [reversed]. Of a side with several lines, one line is enough
- * (see [acceptedAnswers]).
- */
-internal fun matchAnswer(typed: String, card: Flashcard, reversed: Boolean = false): AnswerMatch =
-    checkAnswer(typed, if (reversed) acceptedAnswers(card.nativeText) else acceptedAnswers(card.targetText) + card.alternatives)
-
-/**
- * Whether [typed] matches [card]'s translation or one of its alternatives (see [answerMatches]),
- * or its native text when studying [reversed].
- */
-internal fun isCorrectAnswer(typed: String, card: Flashcard, reversed: Boolean = false): Boolean =
-    matchAnswer(typed, card, reversed) == AnswerMatch.Exact
-
-/**
- * Whether a typed answer matches the card's translation, ignoring case, punctuation and extra spaces
- * ("wo ist der Strand" matches "Wo ist der Strand?"). Accents and other letters must match exactly.
- */
-internal fun answerMatches(typed: String, expected: String): Boolean = isSameSentence(typed, expected)
-
-/**
  * Shown when the island has cards but none are due: when the next ones are, and a way to practice anyway.
  *
  * @param nextDueInDays Days until the next card is due, or null if unknown.
@@ -1435,13 +1417,6 @@ private fun WordText(text: String, language: String, style: TextStyle, modifier:
     Text(text = inLanguage(text, language), style = style, modifier = modifier)
 }
 
-/** Whether [word] can be looked up: a list's number ("1.") is no word. */
-private fun isLookupWord(word: String): Boolean = word.any { it.isLetter() }
-
-/** The words of [text] that can be looked up, each once, in the order they are read. */
-internal fun lookupWords(text: String): List<String> =
-    text.split(' ', '\n', '\t').filter { it.isNotEmpty() }.map { splitPunctuation(it).second }.filter(::isLookupWord).distinct()
-
 /**
  * The direction [sentence] is written in: right to left when its first letter is from a right-to-left
  * script (Hebrew, Arabic and their neighbours), otherwise left to right.
@@ -1450,14 +1425,6 @@ internal fun sentenceDirection(sentence: String): LayoutDirection {
     val first = sentence.firstOrNull { it.isLetter() }?.code ?: return LayoutDirection.Ltr
     val rightToLeft = first in 0x0590..0x08FF || first in 0xFB1D..0xFDFF || first in 0xFE70..0xFEFF
     return if (rightToLeft) LayoutDirection.Rtl else LayoutDirection.Ltr
-}
-
-/** Splits "¿hola," into "¿", "hola" and ",": the word is everything from the first to the last letter or digit. */
-internal fun splitPunctuation(token: String): Triple<String, String, String> {
-    val first = token.indexOfFirst { it.isLetterOrDigit() }
-    if (first == -1) return Triple(token, "", "")
-    val last = token.indexOfLast { it.isLetterOrDigit() }
-    return Triple(token.substring(0, first), token.substring(first, last + 1), token.substring(last + 1))
 }
 
 /** Draws a dotted line under the content, marking a word that can be looked up. */

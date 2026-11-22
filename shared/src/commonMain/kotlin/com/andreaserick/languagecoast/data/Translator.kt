@@ -101,12 +101,12 @@ sealed interface TranslationEngine {
         val modelId: String = LocalAiCatalog.DEFAULT_MODEL_ID,
         val modelPath: String? = null
     ) : TranslationEngine
-    data class Gemini(val apiKey: String, val model: String) : TranslationEngine
-    data class OpenAI(val apiKey: String, val model: String) : TranslationEngine
-    data class Claude(val apiKey: String, val model: String) : TranslationEngine
-    data class Groq(val apiKey: String, val model: String) : TranslationEngine
-    data class DeepSeek(val apiKey: String, val model: String) : TranslationEngine
-    data class OpenRouter(val apiKey: String, val model: String) : TranslationEngine
+
+    /** Cloud [provider] (see [CLOUD_PROVIDERS]) with the user's [apiKey], asking [model]. */
+    data class Cloud(val provider: TranslationProvider, val apiKey: String, val model: String) : TranslationEngine {
+        /** Without the key, so an engine that ends up in a log or a crash report doesn't take the key along. */
+        override fun toString(): String = "Cloud(${provider.name}, $model)"
+    }
 }
 
 /**

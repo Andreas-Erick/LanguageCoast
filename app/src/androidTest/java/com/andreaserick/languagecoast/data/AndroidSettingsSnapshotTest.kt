@@ -54,7 +54,7 @@ class AndroidSettingsSnapshotTest {
     fun aRestoredPhoneGetsItsSettingsBackButNoKey() = runBlocking<Unit> {
         val old = Phone()
         old.settings.setNativeLanguage("German")
-        old.settings.setApiKey("secret-gemini-key")
+        old.settings.setKey(TranslationProvider.Gemini, "secret-gemini-key")
         old.snapshot.save()
 
         assertFalse("The key is in the copy", old.copy.readText().contains("secret-gemini-key"))
@@ -66,7 +66,7 @@ class AndroidSettingsSnapshotTest {
         restored.snapshot.restoreIfEmpty()
 
         assertEquals("German", restored.settings.nativeLanguage.first())
-        assertEquals("", restored.settings.apiKey.first())
+        assertEquals("", restored.settings.key(TranslationProvider.Gemini).first())
         assertFalse(restored.snapshot.restoreIsDue())
     }
 

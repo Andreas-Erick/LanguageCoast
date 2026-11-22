@@ -17,7 +17,11 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Opens a hand-built v2 database with the current Room schema to check the migrations up to the current version. */
+/**
+ * Opens hand-built older databases with the current Room schema. Room compares the migrated tables with the schema it
+ * was compiled with when it opens the database, so each test also checks that the migrations end in that schema
+ * (kept in shared/schemas/). v2 runs every migration; v9 is where the users of v3.x start.
+ */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
 
@@ -96,6 +100,37 @@ class MigrationTest {
         assertTrue(dao.getCardsForIsland(1).first().isEmpty())
     }
 
+    @Test
+    fun v9CoastsCardsAndSuggestionsKeepTheirDataAndGetEmptyV10Fields() = runBlocking {
+        createV9Database { db ->
+            db.execSQL("INSERT INTO coasts (coastId, language, creationDate, goal, bankOffered) VALUES (1, 'German', 0, 'Travel', 12)")
+            db.execSQL("INSERT INTO language_islands (islandId, coastId, name, creationDate, emoji, lastStudied) VALUES (1, 1, 'Greetings', 0, '👋', 5)")
+            db.execSQL(
+                "INSERT INTO flashcards (cardId, islandId, nativeText, targetText, stability, difficulty, lastReviewed, due, " +
+                    "alternatives, note, lapses) VALUES (1, 1, 'Good morning', 'Guten Morgen', 3.5, 4.2, 100, 200, 'Morgen!', 'Formal', 2)"
+            )
+            db.execSQL(
+                "INSERT INTO suggested_sentences (suggestionId, coastId, nativeText, targetText, category, emoji, skipped, creationDate) " +
+                    "VALUES (1, 1, 'Thank you', 'Danke', 'Basics', '🙏', 0, 0)"
+            )
+        }
+
+        val dao = openMigratedDatabase(legacyTargetLanguage = "German").languageCoastDao()
+
+        val coast = dao.getAllCoasts().first().single()
+        assertEquals("Travel", coast.goal)
+        assertEquals(12, coast.bankOffered)
+        assertEquals(null, coast.region)
+        val card = dao.getCardsForIsland(1).first().single()
+        assertEquals(3.5, card.stability!!, 0.0)
+        assertEquals(200L, card.due)
+        assertEquals(listOf("Morgen!"), card.alternatives)
+        assertEquals(2, card.lapses)
+        val suggestion = dao.getSuggestionsOnce(1).single()
+        assertEquals("Danke", suggestion.targetText)
+        assertTrue(suggestion.alternatives.isEmpty() && suggestion.note == null)
+    }
+
     /** Creates the database exactly as schema version 2 did, then lets [seed] add rows. */
     private fun createV2Database(seed: (SQLiteDatabase) -> Unit) {
         SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(TEST_DB), null).use { db ->
@@ -117,6 +152,40 @@ class MigrationTest {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_progress_cardId` ON `study_progress` (`cardId`)")
             seed(db)
             db.version = 2
+        }
+    }
+
+    /** Creates the database as schema version 9 had it (shared/schemas/…/10.json without the v10 columns). */
+    private fun createV9Database(seed: (SQLiteDatabase) -> Unit) {
+        SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(TEST_DB), null).use { db ->
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `coasts` (`coastId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `language` TEXT NOT NULL, " +
+                    "`creationDate` INTEGER NOT NULL, `goal` TEXT, `bankOffered` INTEGER NOT NULL DEFAULT 0)"
+            )
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_coasts_language` ON `coasts` (`language`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `language_islands` (`islandId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`coastId` INTEGER NOT NULL, `name` TEXT NOT NULL, `creationDate` INTEGER NOT NULL, `emoji` TEXT, `lastStudied` INTEGER, " +
+                    "FOREIGN KEY(`coastId`) REFERENCES `coasts`(`coastId`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_language_islands_coastId` ON `language_islands` (`coastId`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `flashcards` (`cardId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `islandId` INTEGER NOT NULL, " +
+                    "`nativeText` TEXT NOT NULL, `targetText` TEXT NOT NULL, `notes` TEXT, `stability` REAL, `difficulty` REAL, " +
+                    "`lastReviewed` INTEGER, `due` INTEGER, `alternatives` TEXT NOT NULL DEFAULT '', `note` TEXT, " +
+                    "`lapses` INTEGER NOT NULL DEFAULT 0, " +
+                    "FOREIGN KEY(`islandId`) REFERENCES `language_islands`(`islandId`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_flashcards_islandId` ON `flashcards` (`islandId`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `suggested_sentences` (`suggestionId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`coastId` INTEGER NOT NULL, `nativeText` TEXT NOT NULL, `targetText` TEXT NOT NULL, `category` TEXT NOT NULL, " +
+                    "`emoji` TEXT, `skipped` INTEGER NOT NULL, `creationDate` INTEGER NOT NULL, " +
+                    "FOREIGN KEY(`coastId`) REFERENCES `coasts`(`coastId`) ON UPDATE NO ACTION ON DELETE CASCADE)"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_suggested_sentences_coastId` ON `suggested_sentences` (`coastId`)")
+            seed(db)
+            db.version = 9
         }
     }
 
