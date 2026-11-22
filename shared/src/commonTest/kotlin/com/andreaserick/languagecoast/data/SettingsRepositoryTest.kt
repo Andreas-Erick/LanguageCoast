@@ -186,7 +186,7 @@ class SettingsRepositoryTest {
         old.recordStudySession()
         old.markStarterTopicAdded(coastId = 2, topic = "Greetings")
         old.setProfileField("name", "Anna")
-        old.setApiKey("AIza-test")
+        old.setKey(TranslationProvider.Gemini, "AIza-test")
         val snapshot = SettingsSnapshot.encode(old.backupSettings())
 
         // The phone's own backup brought the cards and the snapshot back, but not the settings file.
@@ -203,6 +203,6 @@ class SettingsRepositoryTest {
         assertEquals(Profile(name = "Anna"), restored.profile.first())
         // The key was never in the snapshot.
         assertFalse("AIza-test" in snapshot)
-        assertEquals("", restored.apiKey.first())
+        assertEquals("", restored.key(TranslationProvider.Gemini).first())
     }
 }

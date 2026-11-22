@@ -174,24 +174,9 @@ fun updateModelList(known: List<String>, live: List<LiveModel>, selected: String
     return ModelListUpdate(models, added, removed = known.filterNot { it in kept }, selected = stillSelected)
 }
 
-/** The model picked for [provider]; null for a provider without a model list. Its API key is [keyOf]. */
-private fun SettingsRepository.modelOf(provider: TranslationProvider): Flow<String>? = when (provider) {
-    TranslationProvider.Gemini -> geminiModel
-    TranslationProvider.OpenAI -> openAiModel
-    TranslationProvider.Claude -> claudeModel
-    TranslationProvider.Groq -> groqModel
-    TranslationProvider.DeepSeek -> deepSeekModel
-    else -> null
-}
-
-private suspend fun SettingsRepository.pickModel(provider: TranslationProvider, model: String) = when (provider) {
-    TranslationProvider.Gemini -> setGeminiModel(model)
-    TranslationProvider.OpenAI -> setOpenAiModel(model)
-    TranslationProvider.Claude -> setClaudeModel(model)
-    TranslationProvider.Groq -> setGroqModel(model)
-    TranslationProvider.DeepSeek -> setDeepSeekModel(model)
-    else -> Unit
-}
+/** The model picked for [provider]; null for a provider without a model list. */
+private fun SettingsRepository.modelOf(provider: TranslationProvider): Flow<String>? =
+    if (provider.cloud?.hasModelList == true) model(provider) else null
 
 /** How a check for new models went, in words for the user. */
 data class ModelCheckOutcome(val message: String, val failed: Boolean = false)
@@ -204,7 +189,7 @@ data class ModelCheckOutcome(val message: String, val failed: Boolean = false)
 suspend fun checkForNewModels(provider: TranslationProvider, settings: SettingsRepository, lister: ModelLister): ModelCheckOutcome {
     val selected = settings.modelOf(provider)?.first()
         ?: return ModelCheckOutcome("${provider.label} has no list of models to check.", failed = true)
-    val key = settings.keyOf(provider).first()
+    val key = settings.key(provider).first()
     // A key saved before the app asked for permission: until the user allows it the provider gets nothing, not even the key.
     // Without a key the lister says to save one first, and saving is the step that asks for the permission.
     if (key.isNotBlank() && provider.name !in settings.aiSharingAllowed.first()) {
@@ -220,7 +205,7 @@ suspend fun checkForNewModels(provider: TranslationProvider, settings: SettingsR
     val known = settings.modelOptions(provider).first()
     val update = updateModelList(known, live, selected, preferred = SettingsDefaults.model(provider))
     settings.setModelOptions(provider, update.models)
-    if (update.selected != selected) settings.pickModel(provider, update.selected)
+    if (update.selected != selected) settings.setModel(provider, update.selected)
 
     fun models(count: Int) = if (count == 1) "1 model" else "$count models"
     val changes = when {

@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.testing
 
+import com.andreaserick.languagecoast.data.CLOUD_PROVIDERS
 import com.andreaserick.languagecoast.data.AddedCard
 import com.andreaserick.languagecoast.data.BackupSettings
 import com.andreaserick.languagecoast.data.CardEdit
@@ -331,19 +332,29 @@ class FakeSettingsRepository : SettingsRepository {
     override val nativeLanguage = MutableStateFlow(SettingsDefaults.NATIVE_LANGUAGE)
     override val activeCoastId = MutableStateFlow<Int?>(null)
     override val translationProvider = MutableStateFlow(TranslationProvider.Gemini)
-    override val apiKey = MutableStateFlow("")
-    override val geminiModel = MutableStateFlow(SettingsDefaults.GEMINI_MODEL)
-    override val openRouterKey = MutableStateFlow("")
-    override val openRouterModel = MutableStateFlow(SettingsDefaults.OPENROUTER_MODEL)
     override val localAiModel = MutableStateFlow(SettingsDefaults.LOCAL_AI_MODEL)
-    override val openAiKey = MutableStateFlow("")
-    override val openAiModel = MutableStateFlow(SettingsDefaults.OPENAI_MODEL)
-    override val claudeKey = MutableStateFlow("")
-    override val claudeModel = MutableStateFlow(SettingsDefaults.CLAUDE_MODEL)
-    override val groqKey = MutableStateFlow("")
-    override val groqModel = MutableStateFlow(SettingsDefaults.GROQ_MODEL)
-    override val deepSeekKey = MutableStateFlow("")
-    override val deepSeekModel = MutableStateFlow(SettingsDefaults.DEEPSEEK_MODEL)
+
+    /** Each cloud provider's key and model. */
+    val keys: Map<TranslationProvider, MutableStateFlow<String>> = CLOUD_PROVIDERS.keys.associateWith { MutableStateFlow("") }
+    val models: Map<TranslationProvider, MutableStateFlow<String>> = CLOUD_PROVIDERS.values.associate { it.provider to MutableStateFlow(it.defaultModel) }
+    override fun key(provider: TranslationProvider): Flow<String> = keys[provider] ?: flowOf("")
+    override fun model(provider: TranslationProvider): Flow<String> = models[provider] ?: flowOf("")
+    override suspend fun setKey(provider: TranslationProvider, key: String) { keys[provider]?.value = key }
+    override suspend fun setModel(provider: TranslationProvider, model: String) { models[provider]?.value = model }
+
+    // Short names for the tests.
+    val apiKey get() = keys.getValue(TranslationProvider.Gemini)
+    val geminiModel get() = models.getValue(TranslationProvider.Gemini)
+    val openRouterKey get() = keys.getValue(TranslationProvider.OpenRouter)
+    val openRouterModel get() = models.getValue(TranslationProvider.OpenRouter)
+    val openAiKey get() = keys.getValue(TranslationProvider.OpenAI)
+    val openAiModel get() = models.getValue(TranslationProvider.OpenAI)
+    val deepSeekModel get() = models.getValue(TranslationProvider.DeepSeek)
+    val claudeKey get() = keys.getValue(TranslationProvider.Claude)
+    val claudeModel get() = models.getValue(TranslationProvider.Claude)
+    val groqKey get() = keys.getValue(TranslationProvider.Groq)
+    val groqModel get() = models.getValue(TranslationProvider.Groq)
+    val deepSeekKey get() = keys.getValue(TranslationProvider.DeepSeek)
     override val streakCount = MutableStateFlow(0)
     override val studyDays = MutableStateFlow<Set<LocalDate>>(emptySet())
     override val lastStudyDate = MutableStateFlow<LocalDate?>(null)
@@ -386,35 +397,16 @@ class FakeSettingsRepository : SettingsRepository {
 
     override suspend fun setNativeLanguage(language: String) { nativeLanguage.value = language }
     override suspend fun setActiveCoastId(coastId: Int) { activeCoastId.value = coastId }
-    override suspend fun setApiKey(key: String) { apiKey.value = key }
-    override suspend fun setGeminiModel(model: String) { geminiModel.value = model }
     override suspend fun setTranslationProvider(provider: TranslationProvider) { translationProvider.value = provider }
-    override suspend fun setOpenRouterKey(key: String) { openRouterKey.value = key }
-    override suspend fun setOpenRouterModel(model: String) { openRouterModel.value = model }
     override suspend fun setLocalAiModel(modelId: String) { localAiModel.value = modelId }
-    override suspend fun setOpenAiKey(key: String) { openAiKey.value = key }
-    override suspend fun setOpenAiModel(model: String) { openAiModel.value = model }
-    override suspend fun setClaudeKey(key: String) { claudeKey.value = key }
-    override suspend fun setClaudeModel(model: String) { claudeModel.value = model }
-    override suspend fun setGroqKey(key: String) { groqKey.value = key }
-    override suspend fun setGroqModel(model: String) { groqModel.value = model }
-    override suspend fun setDeepSeekKey(key: String) { deepSeekKey.value = key }
-    override suspend fun setDeepSeekModel(model: String) { deepSeekModel.value = model }
 
     override suspend fun allowAiSharing(provider: TranslationProvider) {
         if (provider.isCloud) aiSharingAllowed.update { it + provider.name }
     }
 
     override suspend fun removeApiKey(provider: TranslationProvider) {
-        when (provider) {
-            TranslationProvider.Gemini -> apiKey.value = ""
-            TranslationProvider.OpenAI -> openAiKey.value = ""
-            TranslationProvider.Claude -> claudeKey.value = ""
-            TranslationProvider.Groq -> groqKey.value = ""
-            TranslationProvider.DeepSeek -> deepSeekKey.value = ""
-            TranslationProvider.OpenRouter -> openRouterKey.value = ""
-            TranslationProvider.OnDevice, TranslationProvider.LocalAi -> return
-        }
+        val key = keys[provider] ?: return
+        key.value = ""
         aiSharingAllowed.update { it - provider.name }
     }
 
