@@ -6,6 +6,7 @@ import com.andreaserick.languagecoast.ui.create.CreateViewModel
 import com.andreaserick.languagecoast.ui.island.IslandViewModel
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastViewModel
 import com.andreaserick.languagecoast.ui.search.SearchViewModel
+import com.andreaserick.languagecoast.ui.settings.AiSharingPromptViewModel
 import com.andreaserick.languagecoast.ui.settings.BackupViewModel
 import com.andreaserick.languagecoast.ui.settings.CardTransferViewModel
 import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
@@ -23,6 +24,7 @@ val viewModelModule = module {
     viewModelOf(::MyCoastViewModel)
     viewModelOf(::RecapViewModel)
     viewModelOf(::SearchViewModel)
+    viewModelOf(::AiSharingPromptViewModel)
     viewModelOf(::BackupViewModel)
     viewModelOf(::CardTransferViewModel)
     viewModelOf(::SettingsViewModel)

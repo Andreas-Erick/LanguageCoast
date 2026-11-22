@@ -73,7 +73,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -108,7 +107,6 @@ import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.Profile
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
-import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.localAiAvailable
 import com.andreaserick.languagecoast.data.onDeviceLanguage
@@ -152,9 +150,7 @@ import com.andreaserick.languagecoast.ui.theme.sunLocationAvailable
 import kotlin.time.Clock
 import kotlinx.datetime.TimeZone
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
-import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -228,7 +224,7 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
             }
 
             SettingsCard(title = "Pace", icon = Icons.Default.Speed) {
-                PaceSection()
+                PaceSection(viewModel)
             }
 
             SettingsCard(title = "Weekly goal", icon = Icons.Default.Flag) {
@@ -354,12 +350,10 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
 
 /** How much new a day's session brings, picked from the three paces and stored at once. */
 @Composable
-private fun PaceSection() {
-    val settings = koinInject<SettingsRepository>()
+private fun PaceSection(viewModel: SettingsViewModel) {
     // No placeholder pace: showing Steady for a frame would make a Fast or Sprint pick jump.
-    val pace by settings.pace.collectAsState(initial = null)
-    val scope = rememberCoroutineScope()
-    pace?.let { current -> PaceOptions(pace = current, waiting = 0, onPick = { scope.launch { settings.setPace(it) } }) }
+    val pace by viewModel.pace.collectAsState()
+    pace?.let { current -> PaceOptions(pace = current, waiting = 0, onPick = viewModel::setPace) }
     Hint("How many new cards a day's session on Today introduces. Everything new comes back for review, so a faster pace means longer sessions for weeks. Miss a few days and the session shrinks by itself.")
 }
 

@@ -10,6 +10,7 @@ import com.andreaserick.languagecoast.data.LocalModelController
 import com.andreaserick.languagecoast.data.ModelLister
 import com.andreaserick.languagecoast.data.ModelListing
 import com.andreaserick.languagecoast.data.NoOpLocalModelController
+import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.PersonalIslandBuilder
 import com.andreaserick.languagecoast.data.PhraseBank
 import com.andreaserick.languagecoast.data.ReminderSettings
@@ -33,6 +34,7 @@ import com.andreaserick.languagecoast.testing.TEST_CLOCK
 import com.andreaserick.languagecoast.testing.TEST_TIME_ZONE
 import com.andreaserick.languagecoast.ui.coast.CoastViewModel
 import com.andreaserick.languagecoast.ui.mycoast.MyCoastViewModel
+import com.andreaserick.languagecoast.ui.settings.AiSharingPromptViewModel
 import com.andreaserick.languagecoast.ui.settings.KeyCheckState
 import com.andreaserick.languagecoast.ui.settings.ModelCheckState
 import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
@@ -74,6 +76,45 @@ class SettingsAndMyCoastViewModelTest {
             // The generator sorts through the cards on a background thread; here it stays on the test's.
             WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE, background = UnconfinedTestDispatcher()), printer, translator, FakeSpeaker()
         )
+
+    @Test
+    fun paceIsUnknownUntilReadThenPickedPaceIsStored() = runTest {
+        settings.pace.value = Pace.Sprint
+        val viewModel = SettingsViewModel(settings, flashcards, scheduler)
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.pace.collect {} }
+
+        assertEquals(Pace.Sprint, viewModel.pace.value)
+        viewModel.setPace(Pace.Fast)
+        assertEquals(Pace.Fast, settings.pace.value)
+        assertEquals(Pace.Fast, viewModel.pace.value)
+        collector.cancel()
+    }
+
+    @Test
+    fun sharingPromptAsksForKeyedProviderWithoutPermissionAndClosesOnceAllowed() = runTest {
+        settings.translationProvider.value = TranslationProvider.Claude
+        settings.claudeKey.value = "sk-ant-test"
+        settings.aiSharingAllowed.value = emptySet()
+        val viewModel = AiSharingPromptViewModel(settings)
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.awaiting.collect {} }
+
+        assertEquals(TranslationProvider.Claude, viewModel.awaiting.value)
+        viewModel.allow(TranslationProvider.Claude)
+        assertEquals(null, viewModel.awaiting.value)
+        assertTrue(TranslationProvider.Claude.name in settings.aiSharingAllowed.value)
+        collector.cancel()
+    }
+
+    @Test
+    fun sharingPromptStaysAwayWithoutAKey() = runTest {
+        settings.translationProvider.value = TranslationProvider.Claude
+        settings.aiSharingAllowed.value = emptySet()
+        val viewModel = AiSharingPromptViewModel(settings)
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.awaiting.collect {} }
+
+        assertEquals(null, viewModel.awaiting.value)
+        collector.cancel()
+    }
 
     @Test
     fun savingApiKeyTrimsItAndShowsConfirmationUntilEdited() = runTest {

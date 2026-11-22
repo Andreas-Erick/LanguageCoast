@@ -18,6 +18,7 @@ import com.andreaserick.languagecoast.data.NoOpLocalModelController
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
+import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.SunLocation
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Profile
@@ -422,6 +423,14 @@ class SettingsViewModel(
     /** Switches the use of the phone's location for Follow the sun on or off; off forgets the location. */
     fun setSunUsesLocation(enabled: Boolean) {
         viewModelScope.launch { settings.setSunUsesLocation(enabled) }
+    }
+
+    /** How much new a day's session brings; null until it is read, so a Fast or Sprint pick never shows Steady first. */
+    val pace: StateFlow<Pace?> = settings.pace.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Stores the pace picked in Settings. */
+    fun setPace(pace: Pace) {
+        viewModelScope.launch { settings.setPace(pace) }
     }
 
     fun setHapticsEnabled(enabled: Boolean) {
