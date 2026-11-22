@@ -26,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -83,6 +84,7 @@ import com.andreaserick.languagecoast.ui.theme.TextSecondary
  * @param warning A second line under [hint], for what the user should know before using such a key.
  * @param getUrl The page where the key or token is made, opened by "Get a key".
  * @param check How asking the provider whether it accepts the saved key went, if it was asked.
+ * @param onWalkThrough Opens the guided setup, offered next to "Get a key" while no key is saved; null for none.
  */
 @Composable
 internal fun ApiKeySection(
@@ -98,7 +100,8 @@ internal fun ApiKeySection(
     shortNoun: String = "key",
     warning: String? = null,
     getUrl: String? = null,
-    check: KeyCheckState? = null
+    check: KeyCheckState? = null,
+    onWalkThrough: (() -> Unit)? = null
 ) {
     // Not kept across a restart of the app: a secret that isn't saved yet doesn't belong in saved state.
     var currentInput by remember(savedKey) { mutableStateOf(savedKey) }
@@ -124,7 +127,11 @@ internal fun ApiKeySection(
     Hint(hint)
     if (warning != null) Hint(warning)
     if (getUrl != null) {
-        SettingsLink("Get a $shortNoun") { openLink(getUrl) }
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            SettingsLink("Get ${if (shortNoun.first().lowercaseChar() in "aeiou") "an" else "a"} $shortNoun") { openLink(getUrl) }
+            // For someone who has never made a key: the same page, with each step on it said in turn.
+            if (onWalkThrough != null && savedKey.isEmpty()) SettingsLink("Walk me through it", onClick = onWalkThrough)
+        }
     } else {
         Spacer(modifier = Modifier.height(12.dp))
     }
@@ -225,6 +232,7 @@ internal fun ApiKeySection(
  * Below the key it says what the provider receives, for as long as the provider is picked.
  *
  * @param intro Where the key comes from, in a sentence; where it is kept is added to it.
+ * @param onWalkThrough Opens the guided key setup ([KeySetupSheet]) for [provider].
  */
 @Composable
 internal fun CloudKeySection(
@@ -233,12 +241,12 @@ internal fun CloudKeySection(
     intro: String,
     placeholder: String,
     uiState: SettingsUiState,
-    viewModel: SettingsViewModel
+    viewModel: SettingsViewModel,
+    onWalkThrough: (() -> Unit)? = null
 ) {
     val savedKey = uiState.savedKey(provider)
     val allowed = uiState.sharingAllowed(provider)
-    // The key typed in, while the dialog asks for permission. A secret, so it isn't kept across a restart.
-    var keyAwaitingPermission by remember(provider) { mutableStateOf<String?>(null) }
+    val saveKey = rememberCloudKeySave(provider, uiState, viewModel)
     var askToAllow by rememberSaveable(provider) { mutableStateOf(false) }
 
     ApiKeySection(
@@ -247,12 +255,13 @@ internal fun CloudKeySection(
         placeholder = placeholder,
         savedKey = savedKey,
         justSaved = uiState.keyJustSaved(provider),
-        onSave = { key -> if (allowed) viewModel.saveKey(provider, key) else keyAwaitingPermission = key },
+        onSave = saveKey,
         onEdited = { viewModel.onKeyEdited(provider) },
         onRemove = { viewModel.removeKey(provider) },
         warning = FREE_GEMINI_KEY_WARNING.takeIf { provider == TranslationProvider.Gemini },
         getUrl = provider.keyUrl,
-        check = uiState.keyCheck.takeIf { it.provider == provider }
+        check = uiState.keyCheck.takeIf { it.provider == provider },
+        onWalkThrough = onWalkThrough
     )
 
     if (savedKey.isNotEmpty() && !allowed) {
@@ -266,16 +275,6 @@ internal fun CloudKeySection(
     Spacer(modifier = Modifier.height(4.dp))
     AiSharingSummary(provider)
 
-    keyAwaitingPermission?.let { key ->
-        AiSharingSaveDialog(
-            provider = provider,
-            onAllow = {
-                viewModel.saveKey(provider, key, allowSharing = true)
-                keyAwaitingPermission = null
-            },
-            onDismiss = { keyAwaitingPermission = null }
-        )
-    }
     // Allowed from the app's own prompt while this one was open: nothing is left to ask, now or after the key is removed.
     if (askToAllow && allowed) SideEffect { askToAllow = false }
     if (askToAllow && !allowed) {
@@ -290,7 +289,55 @@ internal fun CloudKeySection(
     }
 }
 
-/** The chips of a group of providers, with the picked one filled. */
+/**
+ * How a typed cloud key is saved, wherever it is typed (the Translation card, [KeySetupSheet]): at once if
+ * text may already go to [provider], otherwise after the permission dialog, whose "Allow and save" stores
+ * both. The dialog is shown from here, so every place that saves a key asks the same way.
+ *
+ * @param onSaved Called once the key is stored, not when the user backs out of the dialog.
+ * @return Saves the key it is given.
+ */
+@Composable
+internal fun rememberCloudKeySave(
+    provider: TranslationProvider,
+    uiState: SettingsUiState,
+    viewModel: SettingsViewModel,
+    onSaved: () -> Unit = {}
+): (String) -> Unit {
+    val allowed = uiState.sharingAllowed(provider)
+    // The key typed in, while the dialog asks for permission. A secret, so it isn't kept across a restart.
+    var keyAwaitingPermission by remember(provider) { mutableStateOf<String?>(null) }
+    keyAwaitingPermission?.let { key ->
+        AiSharingSaveDialog(
+            provider = provider,
+            onAllow = {
+                viewModel.saveKey(provider, key, allowSharing = true)
+                keyAwaitingPermission = null
+                onSaved()
+            },
+            onDismiss = { keyAwaitingPermission = null }
+        )
+    }
+    return { key ->
+        if (allowed) {
+            viewModel.saveKey(provider, key)
+            onSaved()
+        } else {
+            keyAwaitingPermission = key
+        }
+    }
+}
+
+/**
+ * The provider a newcomer is pointed to: its key is free to start with and takes a couple of minutes to
+ * make, so the app can do everything before the user has paid anyone anything.
+ */
+internal val RECOMMENDED_PROVIDER = TranslationProvider.Gemini
+
+/** What the chip of [RECOMMENDED_PROVIDER] says after its name. */
+private const val RECOMMENDED_NOTE = "Recommended · free to start"
+
+/** The chips of a group of providers, with the picked one filled and the recommended one marked. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ProviderChips(providers: List<TranslationProvider>, picked: TranslationProvider, onPick: (TranslationProvider) -> Unit) {
@@ -303,7 +350,20 @@ internal fun ProviderChips(providers: List<TranslationProvider>, picked: Transla
             FilterChip(
                 selected = provider == picked,
                 onClick = { onPick(provider) },
-                label = { Text(provider.label, style = MaterialTheme.typography.labelMedium) },
+                label = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(provider.label, style = MaterialTheme.typography.labelMedium)
+                        if (provider == RECOMMENDED_PROVIDER) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            // Quieter than the name, in the chip's own colour, so it reads right picked or not.
+                            Text(
+                                RECOMMENDED_NOTE,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = LocalContentColor.current.copy(alpha = 0.78f)
+                            )
+                        }
+                    }
+                },
                 colors = coastChipColors(),
                 border = coastChipBorder(enabled = true, selected = provider == picked),
                 shape = MaterialTheme.shapes.small
@@ -314,10 +374,19 @@ internal fun ProviderChips(providers: List<TranslationProvider>, picked: Transla
 
 /**
  * Where translations come from, and how the picked provider is set up: what runs on the phone for free
- * (on-device translation, a Local AI model), or a cloud AI with the user's own API key.
+ * (on-device translation, a Local AI model), or an online AI with the user's own API key. The model of an
+ * online AI is folded away under "Advanced: choose model": the default fits nearly everyone, and the list of
+ * model ids is the most technical thing on the card.
+ *
+ * @param onSetUpKey Opens the guided key setup for the picked online AI.
  */
 @Composable
-internal fun TranslationProviderSection(uiState: SettingsUiState, viewModel: SettingsViewModel, onDeleteModel: (String) -> Unit) {
+internal fun TranslationProviderSection(
+    uiState: SettingsUiState,
+    viewModel: SettingsViewModel,
+    onDeleteModel: (String) -> Unit,
+    onSetUpKey: () -> Unit = {}
+) {
     val onThePhone = remember {
         listOfNotNull(
             TranslationProvider.OnDevice.takeIf { onDeviceTranslationAvailable },
@@ -325,17 +394,18 @@ internal fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Set
         )
     }
     val cloud = remember { TranslationProvider.entries.filter { it.isCloud } }
+    var modelOpen by rememberSaveable { mutableStateOf(false) }
     if (onThePhone.isNotEmpty()) {
         FieldLabel("On this phone, free")
         ProviderChips(onThePhone, uiState.translationProvider, viewModel::setTranslationProvider)
         Spacer(modifier = Modifier.height(12.dp))
     }
-    FieldLabel("Cloud AI, with your own key")
+    FieldLabel("Online AI (free or paid account)")
     ProviderChips(cloud, uiState.translationProvider, viewModel::setTranslationProvider)
     Hint(
-        "A cloud AI needs an API key: a long code you create in your own account with that provider. It lets this app send " +
-            "requests in your name, and the provider bills you for what you use. Providers set their own minimum age for a key. " +
-            "Google, for example, requires 18 or older."
+        "An online AI needs an API key: a long code you create in your own account with that provider. It lets this app send " +
+            "requests in your name. ${RECOMMENDED_PROVIDER.label} is free to start; with the others you may pay for what you use. " +
+            "Providers set their own minimum age for a key. Google, for example, requires 18 or older."
     )
     Spacer(modifier = Modifier.height(10.dp))
 
@@ -346,7 +416,7 @@ internal fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Set
                 Hint(
                     "Translations by Google Translate, on your phone. Free and private, and works offline. " +
                         "Each language is downloaded once (about 30 MB). " +
-                        "It only translates, so cards go on the island you type, or \"$DEFAULT_CATEGORY\"."
+                        "It only translates, so cards go on the island named under Topic, or \"$DEFAULT_CATEGORY\"."
                 )
                 if (unsupported.isNotEmpty()) Hint("Not available for ${unsupported.joinToString(", ")}.")
             } else {
@@ -363,23 +433,41 @@ internal fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Set
         else -> {
             val cloud = CLOUD_PROVIDERS.getValue(uiState.translationProvider)
             Spacer(modifier = Modifier.height(8.dp))
-            if (cloud.hasModelList) {
-                ModelPicker("${uiState.translationProvider.label} model", cloud.provider, uiState.model(cloud.provider), { viewModel.setModel(cloud.provider, it) }, uiState, viewModel::checkForNewModels)
-            } else {
-                TypedModelField(cloud = cloud, model = uiState.model(cloud.provider), onChange = { viewModel.setModel(cloud.provider, it) })
-            }
-            cloud.modelHint?.let { Hint(it) }
-            Spacer(modifier = Modifier.height(16.dp))
             CloudKeySection(
                 provider = cloud.provider,
                 title = cloud.keyCopy.title,
                 intro = cloud.keyCopy.intro,
                 placeholder = cloud.keyCopy.placeholder,
                 uiState = uiState,
-                viewModel = viewModel
+                viewModel = viewModel,
+                onWalkThrough = onSetUpKey
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            val model = uiState.model(cloud.provider)
+            CollapsibleRow(
+                title = "Advanced: choose model",
+                subtitle = modelSummary(cloud, model),
+                expanded = modelOpen,
+                onToggle = { modelOpen = !modelOpen }
+            ) {
+                if (cloud.hasModelList) {
+                    ModelPicker("${uiState.translationProvider.label} model", cloud.provider, model, { viewModel.setModel(cloud.provider, it) }, uiState, viewModel::checkForNewModels)
+                } else {
+                    TypedModelField(cloud = cloud, model = model, onChange = { viewModel.setModel(cloud.provider, it) })
+                }
+                cloud.modelHint?.let { Hint(it) }
+            }
         }
     }
+}
+
+/**
+ * The model in use, in a line under the folded "Advanced: choose model". A provider that picks the model
+ * itself when left at its default (OpenRouter) is said in words, not by the id that asks for that.
+ */
+private fun modelSummary(cloud: CloudProvider, model: String): String {
+    val inUse = cloud.modelOrDefault(model)
+    return if (!cloud.hasModelList && inUse == cloud.defaultModel) "Now: ${cloud.provider.label} chooses" else "Now: $inUse"
 }
 
 /** The model of a cloud provider without a list (OpenRouter), typed by its id; blank means [CloudProvider.defaultModel]. */
@@ -403,7 +491,7 @@ internal fun TypedModelField(cloud: CloudProvider, model: String, onChange: (Str
 }
 
 /**
- * The model of a cloud provider: the list to pick from, and "Check for new models", which asks the provider
+ * The model of a cloud provider: the list to pick from, and "Refresh model list", which asks the provider
  * what it offers now, adds the new models to the list and removes the ones that are gone.
  *
  * @param selected The model in use; shown even if a list from an earlier version doesn't have it.
@@ -441,7 +529,7 @@ internal fun ModelPicker(
             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
         }
         Spacer(modifier = Modifier.width(8.dp))
-        Text(if (checking) "Asking ${provider.label}…" else "Check for new models")
+        Text(if (checking) "Asking ${provider.label}…" else "Refresh model list")
     }
     val message = check.message?.takeIf { check.provider == provider && !checking }
     if (message != null) {

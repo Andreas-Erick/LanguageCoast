@@ -79,6 +79,20 @@ class StudySessionTest {
     }
 
     @Test
+    fun aBonusRoundReviewsNothingAndBringsItsNewItemsInTheUsualOrder() {
+        val due = (1..20).map { card(it, due = it.toLong()) }
+        val waiting = listOf(card(30, island = 2), card(31, island = 3), card(32, island = 3))
+        val context = DailyContext((1..8).map(::suggestion), lastStudy = null, pace = Pace.Steady, bonusNew = BONUS_NEW_SENTENCES)
+
+        val start = startSession(StudyScope.Daily, due + waiting, now, today, context)
+
+        assertTrue(start.opening.isEmpty())
+        assertEquals(listOf(30, 31, 32), ids(start.intro))
+        assertEquals(listOf(1, 2), start.learn.map { it.suggestionId })
+        assertEquals(0, start.plan?.reviewCount)
+    }
+
+    @Test
     fun aDailySessionNeedsItsContext() {
         assertFailsWith<IllegalArgumentException> { startSession(StudyScope.Daily, emptyList(), now, today) }
     }

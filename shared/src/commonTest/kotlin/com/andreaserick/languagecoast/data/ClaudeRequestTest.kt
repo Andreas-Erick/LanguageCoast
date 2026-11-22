@@ -51,7 +51,7 @@ class ClaudeRequestTest {
         // Without the header, or with one that isn't a number, a short wait of our own.
         assertEquals(CLAUDE_RETRY_SECONDS, claudeAnswer(429, rateLimited).retryAfterSeconds)
         assertEquals(CLAUDE_RETRY_SECONDS, claudeAnswer(529, "overloaded", retryAfter = "soon").retryAfterSeconds)
-        assertTrue("rate-limited" in claudeAnswer(429, rateLimited, retryAfter = "23").errorMessage.orEmpty())
+        assertTrue("too many requests" in claudeAnswer(429, rateLimited, retryAfter = "23").errorMessage.orEmpty())
 
         // Waiting doesn't help with a wrong key or a model that is gone, and an answer needs no wait.
         assertEquals(null, claudeAnswer(401, "{}", retryAfter = "5").retryAfterSeconds)

@@ -135,7 +135,7 @@ internal class ClaudeStream(onPartialText: ((String) -> Unit)? = null) : Streame
 
 private fun claudeStreamError(error: ClaudeError): Completion = when (error.type) {
     // Overloaded in mid-answer: the same request can go through in a moment.
-    "overloaded_error", "rate_limit_error" -> Completion.busy("Claude is busy or rate-limited. Wait a moment and try again.", CLAUDE_RETRY_SECONDS)
+    "overloaded_error", "rate_limit_error" -> Completion.busy("Claude is busy or getting too many requests from your key right now. Wait a minute and try again, or pick another provider in Settings.", CLAUDE_RETRY_SECONDS)
     // Anthropic gave up on the request for time: less at a time can go through.
     "timeout_error" -> Completion.tooLarge(tookTooLongMessage("Claude"))
     else -> Completion.failure(providerErrorMessage("Claude", 500, error.message))
@@ -159,7 +159,7 @@ internal fun claudeAnswer(status: Int, body: String, retryAfter: String? = null)
         // 429: the key's requests or tokens per minute are used up. 529: Anthropic is overloaded. Both pass.
         if (status == 429 || status == 529) {
             val seconds = retryAfter?.trim()?.toDoubleOrNull()?.takeIf { it >= 0 }?.let { (it + 0.999).toInt() } ?: CLAUDE_RETRY_SECONDS
-            return Completion.busy("Claude is busy or rate-limited. Wait a moment and try again.", seconds.coerceAtLeast(1))
+            return Completion.busy("Claude is busy or getting too many requests from your key right now. Wait a minute and try again, or pick another provider in Settings.", seconds.coerceAtLeast(1))
         }
         // Anthropic gave up on the request for time: less at a time can go through.
         if (status == 504 || parsed?.error?.type == "timeout_error") {

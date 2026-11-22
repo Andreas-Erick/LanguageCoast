@@ -408,7 +408,7 @@ private fun StopRow(stop: RouteStop, status: String, enabled: Boolean, onClick: 
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = if (stop.kind == RouteStop.Kind.LevelUp) "${stop.name} · ${stop.level.label}" else stop.name,
+                text = if (stop.kind == RouteStop.Kind.LevelUp) "${stop.name} · ${stop.level.shortLabel}" else stop.name,
                 style = MaterialTheme.typography.titleSmall,
                 color = if (stop.state == RouteStop.State.Locked) TextSecondary else TextPrimary,
                 maxLines = 1,

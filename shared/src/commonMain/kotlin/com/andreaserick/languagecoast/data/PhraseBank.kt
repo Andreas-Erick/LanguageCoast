@@ -1221,6 +1221,21 @@ object PhraseBank {
     }
 
     /**
+     * The topic [goal] points to most, with the first of its sentences the pool can offer, to show while the
+     * goal is being typed what it will change; null when the goal names none of the topics' words, since the
+     * sentences then don't depend on it.
+     */
+    fun goalPreview(goal: String, fillers: Map<String, String> = emptyMap()): Pair<Theme, String>? {
+        val words = normalizedWords(goal).toSet()
+        val theme = THEMES.filter { it.inPool }
+            .map { it to it.keywords.count { keyword -> keyword in words } }
+            .filter { it.second > 0 }
+            .maxByOrNull { it.second }?.first ?: return null
+        val sentence = theme.sentences.firstNotNullOfOrNull { fill(it, fillers) } ?: return null
+        return theme to sentence
+    }
+
+    /**
      * Up to [count] sentences for [goal] that aren't in [avoid], for the daily session's pool: the first
      * three themes (those the goal points to) taking turns, then the rest. Sentences with a placeholder
      * that [fillers] can't fill are left out, since nobody is there to fill them.

@@ -92,7 +92,7 @@ class OpenRouterResponseTest {
     fun anAccountWithoutCreditIsToldApartFromOtherRefusals() {
         val lowBalance = """{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}"""
         assertEquals(
-            "Your Claude account is out of credit or over its quota. Check your plan with Claude, or pick another provider in Settings.",
+            "Your Claude account is out of credit, or has used up what its plan allows. Check your plan with Claude, or pick another provider in Settings.",
             claudeAnswer(400, lowBalance).errorMessage
         )
         assertTrue("out of credit" in cloudChatAnswer("DeepSeek", 402, """{"error":{"message":"Insufficient Balance"}}""").errorMessage.orEmpty())
@@ -116,7 +116,11 @@ class OpenRouterResponseTest {
         assertEquals(BUSY_RETRY_SECONDS, geminiAnswer(429, """{"error":{"code":429,"message":"Quota exceeded","status":"RESOURCE_EXHAUSTED"}}""").retryAfterSeconds)
         assertEquals(1, geminiAnswer(429, "{}", retryAfter = "0").retryAfterSeconds)
         // The message stays one the user can act on if the wait didn't help.
-        assertEquals("OpenRouter is busy. Wait a moment and try again.", openRouterAnswer(429, limited).errorMessage)
+        assertEquals(
+            "OpenRouter is getting too many requests from your key right now. Wait a minute and try again, or pick another provider in Settings.",
+            openRouterAnswer(429, limited).errorMessage
+        )
+        assertTrue("rate limit" !in cloudChatAnswer("Groq", 429, "").errorMessage.orEmpty())
 
         // Waiting doesn't help with a wrong key, and an answer needs no wait.
         assertEquals(null, openRouterAnswer(401, """{"error":{"code":401,"message":"No auth"}}""", retryAfter = "5").retryAfterSeconds)

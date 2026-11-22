@@ -165,7 +165,7 @@ internal fun cloudChatAnswer(providerName: String, status: Int, body: String, re
         // OpenAI answers 429 as well when the account has no credit left, which no wait fixes.
         val outOfCredit = parsed?.error?.type == "insufficient_quota"
         if (status == 429 && !outOfCredit) {
-            return Completion.busy("$providerName rate limit reached. Wait a moment and try again.", retryAfterHeaderSeconds(retryAfter))
+            return Completion.busy(tooManyRequestsMessage(providerName), retryAfterHeaderSeconds(retryAfter))
         }
         if (status == 408 || status == 504) {
             logError("ChatWire", "$providerName answered $status: ${errMsg.orEmpty()}")
@@ -199,7 +199,7 @@ internal fun openRouterAnswer(status: Int, body: String, retryAfter: String? = n
     if (status >= 400 || error != null) {
         val code = error?.code ?: status
         // Too many requests for now, which passes: work that sends many requests waits it out.
-        if (code == 429) return Completion.busy("OpenRouter is busy. Wait a moment and try again.", retryAfterHeaderSeconds(retryAfter))
+        if (code == 429) return Completion.busy(tooManyRequestsMessage("OpenRouter"), retryAfterHeaderSeconds(retryAfter))
         if (code == 408 || code == 504) {
             logError("ChatWire", "OpenRouter answered $code: ${error?.message.orEmpty()}")
             return Completion.tooLarge(tookTooLongMessage("OpenRouter"))

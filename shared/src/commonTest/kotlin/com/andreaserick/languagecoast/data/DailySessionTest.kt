@@ -73,6 +73,23 @@ class DailySessionTest {
     }
 
     @Test
+    fun aBonusRoundHasNoReviewsAndItsOwnCap() {
+        val bonus = dailyPlan(dueOnCoast = 40, newOnCoast = 2, readySuggestions = 8, lastStudy = today, today = today, bonusNew = BONUS_NEW_SENTENCES)
+        assertEquals(0, bonus.reviewCount)
+        assertEquals(40, bonus.leftOver)
+        assertEquals(2, bonus.newCardCount)
+        assertEquals(BONUS_NEW_SENTENCES - 2, bonus.newSentenceCount)
+        assertEquals(BONUS_NEW_SENTENCES, bonus.newCount)
+
+        // Neither the pace nor days away change its size; it takes only what is there.
+        val back = dailyPlan(dueOnCoast = 40, newOnCoast = 0, readySuggestions = 8, lastStudy = LocalDate(2026, 9, 1), today = today, pace = Pace.Sprint, bonusNew = 5)
+        assertFalse(back.isWelcomeBack)
+        assertEquals(5, back.newCount)
+        assertEquals(1, dailyPlan(dueOnCoast = 3, newOnCoast = 0, readySuggestions = 1, lastStudy = null, today = today, bonusNew = 5).newCount)
+        assertTrue(dailyPlan(dueOnCoast = 3, newOnCoast = 0, readySuggestions = 0, lastStudy = null, today = today, bonusNew = 5).isEmpty)
+    }
+
+    @Test
     fun newCardsAreIntroducedIslandByIslandInTurnSmallestFirst() {
         fun card(id: Int, island: Int, due: Long? = null) =
             PlacedCard(Flashcard(cardId = id, islandId = island, nativeText = "n$id", targetText = "t$id", due = due), "Island $island", null, 1, "German")

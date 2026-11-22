@@ -156,7 +156,12 @@ private fun geminiError(status: Int, error: GeminiError?, retryAfter: String?): 
     logError("GeminiWire", "Gemini returned $status: $rawMsg")
     // The requests per minute (or the day's quota) are used up. The first passes, so work that sends many requests waits it out.
     if (status == 429 || errStatus == "RESOURCE_EXHAUSTED") {
-        return Completion.busy("Gemini rate limit or quota reached. Wait a moment or switch to another provider.", retryAfterHeaderSeconds(retryAfter))
+        // A free key also has a daily allowance, and Google answers the same when it is used up; no wait of a minute fixes that.
+        return Completion.busy(
+            "Gemini is getting too many requests from your key right now, or a free key has used up today's allowance. " +
+                "Wait a minute and try again, or pick another provider in Settings.",
+            retryAfterHeaderSeconds(retryAfter)
+        )
     }
     if (status == 408 || status == 504 || errStatus == "DEADLINE_EXCEEDED") {
         return Completion.tooLarge(tookTooLongMessage("Gemini"))
@@ -167,7 +172,7 @@ private fun geminiError(status: Int, error: GeminiError?, retryAfter: String?): 
         status == 401 || status == 403 ->
             "Gemini didn't accept the API key, or the key can't use this model. Check your key in Settings."
         status == 404 ->
-            "The selected Gemini model wasn't found. Pick another model in Settings, or tap Check for new models."
+            "The selected Gemini model wasn't found. Pick another model in Settings, or tap Refresh model list there."
         status >= 500 ->
             "Gemini is overloaded right now. Try again in a moment."
         else ->

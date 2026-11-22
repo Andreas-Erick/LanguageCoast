@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -43,7 +44,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.Level
 import com.andreaserick.languagecoast.data.islandLevels
-import com.andreaserick.languagecoast.ui.components.Pill
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.graphics.StrokeCap
@@ -61,6 +61,7 @@ import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.KeepScreenOn
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
+import com.andreaserick.languagecoast.ui.components.TooltipIconButton
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.TileEmoji
 import com.andreaserick.languagecoast.ui.components.lastStudiedLabel
@@ -287,9 +288,7 @@ fun CoastScreen(
             actions = {
                 // A sheet is made from the coast's cards, so a coast without islands has nothing to offer yet.
                 if (uiState.canPrintWorksheets && uiState.islands.isNotEmpty()) {
-                    IconButton(onClick = { showWorksheet = true }) {
-                        Icon(Icons.Default.PictureAsPdf, contentDescription = "Practice sheet", tint = TextPrimary)
-                    }
+                    TooltipIconButton(icon = Icons.Default.PictureAsPdf, label = "Print a practice sheet", onClick = { showWorksheet = true })
                 }
             }
         )
@@ -400,8 +399,8 @@ fun CoastScreen(
 
 /**
  * A card for one "Language Island": its emoji in a small tile, name, card count and what there is to do
- * on it (cards due, new cards waiting) or when it was last studied, with a ⋮ menu to see its cards,
- * rehearse it as a talk or delete it.
+ * on it (cards due, new cards waiting) or when it was last studied, with Study and Cards buttons, and a ⋮
+ * menu to see its cards, rehearse it as a talk or delete it.
  *
  * @param level The level the island belongs to on the coast's route; null for an island of the user's own.
  * @param onTalk Turns the island into a talk to rehearse; null when it can't be (no AI model, or too few cards).
@@ -418,11 +417,10 @@ fun IslandCard(
     modifier: Modifier = Modifier
 ) {
     val island = summary.island
-    ContentCard(onClick = onClick, onClickLabel = "study", modifier = modifier.heightIn(min = 160.dp), padding = PaddingValues(start = 14.dp, top = 14.dp, bottom = 14.dp)) {
+    ContentCard(onClick = onClick, onClickLabel = "study", modifier = modifier.heightIn(min = 160.dp), padding = PaddingValues(start = 14.dp, top = 14.dp, bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
             IconTile { TileEmoji(islandEmoji(island)) }
             Spacer(modifier = Modifier.weight(1f))
-            if (level != null) Pill(level.label, container = SurfaceRaised, content = TextSecondary, modifier = Modifier.padding(top = 12.dp))
             IslandMenu(islandName = island.name, onShowCards = onShowCards, onTalk = onTalk, onDelete = onDeleteClick)
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -434,6 +432,17 @@ fun IslandCard(
                 // Two lines kept even for a short name, so cards side by side in the grid are the same height.
                 minLines = 2,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            // "A1 Beginner" rather than a bare "A1", which means nothing to a newcomer. Too long for the top row of a
+            // narrow grid card, so it has its own line; an empty one for an island of the user's own keeps the
+            // cards side by side the same height.
+            Text(
+                text = level?.shortLabel.orEmpty(),
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary,
+                minLines = 1,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(plural(summary.cardCount, "card"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
@@ -454,6 +463,19 @@ fun IslandCard(
                     drawStopIndicator = {},
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(4.dp)
                 )
+            }
+        }
+        // Tapping the card studies it; both actions are spelled out so "see the cards" isn't hidden in the ⋮ menu.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            // Pulled back by the buttons' own padding, so "Study" lines up with the island's name.
+            modifier = Modifier.fillMaxWidth().offset(x = (-8).dp).padding(top = 2.dp)
+        ) {
+            TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Study", style = MaterialTheme.typography.labelMedium, color = SunlitText, maxLines = 1)
+            }
+            TextButton(onClick = onShowCards, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Cards", style = MaterialTheme.typography.labelMedium, color = TextPrimary, maxLines = 1)
             }
         }
     }

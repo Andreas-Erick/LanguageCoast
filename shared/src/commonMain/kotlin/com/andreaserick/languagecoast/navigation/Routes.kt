@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.navigation
 
+import com.andreaserick.languagecoast.data.BONUS_NEW_SENTENCES
 import com.andreaserick.languagecoast.data.StudyScope
 import kotlinx.serialization.Serializable
 
@@ -10,8 +11,9 @@ object CreateScreenRoute
 @Serializable
 object MyCoastScreenRoute
 
+/** Settings. [focus] names a section to open at (e.g. backup), or null for the top. */
 @Serializable
-object SettingsScreenRoute
+data class SettingsScreenRoute(val focus: String? = null)
 
 /**
  * The questions the app asks about the user, opened from Settings or from a coast. [islandId] is the
@@ -40,13 +42,17 @@ data class CoastScreenRoute(
  * coast ("coast"), today's due cards across all coasts ("today"), the leaky words the user keeps
  * forgetting ("leaky") or the daily session on one coast ("daily": a few due cards, then a few new
  * sentences). [islandName] doubles as the session's title for the other scopes.
+ *
+ * [bonusNew] above 0 makes a daily session a bonus round: no reviews, up to that many new cards and
+ * sentences. It is what "Keep going" after the first daily session opens.
  */
 @Serializable
 data class StudyScreenRoute(
     val islandId: Int = 0,
     val islandName: String = "",
     val scope: String = SCOPE_ISLAND,
-    val coastId: Int = 0
+    val coastId: Int = 0,
+    val bonusNew: Int = 0
 ) {
     companion object {
         val SCOPE_ISLAND = StudyScope.Island.key
@@ -58,8 +64,10 @@ data class StudyScreenRoute(
         fun island(islandId: Int, islandName: String) = StudyScreenRoute(islandId = islandId, islandName = islandName)
         fun coast(coastId: Int, coastName: String) = StudyScreenRoute(islandName = coastName, scope = SCOPE_COAST, coastId = coastId)
         val Today = StudyScreenRoute(islandName = "Today's review", scope = SCOPE_TODAY)
-        val Leaky = StudyScreenRoute(islandName = "Leaky words", scope = SCOPE_LEAKY)
+        val Leaky = StudyScreenRoute(islandName = "Words you keep forgetting", scope = SCOPE_LEAKY)
         fun daily(coastId: Int, language: String) = StudyScreenRoute(islandName = "Today · $language", scope = SCOPE_DAILY, coastId = coastId)
+        fun bonus(coastId: Int, language: String, count: Int = BONUS_NEW_SENTENCES) =
+            StudyScreenRoute(islandName = "Bonus round · $language", scope = SCOPE_DAILY, coastId = coastId, bonusNew = count)
     }
 }
 
