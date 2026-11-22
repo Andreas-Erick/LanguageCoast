@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,7 +72,9 @@ import kotlin.math.roundToInt
 // Local AI in Settings: what the phone can run, the models that fit, and downloading them.
 
 /**
- * Local AI: what the phone can run, the models to download for it, and the Hugging Face token some of them need.
+ * Local AI: what the phone can run, the models to download for it, and the Hugging Face access code some of them
+ * need. What the phone is made of is folded away under "Phone details": the models are already sorted by it,
+ * so most people never need to read it.
  *
  * @param onDeleteModel Asks to delete the installed model with that id; the screen confirms first.
  */
@@ -80,17 +83,25 @@ internal fun LocalAiHubSection(uiState: SettingsUiState, viewModel: SettingsView
     Hint(
         "An AI model that runs on your phone: free, private, and offline once it is downloaded. Unlike on-device " +
             "translation it also sorts cards onto islands and suggests other ways to say a sentence. " +
-            "A small model is slower than a cloud AI and makes more mistakes."
+            "A small model is slower than an online AI and makes more mistakes."
     )
     Spacer(modifier = Modifier.height(14.dp))
 
     val profile = uiState.hardwareProfile
+    var phoneDetailsOpen by rememberSaveable { mutableStateOf(false) }
     if (profile != null) {
-        HardwareProfileCard(
-            profile = profile,
-            isScanning = uiState.isScanningHardware,
-            onRescan = viewModel::scanHardware
-        )
+        CollapsibleRow(
+            title = "Phone details",
+            subtitle = profile.tier.label,
+            expanded = phoneDetailsOpen,
+            onToggle = { phoneDetailsOpen = !phoneDetailsOpen }
+        ) {
+            HardwareProfileCard(
+                profile = profile,
+                isScanning = uiState.isScanningHardware,
+                onRescan = viewModel::scanHardware
+            )
+        }
     } else {
         CoastSecondaryButton(
             onClick = viewModel::scanHardware,
@@ -128,17 +139,18 @@ internal fun LocalAiHubSection(uiState: SettingsUiState, viewModel: SettingsView
     if (uiState.modelRecommendations.any { it.model.gated }) {
         Spacer(modifier = Modifier.height(20.dp))
         ApiKeySection(
-            title = "Hugging Face token",
-            hint = "Only for models that need a token: accept the model's licence on huggingface.co, then create a read token " +
-                "there (\"Get a token\" opens the page). It is stored only on this device and sent to Hugging Face only when downloading.",
+            title = "Hugging Face access code (only some models need one)",
+            hint = "Some models need a free Hugging Face account: accept the model's licence on huggingface.co, then create a read " +
+                "access code and paste it here (\"Get an access code\" opens the page). It is stored only on this device and sent " +
+                "to Hugging Face only when downloading.",
             placeholder = "hf_...",
             savedKey = uiState.savedHuggingFaceToken,
             justSaved = uiState.huggingFaceTokenSaved,
             onSave = viewModel::saveHuggingFaceToken,
             onEdited = viewModel::onHuggingFaceTokenEdited,
             onRemove = viewModel::removeHuggingFaceToken,
-            noun = "token",
-            shortNoun = "token",
+            noun = "access code",
+            shortNoun = "access code",
             getUrl = "https://huggingface.co/settings/tokens"
         )
     }
@@ -319,7 +331,7 @@ internal fun ModelRecommendationCard(
                     val needsToken = model.gated && !hasToken
                     DownloadButton(
                         label = when {
-                            needsToken -> "Needs a Hugging Face token"
+                            needsToken -> "Needs a Hugging Face access code"
                             !recommendation.hasEnoughStorage -> "Not enough free storage"
                             else -> "Download"
                         },

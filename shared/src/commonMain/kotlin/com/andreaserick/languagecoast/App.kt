@@ -129,7 +129,7 @@ private val topLevelDestinations = listOf(
         unselectedIcon = Icons.Outlined.Sailing
     ) { it.hasRoute<MyCoastScreenRoute>() || it.hasRoute<CoastScreenRoute>() || it.hasRoute<RecapScreenRoute>() },
     TopLevelDestination(
-        route = SettingsScreenRoute,
+        route = SettingsScreenRoute(),
         label = "Settings",
         selectedIcon = Icons.Filled.Tune,
         unselectedIcon = Icons.Outlined.Tune
@@ -330,7 +330,15 @@ private fun AppContent() {
                                 onStartDaily = { id, language -> navController.navigate(StudyScreenRoute.daily(id, language)) },
                                 onReviewCoast = { id, name -> navController.navigate(StudyScreenRoute.coast(id, name)) },
                                 onReviewAll = { navController.navigate(StudyScreenRoute.Today) },
-                                onAboutYou = { navController.navigate(AboutYouScreenRoute()) }
+                                onAboutYou = { navController.navigate(AboutYouScreenRoute()) },
+                                // Opened like its tab, so the Today tab leads back here; a screen pushed on top of Today would stay Today's.
+                                onOpenSettings = { focus ->
+                                    navController.navigate(SettingsScreenRoute(focus)) {
+                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onSearch = { navController.navigate(SearchScreenRoute) }
                             )
                         }
                         composable<MyCoastScreenRoute> {
@@ -375,8 +383,11 @@ private fun AppContent() {
                             // IslandViewModel reads the route arguments from its SavedStateHandle.
                             IslandScreen(onNavigateBack = { navController.popBackStack() })
                         }
-                        composable<SettingsScreenRoute> {
-                            SettingsScreen(onAboutYou = { navController.navigate(AboutYouScreenRoute()) })
+                        composable<SettingsScreenRoute> { entry ->
+                            SettingsScreen(
+                                onAboutYou = { navController.navigate(AboutYouScreenRoute()) },
+                                focus = entry.toRoute<SettingsScreenRoute>().focus
+                            )
                         }
                         detailScreen<StudyScreenRoute>(reducedMotion, towards = SlideDirection.Up) { entry ->
                             val route = entry.toRoute<StudyScreenRoute>()
@@ -385,7 +396,13 @@ private fun AppContent() {
                                 onNavigateBack = { navController.popBackStack() },
                                 onShowCards = if (route.scope == StudyScreenRoute.SCOPE_ISLAND) {
                                     { navController.navigate(IslandScreenRoute(islandId = route.islandId, islandName = route.islandName)) }
-                                } else null
+                                } else null,
+                                // The bonus round takes the finished session's place, so Back leads to where the session was opened from.
+                                onKeepGoing = { coastId, language ->
+                                    navController.navigate(StudyScreenRoute.bonus(coastId, language)) {
+                                        popUpTo<StudyScreenRoute> { inclusive = true }
+                                    }
+                                }
                             )
                         }
                     }

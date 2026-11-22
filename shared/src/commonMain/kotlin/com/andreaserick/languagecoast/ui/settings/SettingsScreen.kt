@@ -45,15 +45,19 @@ import androidx.compose.material3.TimeInput
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -67,6 +71,7 @@ import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.Profile
 import com.andreaserick.languagecoast.data.ReminderSettings
 import com.andreaserick.languagecoast.data.SettingsDefaults
+import com.andreaserick.languagecoast.data.cloud
 import com.andreaserick.languagecoast.data.localAiAvailable
 import com.andreaserick.languagecoast.data.onDeviceTranslationAvailable
 import com.andreaserick.languagecoast.data.profilePreview
@@ -76,6 +81,7 @@ import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.LanguageField
+import com.andreaserick.languagecoast.ui.components.LocalReducedMotion
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.PaceOptions
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
@@ -97,23 +103,62 @@ import com.andreaserick.languagecoast.ui.theme.ThemeMode
 import com.andreaserick.languagecoast.ui.theme.rememberSunLocationAccess
 import com.andreaserick.languagecoast.ui.theme.sunLocationAvailable
 import com.andreaserick.languagecoast.ui.theme.tabular
+import kotlin.math.roundToInt
 import kotlin.time.Clock
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import org.koin.compose.viewmodel.koinViewModel
 
+/** [SettingsScreen]'s `focus` that opens it at the Translation card, from anywhere that needs an AI provider set up. */
+const val SETTINGS_FOCUS_TRANSLATION = "translation"
+
+/** [SettingsScreen]'s `focus` that opens it at the Backup card, from Today's "Back up your cards once". */
+const val SETTINGS_FOCUS_BACKUP = "backup"
+
 /**
  * The "Settings" screen, grouped into cards (About you opens its own screen through [onAboutYou]): help,
- * languages, how cards are translated (on the phone or by a cloud AI with the user's own key), study
+ * languages, how cards are translated (on the phone or by an online AI with the user's own key), study
  * reminders, exporting / importing cards, backup and app info.
+ *
+ * @param focus A card to open the screen at, or null for the top. With [SETTINGS_FOCUS_TRANSLATION] it
+ * scrolls to the Translation card once, and if the provider picked is an online AI without a key yet (an
+ * iPhone starts with Gemini and no key), opens the guided key setup too: whoever sent the user here wants
+ * that done, and the bare key field asks too much of someone who has never made a key. With
+ * [SETTINGS_FOCUS_BACKUP] it scrolls to the Backup card.
  */
 @Composable
-fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinViewModel()) {
+fun SettingsScreen(onAboutYou: () -> Unit, focus: String? = null, viewModel: SettingsViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val scrollState = rememberScrollState()
+    // Where the Translation card starts in the scrolled column, once it has been laid out.
+    var translationTop by remember { mutableStateOf<Int?>(null) }
+    var backupTop by remember { mutableStateOf<Int?>(null) }
+    // Done once per visit, so coming back from a turn of the phone or from the key's web page doesn't jump again.
+    var focusHandled by rememberSaveable(focus) { mutableStateOf(focus == null) }
+    var showKeySetup by rememberSaveable { mutableStateOf(false) }
     var showHowToUse by rememberSaveable { mutableStateOf(false) }
     var showLicences by rememberSaveable { mutableStateOf(false) }
     // The local model whose delete button was tapped, until the user confirms or backs out.
     var modelToDelete by rememberSaveable { mutableStateOf<String?>(null) }
+
+    if (!focusHandled) {
+        val reducedMotion = LocalReducedMotion.current
+        LaunchedEffect(focus) {
+            if (focus == SETTINGS_FOCUS_TRANSLATION) {
+                // The provider and keys start as placeholders: decide only once the stored ones have been read.
+                val loaded = snapshotFlow { uiState }.first { it.loaded }
+                val top = snapshotFlow { translationTop }.filterNotNull().first()
+                if (reducedMotion) scrollState.scrollTo(top) else scrollState.animateScrollTo(top)
+                if (loaded.cloudKeyMissing) showKeySetup = true
+            } else if (focus == SETTINGS_FOCUS_BACKUP) {
+                val top = snapshotFlow { backupTop }.filterNotNull().first()
+                if (reducedMotion) scrollState.scrollTo(top) else scrollState.animateScrollTo(top)
+            }
+            focusHandled = true
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(
@@ -125,7 +170,7 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(horizontal = ScreenMargin, vertical = 12.dp)
         ) {
             SettingsCard(title = "Help", icon = Icons.AutoMirrored.Filled.HelpOutline) {
@@ -156,8 +201,17 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
                 Hint("The language you think in. Each coast sets the language you're learning.")
             }
 
-            SettingsCard(title = "Translation", icon = Icons.Default.AutoAwesome) {
-                TranslationProviderSection(uiState = uiState, viewModel = viewModel, onDeleteModel = { modelToDelete = it })
+            SettingsCard(
+                title = "Translation",
+                icon = Icons.Default.AutoAwesome,
+                modifier = Modifier.onGloballyPositioned { translationTop = it.positionInParent().y.roundToInt() }
+            ) {
+                TranslationProviderSection(
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    onDeleteModel = { modelToDelete = it },
+                    onSetUpKey = { showKeySetup = true }
+                )
             }
 
             SettingsCard(title = "Study reminders", icon = Icons.Default.NotificationsActive) {
@@ -237,7 +291,11 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
                     CardTransferSection()
                 }
 
-                SettingsCard(title = "Backup", icon = Icons.Default.Backup) {
+                SettingsCard(
+                    title = "Backup",
+                    icon = Icons.Default.Backup,
+                    modifier = Modifier.onGloballyPositioned { backupTop = it.positionInParent().y.roundToInt() }
+                ) {
                     BackupSection()
                 }
             }
@@ -249,6 +307,11 @@ fun SettingsScreen(onAboutYou: () -> Unit, viewModel: SettingsViewModel = koinVi
     }
 
     if (showHowToUse) HowToUseSheet(onDismiss = { showHowToUse = false })
+    // Only while an online AI is picked: switching to one on the phone leaves nothing to set up.
+    val keySetupFor = uiState.translationProvider.cloud
+    if (showKeySetup && keySetupFor != null) {
+        KeySetupSheet(cloud = keySetupFor, uiState = uiState, viewModel = viewModel, onDismiss = { showKeySetup = false })
+    }
     if (showLicences) LicencesSheet(onDismiss = { showLicences = false })
 
     uiState.meteredWarningModelId?.let { modelId ->
@@ -338,7 +401,7 @@ private fun AboutSection(onShowLicences: () -> Unit) {
     val messenger = LocalUndoMessenger.current
     Text("Language Coast $version", color = TextPrimary, style = MaterialTheme.typography.titleSmall)
     Hint(
-        "Cloud AI by Google Gemini, OpenAI, Anthropic Claude, Groq, DeepSeek and OpenRouter, each with your own key." +
+        "Online AI by Google Gemini, OpenAI, Anthropic Claude, Groq, DeepSeek and OpenRouter, each with your own key." +
             (if (localAiAvailable) " Local AI runs with Google LiteRT-LM." else "") +
             " Word lookups open dict.cc."
     )
@@ -384,8 +447,8 @@ private fun ProfileSection(profile: Profile, onOpen: () -> Unit) {
 
 /** A titled group of settings. The title is a heading, so a screen reader can jump from card to card. */
 @Composable
-private fun SettingsCard(title: String, icon: ImageVector, content: @Composable ColumnScope.() -> Unit) {
-    ContentCard(padding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 18.dp)) {
+private fun SettingsCard(title: String, icon: ImageVector, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    ContentCard(modifier = modifier, padding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 14.dp)) {
             Icon(icon, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.size(10.dp))

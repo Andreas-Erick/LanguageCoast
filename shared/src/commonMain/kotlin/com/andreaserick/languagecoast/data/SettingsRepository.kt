@@ -103,6 +103,10 @@ interface SettingsRepository {
     val levelsCelebrated: Flow<Set<String>>
     /** Whether the user waved away Today's invitation to tell the app about themselves. */
     val aboutYouInviteDismissed: Flow<Boolean>
+    /** Whether the user hid Today's "Getting started" card. */
+    val gettingStartedDismissed: Flow<Boolean>
+    /** Whether a backup was ever made on this phone, which ticks off the last step of "Getting started". */
+    val hasBackedUp: Flow<Boolean>
     /** Whether and when the daily study reminder is shown. */
     val reminderSettings: Flow<ReminderSettings>
     /** Whether cards are studied the other way round: from the coast's language to the native language. */
@@ -182,6 +186,12 @@ interface SettingsRepository {
 
     /** Records that Today's invitation to tell the app about oneself was waved away. */
     suspend fun dismissAboutYouInvite()
+
+    /** Records that Today's "Getting started" card was hidden. */
+    suspend fun dismissGettingStarted()
+
+    /** Records that a backup was made. */
+    suspend fun recordBackup()
 
     /** Records that the user allowed the app to send text to cloud [provider]. */
     suspend fun allowAiSharing(provider: TranslationProvider)
@@ -308,6 +318,10 @@ class DataStoreSettingsRepository(
         dataStore.edit { it[SettingKeys.LEVELS_CELEBRATED] = it[SettingKeys.LEVELS_CELEBRATED].orEmpty() + levelKey(coastId, level) }
     }
     override suspend fun dismissAboutYouInvite() = set(SettingKeys.ABOUT_YOU_INVITE_DISMISSED, true)
+    override val gettingStartedDismissed: Flow<Boolean> = dataStore.data.map { it[SettingKeys.GETTING_STARTED_DISMISSED] ?: false }
+    override suspend fun dismissGettingStarted() = set(SettingKeys.GETTING_STARTED_DISMISSED, true)
+    override val hasBackedUp: Flow<Boolean> = dataStore.data.map { it[SettingKeys.HAS_BACKED_UP] ?: false }
+    override suspend fun recordBackup() = set(SettingKeys.HAS_BACKED_UP, true)
 
     override suspend fun setPersonalAnswer(key: String, value: String) {
         val preference = SettingKeys.ANSWER_KEYS[key] ?: return

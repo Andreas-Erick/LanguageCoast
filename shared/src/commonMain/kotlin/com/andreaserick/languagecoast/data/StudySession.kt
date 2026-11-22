@@ -31,8 +31,9 @@ enum class StudyScope(val key: String) {
  *
  * @property suggestions Sentences the app prepared for the coast, in the order they are offered.
  * @property lastStudy The day of the last finished session, for the welcome-back size.
+ * @property bonusNew Above 0 for a bonus round: no reviews, and up to this many new items (see [dailyPlan]).
  */
-data class DailyContext(val suggestions: List<SuggestedSentence>, val lastStudy: LocalDate?, val pace: Pace)
+data class DailyContext(val suggestions: List<SuggestedSentence>, val lastStudy: LocalDate?, val pace: Pace, val bonusNew: Int = 0)
 
 /**
  * How a session opens.
@@ -69,7 +70,7 @@ fun startSession(scope: StudyScope, cards: List<PlacedCard>, now: Long, today: L
             val context = requireNotNull(daily) { "A daily session needs its DailyContext" }
             val due = dueInStudyOrder(studied, now)
             val waiting = newCardsInLearnOrder(cards)
-            val plan = dailyPlan(due.size, waiting.size, context.suggestions.size, context.lastStudy, today, context.pace)
+            val plan = dailyPlan(due.size, waiting.size, context.suggestions.size, context.lastStudy, today, context.pace, context.bonusNew)
             SessionStart(
                 opening = due.take(plan.reviewCount),
                 intro = waiting.take(plan.newCardCount),

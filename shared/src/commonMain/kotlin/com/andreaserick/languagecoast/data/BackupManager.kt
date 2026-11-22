@@ -20,6 +20,9 @@ class BackupManager(
         )
     }
 
+    /** Notes that the user made a backup to keep (not the safety copy taken before a restore). */
+    suspend fun recordBackup() = settings.recordBackup()
+
     /** Replaces everything in the app with [backup]. The API keys stay as they are. */
     suspend fun restore(backup: Backup) {
         flashcards.replaceAll(

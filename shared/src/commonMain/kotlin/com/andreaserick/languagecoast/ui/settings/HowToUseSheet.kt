@@ -67,7 +67,7 @@ private val GUIDE = listOf(
             "At B1 your AI provider writes islands on what that level asks for (opinions with reasons, telling a story, complaints, what-ifs), and each island about you can be taken up a level.",
             "\"Rehearse as a talk\" in an island's ⋮ menu joins the island's sentences into about a minute of speech to read aloud, listen to, and then say without looking.",
             ("The PDF icon at the top of a coast makes a practice sheet: your AI provider writes new sentences to translate, each built from one of that coast's cards. " +
-                "Islands whose cards you are forgetting get more of them, and a cloud AI provider explains words your cards don't have under the sentence. " +
+                "Islands whose cards you are forgetting get more of them, and an online AI provider explains words your cards don't have under the sentence. " +
                 "Pick the islands, the direction, the difficulty and how many sentences; the answers come on a page of their own, each with the card it was built from.")
                 .takeIf { fileTransferAvailable }
         )
@@ -75,10 +75,10 @@ private val GUIDE = listOf(
     GuideSection(
         "Creating cards",
         listOf(
-            "On Today, open \"Add your own\", type what you want to say in your own language and tap \"Translate and save\".",
+            "On Today, open \"Add your own\", keep \"Translate\" picked, type what you want to say in your own language and tap \"Translate and save\".",
             "The card goes to the focus coast shown at the top of Today.",
             "Set your native language under Languages in Settings, so translations go the right way.",
-            "Choose \"I write it\" to write in the language you're learning: the AI fills in your language and corrects slips. \"Manual\" lets you type both sides.",
+            "Choose \"Correct mine\" to write in the language you're learning: the AI fills in your language and corrects slips. \"Type both\" saves exactly what you type, with no AI.",
             "\"Starter sentences\" is a bank of about 900 sentences and words everyone needs, in 37 topics: from greetings, small talk and getting around to renting, paperwork, numbers and the words a phone's settings use. Tick what you'd say, fill in blanks like [city] or [name], and they become cards.",
             if (runsOnAndroid) {
                 "\"From text or a photo\" turns a pasted paragraph, or a photo of a page or a sign, into sentences to tick, one card each. " +
@@ -86,7 +86,7 @@ private val GUIDE = listOf(
             } else {
                 "\"From text\" turns a pasted paragraph into sentences to tick, one card each."
             },
-            "Tap an island chip or type an island's name to choose the island yourself. Leave it empty and your AI provider picks one. While you type, a likely island is suggested.",
+            "Under \"Topic\", tap a chip or type a name to choose the island yourself. Leave it empty and your AI provider picks one. While you type, a likely topic is suggested.",
             "If the coast already has that sentence, a line under the text box says which island it is on.",
             "Made a mistake? Tap \"Undo\" right after saving."
         )
@@ -97,12 +97,12 @@ private val GUIDE = listOf(
             "On-device translation is free, private and works offline. It needs no setup, and is powered by Google Translate."
                 .takeIf { onDeviceTranslationAvailable },
             ("Local AI is an AI model that runs on your phone, free and offline. Settings checks what your phone can run, suggests models that fit " +
-                "and downloads the one you pick. One of them, Gemma 3, needs a token from Hugging Face.")
+                "and downloads the one you pick. One of them, Gemma 3, needs a free access code from Hugging Face.")
                 .takeIf { localAiAvailable },
-            "Cloud AI providers (Google Gemini, OpenAI, Anthropic Claude, Groq, DeepSeek and OpenRouter) translate with more feel for the language, sort cards onto islands, suggest alternatives and explain words.",
-            "What is an API key? A long code you create in your own account with a cloud provider. Paste it under Translation in Settings; \"Get a key\" there opens the provider's page. The provider bills you for what you use, and Gemini has a free tier.",
-            "Before anything goes to a cloud provider, the app says what it sends and asks you to allow it. Removing the key in Settings takes that back.",
-            "Providers bring out new models and retire old ones. \"Check for new models\" under a provider's model list asks the provider what it offers now.",
+            "Online AI providers (Google Gemini, OpenAI, Anthropic Claude, Groq, DeepSeek and OpenRouter) translate with more feel for the language, sort cards onto islands, suggest alternatives and explain words.",
+            "What is an API key? A long code you create in your own account with an online provider. Paste it under Translation in Settings; \"Get a key\" there opens the provider's page, and \"Walk me through it\" takes you through it step by step. Gemini is free to start; other providers bill you for what you use.",
+            "Before anything goes to an online provider, the app says what it sends and asks you to allow it. Removing the key in Settings takes that back.",
+            "Providers bring out new models and retire old ones. Under Translation in Settings, open \"Advanced: choose model\" to pick another one; \"Refresh model list\" there asks the provider what it offers now.",
             // While there is no address to mail to, the link opens the issue tracker, and the reader should know that page is public.
             if (Support.EMAIL.isBlank()) {
                 "AI can make mistakes. \"Report this answer\" under an explanation or an answer opens the app's public issue tracker, " +
@@ -123,7 +123,7 @@ private val GUIDE = listOf(
                 "You can also swipe left for Again and right for Good.",
             "Type: type the translation and tap \"Check answer\". Capitals and punctuation don't matter, accents do. A slip of a letter counts as Hard.",
             "Fill gap: the translation has its key word blanked out. Type the missing word. Languages written without spaces, such as Japanese, have no Fill gap.",
-            "Leaky words on My Coasts gathers the cards you keep forgetting into one short session.",
+            "Words you keep forgetting, on My Coasts, gathers the cards you keep forgetting into one short session.",
             "Tap the languages under the switch (e.g. \"English → German\") to study the other way round: you see the translation and answer in your own language.",
             "The ⋮ menu during a session has Previous card, Skip card and all of the island's cards.",
             "Nothing due? You can still practice all cards of the island."
@@ -152,6 +152,13 @@ private val GUIDE = listOf(
     GuideSection(
         "Your cards",
         listOfNotNull(
+            // There is no account: the reader has to know before the phone is lost, not after.
+            if (fileTransferAvailable) {
+                "Your cards are saved on this phone only: there is no account and no copy online. To keep them safe, " +
+                    "tap \"Back up\" under Backup in Settings now and then, and keep the file somewhere else, such as your e-mail or a cloud drive."
+            } else {
+                "Your cards are saved on this phone only: there is no account and no copy online, so removing the app removes them too."
+            },
             "Tap the search icon on My Coasts to find a card on any coast by its native text, translation or alternatives.",
             "Tap ⋮ on an island and \"See cards\" to list its cards with when each is due next.",
             "Tap a card there, or \"Edit card\" in the ⋮ menu while studying, to fix its translation and alternatives or move it to another island.",

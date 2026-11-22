@@ -31,6 +31,9 @@ enum class Level(val title: String, val can: String, val writing: String) {
 
     /** "A2". */
     val label: String get() = name
+
+    /** "A2 Elementary": the code with its plain title, for pills and labels a newcomer reads, who may not know what "A2" means. */
+    val shortLabel: String get() = "$label $title"
 }
 
 /** How sentences about the user are worded in languages that mark the speaker's gender. */

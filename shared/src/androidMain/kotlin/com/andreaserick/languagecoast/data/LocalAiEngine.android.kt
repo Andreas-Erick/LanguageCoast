@@ -347,7 +347,7 @@ class AndroidLocalModelController(private val context: Context) : LocalModelCont
         const val QUERY_RETRY_MILLIS = 2_000L
         /** A real `.litertlm` model is far larger than this; anything smaller is an error page. */
         const val MIN_MODEL_BYTES = 10L * MB
-        const val NEEDS_TOKEN = "This model needs a Hugging Face token. Add one below to download it."
+        const val NEEDS_TOKEN = "This model needs a Hugging Face access code. Add one below to download it."
     }
 }
 

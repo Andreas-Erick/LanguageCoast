@@ -105,7 +105,7 @@ class ModelCheckTest {
         assertTrue("didn't accept the API key" in message(parseModelListing(TranslationProvider.Claude, 401, """{"type":"error"}""")))
         // Gemini answers a wrong key with 400.
         assertTrue("didn't accept the API key" in message(parseModelListing(TranslationProvider.Gemini, 400, "{}")))
-        assertTrue("rate-limited" in message(parseModelListing(TranslationProvider.OpenAI, 429, "")))
+        assertTrue("too many requests" in message(parseModelListing(TranslationProvider.OpenAI, 429, "")))
         val unavailable = message(parseModelListing(TranslationProvider.Groq, 503, ""))
         assertTrue("couldn't list its models right now" in unavailable)
         assertFalse("503" in unavailable || "HTTP" in unavailable)
