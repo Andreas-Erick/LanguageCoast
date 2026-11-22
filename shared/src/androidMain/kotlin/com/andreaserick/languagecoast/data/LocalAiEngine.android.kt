@@ -542,7 +542,7 @@ actual class LocalAiTranslator actual constructor() : Translator {
                     // before the first word of a three-line answer. The answer alone is what we want.
                     thinkingConfig = ThinkingConfig(enableThinking = false),
                     // A flashcard answer is a few lines; a model that rambles on shouldn't keep the phone busy.
-                    maxOutputToken = MAX_OUTPUT_TOKENS
+                    maxOutputToken = LOCAL_AI_MAX_OUTPUT_TOKENS
                 )
             )
             val replyBuilder = StringBuilder()
@@ -604,9 +604,6 @@ actual class LocalAiTranslator actual constructor() : Translator {
         const val NO_MODEL_MESSAGE = "No Local AI model is installed yet. Install one under Settings › Translation."
         const val NOT_LOADED_MESSAGE = "The Local AI model couldn't be loaded. Close other apps to free memory and try again, or pick a lighter model in Settings."
         const val NO_ANSWER_MESSAGE = "Local AI couldn't finish its answer. Try again, or pick a lighter model in Settings."
-
-        /** Enough for a translation with alternatives and a note, or a 90-word explanation, with room to spare. */
-        const val MAX_OUTPUT_TOKENS = 512
 
         /** Upper bound on one local inference turn so a wedged model never deadlocks the mutex forever. */
         const val INFERENCE_TIMEOUT_MILLIS = 120_000L
