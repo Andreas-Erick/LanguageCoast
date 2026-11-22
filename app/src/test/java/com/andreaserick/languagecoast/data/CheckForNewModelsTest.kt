@@ -170,7 +170,7 @@ class CheckForNewModelsTest {
         assertEquals("Added 3 models and removed 4 models that Claude no longer offers.", state.modelCheck.message)
         assertFalse(state.modelCheck.failed)
         assertEquals(listOf("claude-haiku-5-5", "claude-opus-6", "claude-sonnet-6", "claude-haiku-6"), state.modelOptions[TranslationProvider.Claude])
-        assertEquals("claude-haiku-5-5", state.claudeModel)
+        assertEquals("claude-haiku-5-5", state.model(TranslationProvider.Claude))
     }
 
     /** Stands in for [ProviderModelLister] where no key is saved: the same message, and no network. */

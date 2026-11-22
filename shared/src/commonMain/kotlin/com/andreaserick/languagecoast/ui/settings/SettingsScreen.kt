@@ -1,5 +1,7 @@
 package com.andreaserick.languagecoast.ui.settings
 
+import com.andreaserick.languagecoast.data.CloudProvider
+import com.andreaserick.languagecoast.data.CLOUD_PROVIDERS
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -787,105 +789,46 @@ private fun TranslationProviderSection(uiState: SettingsUiState, viewModel: Sett
                 Hint("Local AI can't run here. Pick another way to translate.")
             }
         }
-        TranslationProvider.Gemini -> {
+        else -> {
+            val cloud = CLOUD_PROVIDERS.getValue(uiState.translationProvider)
             Spacer(modifier = Modifier.height(8.dp))
-            ModelPicker("Gemini model", TranslationProvider.Gemini, uiState.geminiModel, viewModel::setGeminiModel, uiState, viewModel::checkForNewModels)
-            Hint(
-                "The default model answers in under a second and is plenty for translating, sorting cards onto islands and " +
-                    "suggesting alternatives. The larger models think before they answer, so they take a few seconds longer."
-            )
+            if (cloud.hasModelList) {
+                ModelPicker("${uiState.translationProvider.label} model", cloud.provider, uiState.model(cloud.provider), { viewModel.setModel(cloud.provider, it) }, uiState, viewModel::checkForNewModels)
+            } else {
+                TypedModelField(cloud = cloud, model = uiState.model(cloud.provider), onChange = { viewModel.setModel(cloud.provider, it) })
+            }
+            cloud.modelHint?.let { Hint(it) }
             Spacer(modifier = Modifier.height(16.dp))
             CloudKeySection(
-                provider = TranslationProvider.Gemini,
-                title = "Google Gemini API key",
-                intro = "Google AI Studio gives you a key that is free to start with.",
-                placeholder = "AIzaSy...",
-                uiState = uiState,
-                viewModel = viewModel
-            )
-        }
-        TranslationProvider.OpenAI -> {
-            Spacer(modifier = Modifier.height(8.dp))
-            ModelPicker("OpenAI model", TranslationProvider.OpenAI, uiState.openAiModel, viewModel::setOpenAiModel, uiState, viewModel::checkForNewModels)
-            Spacer(modifier = Modifier.height(16.dp))
-            CloudKeySection(
-                provider = TranslationProvider.OpenAI,
-                title = "OpenAI API key",
-                intro = "Create a key in your OpenAI account.",
-                placeholder = "sk-proj-...",
-                uiState = uiState,
-                viewModel = viewModel
-            )
-        }
-        TranslationProvider.Claude -> {
-            Spacer(modifier = Modifier.height(8.dp))
-            ModelPicker("Claude model", TranslationProvider.Claude, uiState.claudeModel, viewModel::setClaudeModel, uiState, viewModel::checkForNewModels)
-            Spacer(modifier = Modifier.height(16.dp))
-            CloudKeySection(
-                provider = TranslationProvider.Claude,
-                title = "Anthropic Claude API key",
-                intro = "Create a key in your Anthropic account.",
-                placeholder = "sk-ant-...",
-                uiState = uiState,
-                viewModel = viewModel
-            )
-        }
-        TranslationProvider.Groq -> {
-            Spacer(modifier = Modifier.height(8.dp))
-            ModelPicker("Groq model", TranslationProvider.Groq, uiState.groqModel, viewModel::setGroqModel, uiState, viewModel::checkForNewModels)
-            Hint("Groq runs open models such as Llama and Qwen, and answers quickly.")
-            Spacer(modifier = Modifier.height(16.dp))
-            CloudKeySection(
-                provider = TranslationProvider.Groq,
-                title = "Groq API key",
-                intro = "Create a key in your Groq account.",
-                placeholder = "gsk_...",
-                uiState = uiState,
-                viewModel = viewModel
-            )
-        }
-        TranslationProvider.DeepSeek -> {
-            Spacer(modifier = Modifier.height(8.dp))
-            ModelPicker("DeepSeek model", TranslationProvider.DeepSeek, uiState.deepSeekModel, viewModel::setDeepSeekModel, uiState, viewModel::checkForNewModels)
-            Spacer(modifier = Modifier.height(16.dp))
-            CloudKeySection(
-                provider = TranslationProvider.DeepSeek,
-                title = "DeepSeek API key",
-                intro = "Create a key in your DeepSeek account.",
-                placeholder = "sk-...",
-                uiState = uiState,
-                viewModel = viewModel
-            )
-        }
-        TranslationProvider.OpenRouter -> {
-            Spacer(modifier = Modifier.height(8.dp))
-            FieldLabel("Model")
-            var model by remember(uiState.openRouterModel) { mutableStateOf(uiState.openRouterModel) }
-            CoastTextField(
-                value = model,
-                onValueChange = {
-                    model = it
-                    viewModel.setOpenRouterModel(it)
-                },
-                placeholder = { Text(SettingsDefaults.OPENROUTER_MODEL) },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // The placeholder goes once something is typed; this keeps the field's name for screen readers.
-                    .semantics { contentDescription = "Model" }
-            )
-            Hint("\"${SettingsDefaults.OPENROUTER_MODEL}\" picks a model for you. Find other model IDs on openrouter.ai/models.")
-            Spacer(modifier = Modifier.height(16.dp))
-            CloudKeySection(
-                provider = TranslationProvider.OpenRouter,
-                title = "OpenRouter API key",
-                intro = "One key for models from many companies, paid from your OpenRouter credits.",
-                placeholder = "sk-or-...",
+                provider = cloud.provider,
+                title = cloud.keyCopy.title,
+                intro = cloud.keyCopy.intro,
+                placeholder = cloud.keyCopy.placeholder,
                 uiState = uiState,
                 viewModel = viewModel
             )
         }
     }
+}
+
+/** The model of a cloud provider without a list (OpenRouter), typed by its id; blank means [CloudProvider.defaultModel]. */
+@Composable
+private fun TypedModelField(cloud: CloudProvider, model: String, onChange: (String) -> Unit) {
+    FieldLabel("Model")
+    var typed by remember(model) { mutableStateOf(model) }
+    CoastTextField(
+        value = typed,
+        onValueChange = {
+            typed = it
+            onChange(it)
+        },
+        placeholder = { Text(cloud.defaultModel) },
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            // The placeholder goes once something is typed; this keeps the field's name for screen readers.
+            .semantics { contentDescription = "Model" }
+    )
 }
 
 /**
