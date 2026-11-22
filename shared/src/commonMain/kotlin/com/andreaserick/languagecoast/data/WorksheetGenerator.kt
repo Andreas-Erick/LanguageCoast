@@ -85,7 +85,7 @@ class WorksheetGenerator(
             estimateWorksheetLevel(cards)
         }
         val count = options.count.coerceIn(WORKSHEET_COUNT_RANGE)
-        val capacity = ProviderCapacity.of(provider)
+        val capacity = ai.capacity
         val limits = capacity.sheetPrompt
         val alternativesByCard = HashMap<WorksheetCard, List<String>>()
         val (known, vocabulary, dealer) = withContext(background) {

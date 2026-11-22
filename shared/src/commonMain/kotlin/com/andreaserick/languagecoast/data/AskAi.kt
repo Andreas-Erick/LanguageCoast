@@ -41,7 +41,7 @@ sealed interface AiConnection {
     ) : AiConnection {
 
         /** How much the provider's models take on at once; see [ProviderCapacity]. */
-        val capacity: ProviderCapacity get() = ProviderCapacity.of(provider)
+        val capacity: ProviderCapacity get() = ProviderCapacity.of(provider, (engine as? TranslationEngine.Claude)?.model)
 
         /**
          * Asks [prompt] and reads the answer with [parse] (null: it can't be read).

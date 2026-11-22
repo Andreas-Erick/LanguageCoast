@@ -54,15 +54,24 @@ enum class ProviderCapacity(
         if (this == OnDevice) count * 0.4 else (count.toDouble() / StarterTranslator.BATCH_SIZE + 1) * secondsPerStarterBatch
 
     companion object {
-        fun of(provider: TranslationProvider): ProviderCapacity = when (provider) {
+        /**
+         * The capacity of [provider]'s models, or of [model] where it is known. Every Claude 5 model thinks when a
+         * request doesn't say otherwise, and Language Coast never does; the earlier Claude models only think when a
+         * request asks them to, so they answer like other cloud models.
+         */
+        fun of(provider: TranslationProvider, model: String? = null): ProviderCapacity = when (provider) {
             TranslationProvider.OnDevice -> OnDevice
             TranslationProvider.LocalAi -> OnPhone
-            TranslationProvider.Claude -> Thinking
+            TranslationProvider.Claude -> if (model != null && isClaudeBeforeFive(model)) Cloud else Thinking
             TranslationProvider.Gemini, TranslationProvider.OpenAI, TranslationProvider.Groq,
             TranslationProvider.DeepSeek, TranslationProvider.OpenRouter -> Cloud
         }
     }
 }
+
+/** Whether [model] is a Claude model from before Claude 5 ("claude-haiku-4-5", "claude-3-7-sonnet-…"). */
+internal fun isClaudeBeforeFive(model: String): Boolean =
+    Regex("""^claude-(?:[a-z]+-[1-4](?:[-.]|$)|[1-4][-.])""").containsMatchIn(model.lowercase())
 
 /**
  * How much of a coast a practice-sheet prompt carries.
