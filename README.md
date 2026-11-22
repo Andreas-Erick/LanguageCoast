@@ -81,6 +81,10 @@ Dependencies point one way, down:
   touches the database.
 - Platform code sits behind `expect`/`actual`: secrets,
   the SQLite driver, speech, notifications, file pickers.
+- A cloud provider is one `CloudProvider` entry in
+  `data/CloudProviders.kt`. Adding one means that entry,
+  an enum value, two preferences and a backup field, and
+  `CloudProvidersTest` checks it.
 
 ```text
 shared/src/
