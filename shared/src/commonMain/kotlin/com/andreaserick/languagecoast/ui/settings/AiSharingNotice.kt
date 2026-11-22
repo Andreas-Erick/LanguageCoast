@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.cloud
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
@@ -39,35 +40,15 @@ import org.koin.compose.viewmodel.koinViewModel
 
 /** The company behind a cloud provider: who receives the text. */
 internal val TranslationProvider.company: String
-    get() = when (this) {
-        TranslationProvider.Gemini -> "Google"
-        TranslationProvider.Claude -> "Anthropic"
-        else -> label
-    }
+    get() = cloud?.company ?: label
 
 /** Where a cloud provider's privacy policy is published; null for what runs on the phone. */
 internal val TranslationProvider.privacyPolicyUrl: String?
-    get() = when (this) {
-        TranslationProvider.Gemini -> "https://policies.google.com/privacy"
-        TranslationProvider.OpenAI -> "https://openai.com/policies/privacy-policy/"
-        TranslationProvider.Claude -> "https://www.anthropic.com/legal/privacy"
-        TranslationProvider.Groq -> "https://groq.com/privacy-policy/"
-        TranslationProvider.DeepSeek -> "https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html"
-        TranslationProvider.OpenRouter -> "https://openrouter.ai/privacy"
-        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> null
-    }
+    get() = cloud?.privacyPolicyUrl
 
 /** The page of a cloud provider's site where an API key is made; null for what runs on the phone. */
 internal val TranslationProvider.keyUrl: String?
-    get() = when (this) {
-        TranslationProvider.Gemini -> "https://aistudio.google.com/apikey"
-        TranslationProvider.OpenAI -> "https://platform.openai.com/api-keys"
-        TranslationProvider.Claude -> "https://platform.claude.com/settings/keys"
-        TranslationProvider.Groq -> "https://console.groq.com/keys"
-        TranslationProvider.DeepSeek -> "https://platform.deepseek.com/api_keys"
-        TranslationProvider.OpenRouter -> "https://openrouter.ai/settings/keys"
-        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> null
-    }
+    get() = cloud?.keyUrl
 
 /** What Google's terms for a key without billing allow, said wherever a Gemini key is asked for. */
 internal const val FREE_GEMINI_KEY_WARNING =

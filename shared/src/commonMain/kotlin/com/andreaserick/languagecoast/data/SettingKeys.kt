@@ -151,18 +151,11 @@ internal object SettingKeys {
     fun worksheetSentences(coastId: Int) = stringPreferencesKey("worksheet_sentences_$coastId")
 
     /** The secrets, in [SecretStore] by these keys' names. */
-    val SECRET_KEYS: List<Preferences.Key<String>> = listOf(API_KEY, OPENROUTER_KEY, OPENAI_KEY, CLAUDE_KEY, GROQ_KEY, DEEPSEEK_KEY, HUGGING_FACE_TOKEN)
+    // A getter: CLOUD_PROVIDERS reads these keys, so reading it while this object is set up would see nulls.
+    val SECRET_KEYS: List<Preferences.Key<String>> get() = CLOUD_PROVIDERS.values.map { it.keyPreference } + HUGGING_FACE_TOKEN
 
     /** The preference holding [provider]'s API key; null for the providers that need none. */
-    fun apiKeyPreference(provider: TranslationProvider): Preferences.Key<String>? = when (provider) {
-        TranslationProvider.Gemini -> API_KEY
-        TranslationProvider.OpenAI -> OPENAI_KEY
-        TranslationProvider.Claude -> CLAUDE_KEY
-        TranslationProvider.Groq -> GROQ_KEY
-        TranslationProvider.DeepSeek -> DEEPSEEK_KEY
-        TranslationProvider.OpenRouter -> OPENROUTER_KEY
-        TranslationProvider.OnDevice, TranslationProvider.LocalAi -> null
-    }
+    fun apiKeyPreference(provider: TranslationProvider): Preferences.Key<String>? = provider.cloud?.keyPreference
 
     /** [entries] ("coastId:islandId=fingerprint") as a map. */
     fun readBuilt(entries: Set<String>?): Map<String, String> =
