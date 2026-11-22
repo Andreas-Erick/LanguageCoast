@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.ui.study
 
+import com.andreaserick.languagecoast.data.StudyScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi

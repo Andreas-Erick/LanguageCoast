@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.navigation
 
+import com.andreaserick.languagecoast.data.StudyScope
 import kotlinx.serialization.Serializable
 
 // Top-level destinations shown in the bottom navigation bar
@@ -48,11 +49,11 @@ data class StudyScreenRoute(
     val coastId: Int = 0
 ) {
     companion object {
-        const val SCOPE_ISLAND = "island"
-        const val SCOPE_COAST = "coast"
-        const val SCOPE_TODAY = "today"
-        const val SCOPE_LEAKY = "leaky"
-        const val SCOPE_DAILY = "daily"
+        val SCOPE_ISLAND = StudyScope.Island.key
+        val SCOPE_COAST = StudyScope.Coast.key
+        val SCOPE_TODAY = StudyScope.Today.key
+        val SCOPE_LEAKY = StudyScope.Leaky.key
+        val SCOPE_DAILY = StudyScope.Daily.key
 
         fun island(islandId: Int, islandName: String) = StudyScreenRoute(islandId = islandId, islandName = islandName)
         fun coast(coastId: Int, coastName: String) = StudyScreenRoute(islandName = coastName, scope = SCOPE_COAST, coastId = coastId)

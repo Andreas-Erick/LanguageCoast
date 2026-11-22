@@ -30,12 +30,11 @@ import com.andreaserick.languagecoast.data.buildCardReadingPrompt
 import com.andreaserick.languagecoast.data.buildExplainPrompt
 import com.andreaserick.languagecoast.data.clozeOf
 import com.andreaserick.languagecoast.data.currentEngine
-import com.andreaserick.languagecoast.data.dailyPlan
-import com.andreaserick.languagecoast.data.newCardsInLearnOrder
 import com.andreaserick.languagecoast.data.Pace
-import com.andreaserick.languagecoast.data.interleaveByCoast
-import com.andreaserick.languagecoast.data.isDue
-import com.andreaserick.languagecoast.data.isLeaky
+import com.andreaserick.languagecoast.data.DailyContext
+import com.andreaserick.languagecoast.data.StudyScope
+import com.andreaserick.languagecoast.data.practiceAllOrder
+import com.andreaserick.languagecoast.data.startSession
 import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.data.parseAlternativeCheck
 import com.andreaserick.languagecoast.data.parseCardAnswer
@@ -66,22 +65,6 @@ import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.todayIn
 import kotlin.time.Clock
 import kotlin.time.Instant
-
-/** What a study session covers; see [StudyScreenRoute.scope]. */
-enum class StudyScope(val key: String) {
-    Island(StudyScreenRoute.SCOPE_ISLAND),
-    Coast(StudyScreenRoute.SCOPE_COAST),
-    /** Today's due cards on every coast, with the coasts taking turns. */
-    Today(StudyScreenRoute.SCOPE_TODAY),
-    /** The cards the user keeps forgetting (see [isLeaky]), due or not. */
-    Leaky(StudyScreenRoute.SCOPE_LEAKY),
-    /** One coast's daily session: a few due cards, then a few new sentences to keep or skip (see [dailyPlan]). */
-    Daily(StudyScreenRoute.SCOPE_DAILY);
-
-    companion object {
-        fun fromKey(key: String?): StudyScope = entries.firstOrNull { it.key == key } ?: Island
-    }
-}
 
 /** How a card is answered: flipped, typed in full, or typed into a gap in the translation. */
 enum class StudyMode { Flip, Type, Cloze }
@@ -442,12 +425,12 @@ class StudyViewModel(
      */
     private fun onCardsChanged(cards: List<PlacedCard>) = updateSession { s ->
         if (!s.isStarted && (cards.isNotEmpty() || scope == StudyScope.Daily)) {
-            val due = openingCards(cards)
-            val waiting = if (scope == StudyScope.Daily) newCardsInLearnOrder(cards) else emptyList()
-            val plan = if (scope == StudyScope.Daily) dailyPlan(due.size, waiting.size, dailySuggestions.size, lastStudy, clock.todayIn(timeZone), pace) else null
-            val opening = if (plan != null) due.take(plan.reviewCount) else due
-            val introQueue = if (plan != null) waiting.take(plan.newCardCount) else emptyList()
-            val learnQueue = if (plan != null) dailySuggestions.take(plan.newSentenceCount) else emptyList()
+            val daily = if (scope == StudyScope.Daily) DailyContext(dailySuggestions, lastStudy, pace) else null
+            val start = startSession(scope, cards, clock.now().toEpochMilliseconds(), clock.todayIn(timeZone), daily)
+            val opening = start.opening
+            val introQueue = start.intro
+            val learnQueue = start.learn
+            val plan = start.plan
             s.copy(
                 introQueue = introQueue,
                 introTotal = introQueue.size,
@@ -469,18 +452,6 @@ class StudyViewModel(
             val intro = s.introQueue.mapNotNull { byId[it.card.cardId] }
             s.copy(allCards = cards, cards = kept, total = s.total - (s.cards.size - kept.size), introQueue = intro, isLoading = false)
         }
-    }
-
-    /**
-     * The cards a session over [cards] opens with: for an island everything due, the cards never studied
-     * included (opening an island is how it is learned); for a coast, every coast or a daily session the
-     * studied cards that are due; for [StudyScope.Leaky] the leaky ones.
-     */
-    private fun openingCards(cards: List<PlacedCard>): List<PlacedCard> = when (scope) {
-        StudyScope.Leaky -> leakyInStudyOrder(cards)
-        StudyScope.Today -> interleaveByCoast(duePlacedInStudyOrder(cards.filter { it.card.due != null }, clock.now().toEpochMilliseconds()))
-        StudyScope.Coast, StudyScope.Daily -> duePlacedInStudyOrder(cards.filter { it.card.due != null }, clock.now().toEpochMilliseconds())
-        StudyScope.Island -> duePlacedInStudyOrder(cards, clock.now().toEpochMilliseconds())
     }
 
     /** Reads the current card's translation aloud. */
@@ -606,7 +577,7 @@ class StudyViewModel(
      * Grades still reschedule the cards.
      */
     fun practiceAll() = updateSession { s ->
-        val all = if (scope == StudyScope.Leaky) leakyInStudyOrder(s.allCards).ifEmpty { s.allCards } else interleaveByCoast(s.allCards)
+        val all = practiceAllOrder(scope, s.allCards)
         s.copy(cards = all, total = all.size, index = 0, againCount = 0, islandIds = all.mapTo(HashSet()) { it.card.islandId })
     }
 
@@ -917,19 +888,3 @@ class StudyViewModel(
         return today.daysUntil(Instant.fromEpochMilliseconds(nextDue).toLocalDateTime(timeZone).date)
     }
 }
-
-/** The due cards of [cards] at [now]: reviewed cards first, most overdue first, then new cards in the order they were added. */
-internal fun dueInStudyOrder(cards: List<Flashcard>, now: Long): List<Flashcard> {
-    val (new, reviewed) = cards.filter { isDue(it, now) }.partition { it.due == null }
-    return reviewed.sortedBy { it.due } + new.sortedBy { it.cardId }
-}
-
-/** [dueInStudyOrder] for cards that know their island and coast. */
-internal fun duePlacedInStudyOrder(cards: List<PlacedCard>, now: Long): List<PlacedCard> {
-    val byId = cards.associateBy { it.card.cardId }
-    return dueInStudyOrder(cards.map { it.card }, now).mapNotNull { byId[it.cardId] }
-}
-
-/** The leaky cards of [cards] (see [isLeaky]), the most forgotten first, with the coasts taking turns. */
-internal fun leakyInStudyOrder(cards: List<PlacedCard>): List<PlacedCard> =
-    interleaveByCoast(cards.filter { isLeaky(it.card) }.sortedWith(compareByDescending<PlacedCard> { it.card.lapses }.thenByDescending { it.card.difficulty ?: 0.0 }))

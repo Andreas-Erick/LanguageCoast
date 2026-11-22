@@ -142,7 +142,7 @@ class StudyReminderWorker(context: Context, workerParams: WorkerParameters) :
             val teaser = teaserCard(flashcards.observeAllCards().first(), now, today)
             val message = reminderMessage(
                 // The count the widget shows: new cards count only as far as a day takes them on.
-                dueCount = flashcards.countDueCards(now),
+                dueCount = flashcards.countDue(now).forToday(settings.pace.first()),
                 streak = settings.streakCount.first(),
                 studiedToday = false,
                 teaser = teaser?.let { ReminderCard(it.card.nativeText, it.language, it.islandName, it.emoji, it.card.cardId, it.card.targetText) },
