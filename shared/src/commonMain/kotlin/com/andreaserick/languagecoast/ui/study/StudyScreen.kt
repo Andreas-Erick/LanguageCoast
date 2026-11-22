@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.ui.study
 
+import com.andreaserick.languagecoast.data.StudyScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring

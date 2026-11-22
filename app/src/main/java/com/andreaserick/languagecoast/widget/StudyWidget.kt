@@ -75,7 +75,7 @@ class StudyWidgetProvider : AppWidgetProvider(), KoinComponent {
                     // A missed day must show as a lost streak, as it would on opening the app.
                     settings.refreshStreak()
                     val content = widgetContent(
-                        dueCount = flashcards.countDueCards(clock.millis()),
+                        dueCount = flashcards.countDue(clock.millis()).forToday(settings.pace.first()),
                         streak = settings.streakCount.first(),
                         studiedToday = LocalDate.now(clock).toKotlinLocalDate() in settings.studyDays.first()
                     )

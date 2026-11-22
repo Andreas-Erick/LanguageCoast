@@ -7,6 +7,7 @@ import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.CoastContent
 import com.andreaserick.languagecoast.data.CoastSummary
 import com.andreaserick.languagecoast.data.DeletedContent
+import com.andreaserick.languagecoast.data.DueCounts
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.IslandSummary
@@ -231,8 +232,8 @@ class FakeFlashcardRepository : FlashcardRepository {
         }
     }
 
-    override suspend fun countDueCards(now: Long): Int =
-        cards.value.count { it.due != null && isDue(it, now) } + minOf(cards.value.count { it.due == null }, Pace.Steady.newPerDay)
+    override suspend fun countDue(now: Long): DueCounts =
+        DueCounts(reviews = cards.value.count { it.due != null && isDue(it, now) }, newCards = cards.value.count { it.due == null })
 
     override suspend fun restore(content: DeletedContent) {
         coasts.update { (it + content.coasts).sortedBy { coast -> coast.coastId } }

@@ -245,12 +245,12 @@ interface LanguageCoastDao {
     )
     suspend fun editCard(cardId: Int, nativeText: String, targetText: String, alternatives: List<String>, note: String?, islandId: Int)
 
-    /** Number of cards on all coasts that are due at [now]. */
+    /** Studied cards due at [now] and cards never studied, on all coasts; see [DueCounts]. */
     @Query(
-        "SELECT (SELECT COUNT(*) FROM flashcards WHERE flashcards.due IS NOT NULL AND flashcards.due <= :now) + " +
-            "MIN((SELECT COUNT(*) FROM flashcards WHERE flashcards.due IS NULL), :newCap)"
+        "SELECT (SELECT COUNT(*) FROM flashcards WHERE flashcards.due IS NOT NULL AND flashcards.due <= :now) AS reviews, " +
+            "(SELECT COUNT(*) FROM flashcards WHERE flashcards.due IS NULL) AS newCards"
     )
-    suspend fun countDueCards(now: Long, newCap: Int): Int
+    suspend fun countDue(now: Long): DueCounts
 
     /** Deletes [flashcard]. */
     @Delete
