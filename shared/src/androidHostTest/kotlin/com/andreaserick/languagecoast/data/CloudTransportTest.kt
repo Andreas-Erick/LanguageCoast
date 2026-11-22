@@ -194,7 +194,7 @@ class CloudTransportTest {
     fun aProviderWithoutAKeyIsNotAskedAtAll() = runBlocking {
         val translator = CloudTranslator(client)
 
-        val answer = translator.complete(TranslationEngine.Claude(apiKey = " ", model = ""), "Hi")
+        val answer = translator.complete(TranslationEngine.Cloud(TranslationProvider.Claude, apiKey = " ", model = ""), "Hi")
 
         assertEquals("Claude needs an API key. Add one in Settings.", answer.errorMessage)
         assertTrue(requests.isEmpty())

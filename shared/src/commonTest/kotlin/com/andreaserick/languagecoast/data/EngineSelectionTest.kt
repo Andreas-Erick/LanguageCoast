@@ -58,7 +58,7 @@ class EngineSelectionTest {
         settings.setKey(TranslationProvider.Claude, "sk-test")
         settings.allowAiSharing(TranslationProvider.Claude)
 
-        val engine = TranslationEngine.Claude("sk-test", SettingsDefaults.CLAUDE_MODEL)
+        val engine = TranslationEngine.Cloud(TranslationProvider.Claude, "sk-test", SettingsDefaults.CLAUDE_MODEL)
         assertEquals(EngineChoice.Ready(engine), settings.currentEngine(TranslationProvider.Claude))
         assertEquals(TranslationProvider.Claude to engine, settings.fallbackCloudEngine())
     }

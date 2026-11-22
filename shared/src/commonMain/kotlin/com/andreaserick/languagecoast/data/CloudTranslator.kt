@@ -36,27 +36,11 @@ class CloudTranslator internal constructor(private val transport: CloudTransport
     }
 }
 
-private fun apiKeyOf(engine: TranslationEngine): String = when (engine) {
-    is TranslationEngine.Gemini -> engine.apiKey
-    is TranslationEngine.OpenAI -> engine.apiKey
-    is TranslationEngine.Claude -> engine.apiKey
-    is TranslationEngine.Groq -> engine.apiKey
-    is TranslationEngine.DeepSeek -> engine.apiKey
-    is TranslationEngine.OpenRouter -> engine.apiKey
-    TranslationEngine.OnDevice, is TranslationEngine.LocalAi -> ""
-}.trim()
+private fun apiKeyOf(engine: TranslationEngine): String = (engine as? TranslationEngine.Cloud)?.apiKey?.trim().orEmpty()
 
 /** The wire of cloud [engine], with its key and model (the provider's default for a blank one); null for what runs on the phone. */
 internal fun wireFor(engine: TranslationEngine): CloudWire? {
-    val key = apiKeyOf(engine)
-    fun TranslationEngine.modelOr(default: String, model: String) = model.trim().ifBlank { default }
-    return when (engine) {
-        is TranslationEngine.Gemini -> GeminiWire(key, engine.model)
-        is TranslationEngine.OpenAI -> ChatWire.openAi(key, engine.modelOr(SettingsDefaults.OPENAI_MODEL, engine.model))
-        is TranslationEngine.Claude -> ClaudeWire(key, engine.modelOr(SettingsDefaults.CLAUDE_MODEL, engine.model))
-        is TranslationEngine.Groq -> ChatWire.groq(key, engine.modelOr(SettingsDefaults.GROQ_MODEL, engine.model))
-        is TranslationEngine.DeepSeek -> ChatWire.deepSeek(key, engine.modelOr(SettingsDefaults.DEEPSEEK_MODEL, engine.model))
-        is TranslationEngine.OpenRouter -> ChatWire.openRouter(key, engine.modelOr(SettingsDefaults.OPENROUTER_MODEL, engine.model))
-        TranslationEngine.OnDevice, is TranslationEngine.LocalAi -> null
-    }
+    val cloud = engine as? TranslationEngine.Cloud ?: return null
+    val provider = CLOUD_PROVIDERS.getValue(cloud.provider)
+    return provider.wire(cloud.apiKey.trim(), provider.modelOrDefault(cloud.model))
 }
