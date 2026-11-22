@@ -70,3 +70,16 @@ internal fun parseRetryAfterMillis(header: String?): Long? {
     val seconds = header?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 } ?: return null
     return (seconds * 1_000.0).toLong().coerceAtLeast(1_000L)
 }
+
+/**
+ * How long to wait after a rate limit that doesn't say: the providers count requests per minute, so a
+ * short wait is usually enough.
+ */
+const val BUSY_RETRY_SECONDS = 10
+
+/**
+ * The seconds a provider's `retry-after` header asks for, rounded up and at least one, or [BUSY_RETRY_SECONDS]
+ * when [header] is missing or isn't a number.
+ */
+internal fun retryAfterHeaderSeconds(header: String?): Int =
+    (header?.trim()?.toDoubleOrNull()?.takeIf { it >= 0 }?.let { (it + 0.999).toInt() } ?: BUSY_RETRY_SECONDS).coerceAtLeast(1)

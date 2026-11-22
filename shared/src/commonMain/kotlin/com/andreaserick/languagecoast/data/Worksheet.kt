@@ -1354,14 +1354,11 @@ class WorksheetGenerator(
                 else "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards to make new sentences from. Pick more islands."
             )
         }
-        val provider = settings.translationProvider.first()
-        val engine = when (val choice = settings.currentEngine(provider)) {
-            is EngineChoice.Missing -> return WorksheetResult.Failed(choice.message)
-            is EngineChoice.Ready -> choice.engine
+        val ai = when (val connection = AskAi(translator, settings).connect()) {
+            is AiConnection.Unavailable -> return WorksheetResult.Failed(connection.message)
+            is AiConnection.Ready -> connection
         }
-        if (engine == TranslationEngine.OnDevice) {
-            return WorksheetResult.Failed("On-device translation can't write sentences. Pick an AI provider in Settings.")
-        }
+        val provider = ai.provider
 
         val nativeLanguage = settings.nativeLanguage.first()
         val wording = settings.wording.first()
@@ -1377,7 +1374,7 @@ class WorksheetGenerator(
             estimateWorksheetLevel(cards)
         }
         val count = options.count.coerceIn(WORKSHEET_COUNT_RANGE)
-        val isLocal = engine is TranslationEngine.LocalAi
+        val isLocal = ai.isLocal
         val alternativesByCard = HashMap<WorksheetCard, List<String>>()
         val (known, vocabulary, dealer) = withContext(background) {
             val known = ArrayList<String>(cards.size)
@@ -1414,8 +1411,6 @@ class WorksheetGenerator(
         var requests = 0
         // Requests in a row that added nothing: the provider is down, or has run out of new sentences.
         var barren = 0
-        // Times in a row the provider said "not now": see MAX_WAITS.
-        var waits = 0
         var planned = worksheetRequests(count, batch)
         // Until the sheet is full, and through the planned requests for the sentences to spare, unless only a
         // few of those are left: a request for one or two would carry every card once more for them.
@@ -1469,25 +1464,19 @@ class WorksheetGenerator(
                     onProgress(nowWritten)
                 }
             }
-            var completion = translator.complete(engine, prompt, ::reportPartial)
             // Turned away for now (the per-minute limit is used up, or the provider is overloaded): the same
             // request goes through after the wait it names.
-            while (completion.text == null && waits < MAX_WAITS) {
-                val seconds = completion.retryAfterSeconds ?: break
-                waits++
-                delay(seconds.coerceIn(1, MAX_WAIT_SECONDS) * 1_000L)
-                completion = translator.complete(engine, prompt, ::reportPartial)
-            }
-            val text = completion.text
+            val reply = ai.ask(prompt, waitWhileBusy = true, onPartialText = ::reportPartial) { it }
+            val text = reply.value
             if (text == null) {
                 dealer.restore(dealSnapshot)
-                lastError = completion.errorMessage
+                lastError = reply.error
                 // The sheet has its sentences: the request was for the ones to spare, which aren't worth another try.
                 if (written.size >= count) break
                 // The model ran out of time or of room over this many sentences (one that thinks first does,
                 // over a batch of hard ones): half as many can go through, in more requests than planned. Half
                 // of what was asked for, which is fewer than a batch on a short sheet and at the end of a long one.
-                if (completion.isTooLarge && asked > SMALLEST_BATCH) {
+                if (reply.isTooLarge && asked > SMALLEST_BATCH) {
                     perRequest = maxOf(SMALLEST_BATCH, minOf(perRequest, asked) / 2)
                     planned = requests + (wanted - written.size + perRequest - 1) / perRequest
                     continue
@@ -1496,7 +1485,6 @@ class WorksheetGenerator(
                 // A provider that can't be reached for the first request won't answer the next one either.
                 if (written.isEmpty()) break else continue
             }
-            waits = 0
             val fresh = withContext(background) {
                 val seen = HashSet(baseSeen)
                 parseWorksheetResponse(text, anchors)
@@ -1574,13 +1562,5 @@ class WorksheetGenerator(
 
         /** After this many requests in a row that added nothing, the sheet is made from what there is. */
         const val MAX_BARREN_REQUESTS = 2
-
-        /**
-         * How often in a row a sheet waits for a provider that turns it away for now, and how long at most each
-         * time. A per-minute limit is over within the minute; a limit that isn't (a day's quota) ends the sheet
-         * with what it has.
-         */
-        const val MAX_WAITS = 4
-        const val MAX_WAIT_SECONDS = 60
     }
 }
