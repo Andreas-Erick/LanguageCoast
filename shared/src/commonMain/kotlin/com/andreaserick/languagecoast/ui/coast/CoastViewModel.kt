@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.BuildProgress
 import com.andreaserick.languagecoast.data.DeletedContent
 import com.andreaserick.languagecoast.data.AskAi
+import com.andreaserick.languagecoast.data.coastRecords
 import com.andreaserick.languagecoast.data.EngineChoice
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
@@ -15,7 +16,6 @@ import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.IslandTalk
 import com.andreaserick.languagecoast.data.LanguageIsland
 import com.andreaserick.languagecoast.data.Level
-import com.andreaserick.languagecoast.data.levelKey
 import com.andreaserick.languagecoast.data.Languages
 import com.andreaserick.languagecoast.data.PROFILE_PLACEHOLDERS
 import com.andreaserick.languagecoast.data.Pace
@@ -40,10 +40,8 @@ import com.andreaserick.languagecoast.data.buildTalkPrompt
 import com.andreaserick.languagecoast.data.currentEngine
 import com.andreaserick.languagecoast.data.engineReady
 import com.andreaserick.languagecoast.data.parseTalk
-import com.andreaserick.languagecoast.data.personalIslandKey
 import com.andreaserick.languagecoast.data.providerAwaitingPermission
 import com.andreaserick.languagecoast.data.routeFor
-import com.andreaserick.languagecoast.data.starterTopicKey
 import com.andreaserick.languagecoast.speech.Speaker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -235,10 +233,8 @@ class CoastViewModel(
             combine(settings.translationProvider, settings.pace, settings.levelsCelebrated, settings.engineProblem(), ::Setup)
         ) { coast, islands, about, activity, (provider, pace, celebrated, problem) ->
             val language = coast?.language.orEmpty()
-            val prefix = "$coastId:"
-            val builtHere = about.built.filterKeys { it.startsWith(prefix) }.mapKeys { it.key.removePrefix(prefix) }
-            val topicsHere = about.starterTopicsAdded.filter { it.startsWith(prefix) }.mapTo(HashSet()) { it.removePrefix(prefix) }
-            val route = routeFor(islands, topicsHere, builtHere, about.profile, about.answers)
+            val records = coastRecords(coastId, about.starterTopicsAdded, about.built, celebrated)
+            val route = routeFor(islands, records.topicsAdded, records.built, about.profile, about.answers)
             CoastUiState(
                 coastId = coastId,
                 coastName = coast?.displayName ?: coastName,
@@ -249,7 +245,7 @@ class CoastViewModel(
                 coastLanguage = language,
                 starterTopics = PhraseBank.THEMES
                     // A topic whose island was deleted from the coast can be added again.
-                    .filterNot { theme -> starterTopicKey(coastId, theme.category) in about.starterTopicsAdded && islands.any { it.island.name == theme.category } }
+                    .filterNot { theme -> theme.category in records.topicsAdded && islands.any { it.island.name == theme.category } }
                     .map { theme ->
                         val facts = topicFacts.getValue(theme.category)
                         StarterTopicOption(theme = theme, sentenceCount = facts.sentenceCount, profileBlanks = facts.profileBlanks)
@@ -262,7 +258,7 @@ class CoastViewModel(
                 worksheet = activity.worksheet,
                 personalIslands = PersonalIslands.ALL.mapNotNull { island ->
                     // An island the user deleted from the coast can be written again.
-                    val written = about.built[personalIslandKey(coastId, island.id)]?.takeIf { islands.any { it.island.name == island.name } }
+                    val written = records.built[island.id]?.takeIf { islands.any { it.island.name == island.name } }
                     val state = when {
                         !island.isUnlocked(about.answers) -> if (written == null) PersonalIslandState.Locked else return@mapNotNull null
                         written == null -> PersonalIslandState.Ready
@@ -274,7 +270,7 @@ class CoastViewModel(
                 build = activity.build?.takeIf { it.coastId == coastId },
                 buildReview = activity.review,
                 route = route,
-                levelReached = route.levels.lastOrNull { it.isComplete && levelKey(coastId, it.level) !in celebrated }?.level,
+                levelReached = route.levels.lastOrNull { it.isComplete && it.level !in records.celebrated }?.level,
                 islandFacts = (PersonalIslands.ALL + PersonalIslands.WRITTEN).associate { it.id to it.facts(about.profile, about.answers) },
                 pace = pace,
                 talk = activity.talk,
