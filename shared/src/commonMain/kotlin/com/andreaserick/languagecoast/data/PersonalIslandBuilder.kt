@@ -95,16 +95,12 @@ class PersonalIslandBuilder(
         var progress = BuildProgress(coastId, plan.first().first.name, plan.first().first.emoji, done = 0, total = plan.size)
         _progress.value = progress
 
-        val engine = when (val choice = settings.currentEngine()) {
-            is EngineChoice.Ready -> choice.engine
-            is EngineChoice.Missing -> {
-                _progress.value = progress.copy(isFinished = true, error = choice.message)
+        val ai = when (val connection = AskAi(translator, settings).connect()) {
+            is AiConnection.Ready -> connection
+            is AiConnection.Unavailable -> {
+                _progress.value = progress.copy(isFinished = true, error = connection.message)
                 return
             }
-        }
-        if (engine == TranslationEngine.OnDevice) {
-            _progress.value = progress.copy(isFinished = true, error = NEEDS_MODEL_MESSAGE)
-            return
         }
 
         try {
@@ -123,7 +119,7 @@ class PersonalIslandBuilder(
                 val elsewhere = coastCards.filter { it.islandName in island.related }.map { it.card.nativeText }
 
                 val written = write(
-                    engine, island, island.facts(profile, answers), nativeLanguage, coast,
+                    ai, island, island.facts(profile, answers), nativeLanguage, coast,
                     avoid = kept.map { it.nativeText } + elsewhere, level = raisedTo ?: island.level, wording = wording
                 )
                 if (written is Written.Failed) {
@@ -176,7 +172,7 @@ class PersonalIslandBuilder(
      * has no more to say.
      */
     private suspend fun write(
-        engine: TranslationEngine,
+        ai: AiConnection.Ready,
         island: PersonalIsland,
         facts: List<Pair<String, String>>,
         nativeLanguage: String,
@@ -185,7 +181,7 @@ class PersonalIslandBuilder(
         level: Level,
         wording: Wording
     ): Written {
-        val perPrompt = if (engine is TranslationEngine.LocalAi) LOCAL_SENTENCES_PER_PROMPT else PERSONAL_ISLAND_SENTENCES
+        val perPrompt = if (ai.isLocal) LOCAL_SENTENCES_PER_PROMPT else PERSONAL_ISLAND_SENTENCES
         val sentences = ArrayList<ProposedSentence>(PERSONAL_ISLAND_SENTENCES)
         while (sentences.size < PERSONAL_ISLAND_SENTENCES) {
             val wanted = minOf(perPrompt, PERSONAL_ISLAND_SENTENCES - sentences.size)
@@ -194,14 +190,13 @@ class PersonalIslandBuilder(
                 island, facts, nativeLanguage, coast.language, coast.region, coast.goal, wanted, taken.takeLast(AVOID_LIMIT), level, wording
             )
             // Several islands are many requests in a row; a provider's per-minute limit is waited out instead of ending the run.
-            val completion = translator.completeWaiting(engine, prompt)
-            val text = completion.text
-            if (text == null) {
-                logError(TAG, "No sentences for ${island.name}: ${completion.errorMessage}")
-                if (sentences.isEmpty()) return Written.Failed(completion.errorMessage ?: "The AI provider didn't answer. Try again.")
+            val reply = ai.ask(prompt, waitWhileBusy = true) { parsePersonalIslandResponse(it, island, wanted, taken) }
+            val fresh = reply.value
+            if (fresh == null) {
+                logError(TAG, "No sentences for ${island.name}: ${reply.error}")
+                if (sentences.isEmpty()) return Written.Failed(reply.error ?: noAnswer(ai.provider))
                 break
             }
-            val fresh = parsePersonalIslandResponse(text, island, wanted, taken)
             // A small model sometimes repeats the sentence instead of translating it; such a card would teach nothing.
             sentences += fresh.filterNot { nativeLanguage != coast.language && it.nativeText.length > 6 && isSameSentence(it.nativeText, it.targetText) }
             // Fewer than asked for means the model has said what there is to say.
@@ -209,7 +204,7 @@ class PersonalIslandBuilder(
         }
         val theme = PhraseBank.Theme(island.name, island.emoji, emptyList(), emptyList())
         val checked = sentences.chunked(StarterTranslator.BATCH_SIZE).flatMap { batch ->
-            starterTranslator.naturalCheck(engine, theme, nativeLanguage, coast.language, coast.region, batch)
+            starterTranslator.naturalCheck(ai.engine, theme, nativeLanguage, coast.language, coast.region, batch)
         }
         return Written.Sentences(checked)
     }

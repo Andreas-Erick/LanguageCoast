@@ -3,14 +3,16 @@ package com.andreaserick.languagecoast.ui.study
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andreaserick.languagecoast.data.AiConnection
+import com.andreaserick.languagecoast.data.AiReply
 import com.andreaserick.languagecoast.data.AlternativeVerdict
+import com.andreaserick.languagecoast.data.AskAi
 import com.andreaserick.languagecoast.data.CardExchange
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.CardVerdict
 import com.andreaserick.languagecoast.data.Cloze
 import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.DeletedContent
-import com.andreaserick.languagecoast.data.EngineChoice
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
 import com.andreaserick.languagecoast.data.Grade
@@ -20,8 +22,6 @@ import com.andreaserick.languagecoast.data.PlacedCard
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.SuggestedSentence
-import com.andreaserick.languagecoast.data.TranslationEngine
-import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.buildAlternativeCheckPrompt
 import com.andreaserick.languagecoast.data.buildCardCheckPrompt
@@ -29,7 +29,6 @@ import com.andreaserick.languagecoast.data.buildCardQuestionPrompt
 import com.andreaserick.languagecoast.data.buildCardReadingPrompt
 import com.andreaserick.languagecoast.data.buildExplainPrompt
 import com.andreaserick.languagecoast.data.clozeOf
-import com.andreaserick.languagecoast.data.currentEngine
 import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.DailyContext
 import com.andreaserick.languagecoast.data.StudyScope
@@ -272,6 +271,9 @@ class StudyViewModel(
     private val islandId: Int = savedStateHandle["islandId"] ?: 0
     private val coastId: Int = savedStateHandle["coastId"] ?: 0
     private val title: String = savedStateHandle["islandName"] ?: ""
+
+    /** Asks the AI provider picked in Settings: to explain a word, check a card, answer a question. */
+    private val ai = AskAi(translator, settings)
 
     private data class Session(
         /** Every card in the scope, whether in the session or not. */
@@ -604,20 +606,13 @@ class StudyViewModel(
         val card = state.currentCard ?: return
         explainJob?.cancel()
         explainJob = viewModelScope.launch {
-            val provider = settings.translationProvider.first()
-            explanation.value = WordExplanation(word, card.targetText, provider.label, targetLanguage = state.targetLanguage)
-            val answer = when (val choice = settings.currentEngine(provider)) {
-                is EngineChoice.Missing -> null to choice.message
-                is EngineChoice.Ready -> {
-                    val completion = translator.complete(
-                        choice.engine,
-                        buildExplainPrompt(word, card.targetText, state.targetLanguage, state.nativeLanguage)
-                    )
-                    completion.text to completion.errorMessage
-                }
+            val connection = ai.connect()
+            explanation.value = WordExplanation(word, card.targetText, connection.provider.label, targetLanguage = state.targetLanguage)
+            val reply: AiReply<String> = when (connection) {
+                is AiConnection.Unavailable -> AiReply.failed(connection.message)
+                is AiConnection.Ready -> connection.ask(buildExplainPrompt(word, card.targetText, state.targetLanguage, state.nativeLanguage)) { it }
             }
-            explanation.value = explanation.value?.takeIf { it.word == word }
-                ?.copy(text = answer.first, error = answer.second ?: noAnswer(provider).takeIf { answer.first == null })
+            explanation.value = explanation.value?.takeIf { it.word == word }?.copy(text = reply.value, error = reply.error)
         }
     }
 
@@ -640,36 +635,27 @@ class StudyViewModel(
         checkJob?.cancel()
         alternativeJob?.cancel()
         checkJob = viewModelScope.launch {
-            val provider = settings.translationProvider.first()
-            val choice = settings.currentEngine(provider)
+            val connection = ai.connect()
             cardCheck.value = CardCheck(
-                card.cardId, card.nativeText, card.targetText, provider.label,
+                card.cardId, card.nativeText, card.targetText, connection.provider.label,
                 targetLanguage = placed.language,
-                canAskAlternative = choice is EngineChoice.Ready && choice.engine != TranslationEngine.OnDevice
+                canAskAlternative = connection is AiConnection.Ready
             )
-            val answer: Pair<CardVerdict?, String?> = when {
-                choice is EngineChoice.Missing -> null to choice.message
-                choice is EngineChoice.Ready && choice.engine != TranslationEngine.OnDevice -> {
+            val reply: AiReply<CardVerdict> = when (connection) {
+                is AiConnection.Unavailable -> AiReply.failed(connection.message)
+                is AiConnection.Ready -> {
                     // Read back before the model is told what the card should say; shown as soon as it is there.
-                    val reading = translator.complete(choice.engine, buildCardReadingPrompt(card.targetText, placed.language, state.nativeLanguage))
-                        .text?.let { parseCardReading(it, card.targetText) }
+                    val reading = connection.ask(buildCardReadingPrompt(card.targetText, placed.language, state.nativeLanguage)) {
+                        parseCardReading(it, card.targetText)
+                    }.value
                     cardCheck.value = cardCheck.value?.takeIf { it.cardId == card.cardId }?.copy(readsAs = reading)
                     val region = flashcards.observeCoast(placed.coastId).first()?.region
-                    val completion = translator.complete(
-                        choice.engine,
-                        buildCardCheckPrompt(card.nativeText, card.targetText, state.nativeLanguage, placed.language, region, reading)
-                    )
-                    val verdict = completion.text?.let { parseCardCheck(it, card.targetText) }
-                    when {
-                        verdict != null -> verdict to null
-                        completion.text != null -> null to "${provider.label}'s answer couldn't be read. Try again."
-                        else -> null to completion.errorMessage
+                    connection.ask(buildCardCheckPrompt(card.nativeText, card.targetText, state.nativeLanguage, placed.language, region, reading)) {
+                        parseCardCheck(it, card.targetText)
                     }
                 }
-                else -> null to "On-device translation can't check a card. Pick an AI provider in Settings."
             }
-            cardCheck.value = cardCheck.value?.takeIf { it.cardId == card.cardId }
-                ?.copy(verdict = answer.first, error = answer.second ?: noAnswer(provider).takeIf { answer.first == null })
+            cardCheck.value = cardCheck.value?.takeIf { it.cardId == card.cardId }?.copy(verdict = reply.value, error = reply.error)
         }
     }
 
@@ -711,24 +697,11 @@ class StudyViewModel(
         updateAlternative(check.cardId) { AlternativeCheck(proposed) }
         val nativeLanguage = uiState.value.nativeLanguage
         alternativeJob = viewModelScope.launch {
-            val provider = settings.translationProvider.first()
-            val answer: Pair<AlternativeVerdict?, String?> = when (val choice = settings.currentEngine(provider)) {
-                is EngineChoice.Missing -> null to choice.message
-                is EngineChoice.Ready -> {
-                    val region = flashcards.observeCoast(placed.coastId).first()?.region
-                    val completion = translator.complete(
-                        choice.engine,
-                        buildAlternativeCheckPrompt(card.nativeText, card.targetText, proposed, nativeLanguage, placed.language, region)
-                    )
-                    val verdict = completion.text?.let { parseAlternativeCheck(it, proposed) }
-                    when {
-                        verdict != null -> verdict to null
-                        completion.text != null -> null to "${provider.label}'s answer couldn't be read. Try again."
-                        else -> null to (completion.errorMessage ?: noAnswer(provider))
-                    }
-                }
+            val region = flashcards.observeCoast(placed.coastId).first()?.region
+            val reply = ai.ask(buildAlternativeCheckPrompt(card.nativeText, card.targetText, proposed, nativeLanguage, placed.language, region)) {
+                parseAlternativeCheck(it, proposed)
             }
-            updateAlternative(check.cardId) { asked -> if (asked?.text == proposed) asked.copy(verdict = answer.first, error = answer.second) else asked }
+            updateAlternative(check.cardId) { asked -> if (asked?.text == proposed) asked.copy(verdict = reply.value, error = reply.error) else asked }
         }
     }
 
@@ -775,13 +748,10 @@ class StudyViewModel(
         val card = placed.card
         questionJob?.cancel()
         questionJob = viewModelScope.launch {
-            val provider = settings.translationProvider.first()
-            val unavailable = when (val choice = settings.currentEngine(provider)) {
-                is EngineChoice.Missing -> choice.message
-                is EngineChoice.Ready -> ON_DEVICE_CANNOT_ANSWER.takeIf { choice.engine == TranslationEngine.OnDevice }
-            }
+            val connection = ai.connect()
             cardQuestions.value = CardQuestions(
-                card.cardId, card.nativeText, card.targetText, provider.label, unavailable, targetLanguage = placed.language
+                card.cardId, card.nativeText, card.targetText, connection.provider.label,
+                (connection as? AiConnection.Unavailable)?.message, targetLanguage = placed.language
             )
         }
     }
@@ -802,23 +772,12 @@ class StudyViewModel(
         val nativeLanguage = uiState.value.nativeLanguage
         questionJob?.cancel()
         questionJob = viewModelScope.launch {
-            val provider = settings.translationProvider.first()
-            val answer: Pair<String?, String?> = when (val choice = settings.currentEngine(provider)) {
-                is EngineChoice.Missing -> null to choice.message
-                is EngineChoice.Ready -> if (choice.engine == TranslationEngine.OnDevice) null to ON_DEVICE_CANNOT_ANSWER else {
-                    val region = flashcards.observeCoast(placed.coastId).first()?.region
-                    val completion = translator.complete(
-                        choice.engine,
-                        buildCardQuestionPrompt(placed.card, nativeLanguage, placed.language, region, earlier, question)
-                    )
-                    val parsed = completion.text?.let(::parseCardAnswer)
-                    parsed to (completion.errorMessage ?: noAnswer(provider)).takeIf { parsed == null }
-                }
-            }
+            val region = flashcards.observeCoast(placed.coastId).first()?.region
+            val reply = ai.ask(buildCardQuestionPrompt(placed.card, nativeLanguage, placed.language, region, earlier, question), ::parseCardAnswer)
             cardQuestions.update { current ->
                 val last = current?.asked?.lastOrNull()
                 if (current == null || current.cardId != open.cardId || last?.question != question || !last.isLoading) current
-                else current.copy(asked = current.asked.dropLast(1) + last.copy(answer = answer.first, error = answer.second))
+                else current.copy(asked = current.asked.dropLast(1) + last.copy(answer = reply.value, error = reply.error))
             }
         }
     }
@@ -871,14 +830,9 @@ class StudyViewModel(
         speaker.stop()
     }
 
-    /** What the user is told when [provider] came back with neither an answer nor a reason. */
-    private fun noAnswer(provider: TranslationProvider): String = "${provider.label} gave no answer. Try again."
-
     private companion object {
         /** A provider's remark on an alternative becomes part of the card's note only up to this length. */
         const val MAX_SAVED_NOTE = 160
-
-        const val ON_DEVICE_CANNOT_ANSWER = "On-device translation can't answer questions. Pick an AI provider in Settings."
     }
 
     /** Days from [now] until the earliest card that isn't due yet becomes due, or null if there is none. */

@@ -465,7 +465,7 @@ class WorksheetGeneratorTest {
         assertTrue("gone" in message(generator.generate(99, WorksheetOptions())))
 
         settings.translationProvider.value = TranslationProvider.OnDevice
-        assertTrue("can't write sentences" in message(generator.generate(1, WorksheetOptions())))
+        assertEquals(ON_DEVICE_CANNOT_ANSWER, message(generator.generate(1, WorksheetOptions())))
 
         settings.translationProvider.value = TranslationProvider.Gemini
         settings.apiKey.value = ""
@@ -529,7 +529,8 @@ class WorksheetGeneratorTest {
         flashcards.cards.value = (1..3200).map {
             Flashcard(cardId = it, islandId = when { it <= 3000 -> 1; it <= 3100 -> 2; else -> 3 }, nativeText = "native $it", targetText = "ziel$it")
         }
-        translator.completionFor = { Completion("") }
+        // An answer with no sentences in it: the sheet asks once more, with the other islands' cards, before it gives up.
+        translator.completionFor = { Completion("Nothing to say.") }
 
         generator.generate(1, WorksheetOptions(count = 3))
 

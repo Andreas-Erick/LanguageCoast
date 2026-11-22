@@ -1,7 +1,5 @@
 package com.andreaserick.languagecoast.data
 
-import kotlinx.coroutines.delay
-
 /** Translates sentences and assigns them to a category (island). */
 interface Translator {
     /**
@@ -56,49 +54,6 @@ data class Completion(
         /** The provider is rate-limiting or overloaded; the same request can succeed after [retryAfterSeconds]. */
         fun busy(message: String, retryAfterSeconds: Int) = Completion(null, message, retryAfterSeconds)
     }
-}
-
-/** How often in a row [completeWaiting] waits for a provider that turns a request away for now. */
-const val BUSY_MAX_WAITS = 4
-
-/** The longest [completeWaiting] waits each time, whatever the provider asks for. */
-const val BUSY_MAX_WAIT_SECONDS = 60
-
-/**
- * How long to wait after a rate limit that doesn't say: the providers count requests per minute, so a
- * short wait is usually enough.
- */
-const val BUSY_RETRY_SECONDS = 10
-
-/**
- * The seconds a provider's `retry-after` header asks for, rounded up and at least one, or [BUSY_RETRY_SECONDS]
- * when [header] is missing or isn't a number.
- */
-internal fun retryAfterHeaderSeconds(header: String?): Int =
-    (header?.trim()?.toDoubleOrNull()?.takeIf { it >= 0 }?.let { (it + 0.999).toInt() } ?: BUSY_RETRY_SECONDS).coerceAtLeast(1)
-
-/**
- * [Translator.complete] for work that sends many requests in a row (a starter topic, an island): when the
- * provider turns the request away only for now ([Completion.retryAfterSeconds]: a per-minute limit, or it is
- * overloaded), the same request is sent again after the wait it names, up to [maxWaits] times. Any other
- * failure, and a wait that didn't help, comes back as it is.
- */
-suspend fun Translator.completeWaiting(engine: TranslationEngine, prompt: String, maxWaits: Int = BUSY_MAX_WAITS): Completion {
-    var completion = complete(engine, prompt)
-    var waits = 0
-    while (completion.text == null && waits < maxWaits) {
-        val seconds = completion.retryAfterSeconds ?: break
-        val waitMillis = computeBackoffDelayMillis(
-            attempt = waits,
-            initialDelayMillis = seconds.coerceIn(1, BUSY_MAX_WAIT_SECONDS) * 1_000L,
-            maxDelayMillis = BUSY_MAX_WAIT_SECONDS * 1_000L,
-            retryAfterMillis = (seconds.coerceIn(1, BUSY_MAX_WAIT_SECONDS) * 1_000L)
-        )
-        waits++
-        delay(waitMillis)
-        completion = complete(engine, prompt)
-    }
-    return completion
 }
 
 /**

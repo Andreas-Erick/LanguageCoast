@@ -171,7 +171,7 @@ class PersonalIslandBuilderTest {
 
         builder.run(1, orders("pets"))
 
-        assertEquals(PersonalIslandBuilder.NEEDS_MODEL_MESSAGE, builder.progress.value?.error)
+        assertEquals(ON_DEVICE_CANNOT_ANSWER, builder.progress.value?.error)
         assertTrue(flashcards.cards.value.isEmpty())
         assertTrue(translator.prompts.isEmpty())
     }
@@ -340,7 +340,7 @@ class PersonalIslandBuilderTest {
 
         translator.completion = Completion("I can't do that.")
         viewModel.writeTalk(flashcards.islands.value.single())
-        assertEquals("The AI provider's answer couldn't be read. Try again.", viewModel.uiState.value.talk?.error)
+        assertEquals("Gemini's answer couldn't be read. Try again.", viewModel.uiState.value.talk?.error)
 
         viewModel.dismissTalk()
         assertNull(viewModel.uiState.value.talk)

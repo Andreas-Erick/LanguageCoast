@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.BuildProgress
 import com.andreaserick.languagecoast.data.DeletedContent
+import com.andreaserick.languagecoast.data.AskAi
 import com.andreaserick.languagecoast.data.EngineChoice
 import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.FlashcardRepository
@@ -27,7 +28,6 @@ import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.StarterImporter
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.TALK_CARD_LIMIT
-import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.WORKSHEET_COUNT_RANGE
@@ -334,20 +334,11 @@ class CoastViewModel(
             val canSpeak = speaker.canSpeak(coast.language).first()
             talk.value = TalkUiState(island, canSpeak = canSpeak)
             val cards = flashcards.observeCards(island.islandId).first().sortedBy { it.cardId }.take(TALK_CARD_LIMIT)
-            val result: Pair<IslandTalk?, String?> = when (val choice = settings.currentEngine()) {
-                is EngineChoice.Missing -> null to choice.message
-                is EngineChoice.Ready -> if (choice.engine == TranslationEngine.OnDevice) {
-                    null to "A talk is written by an AI model. Pick an AI provider under Settings › Translation first."
-                } else {
-                    val prompt = buildTalkPrompt(
-                        island.name, cards.map { it.nativeText to it.targetText }, settings.nativeLanguage.first(), coast.language, coast.region, settings.wording.first()
-                    )
-                    val completion = translator.complete(choice.engine, prompt)
-                    val written = completion.text?.let(::parseTalk)
-                    written to if (written == null) completion.errorMessage ?: "The AI provider's answer couldn't be read. Try again." else null
-                }
-            }
-            talk.value = TalkUiState(island, talk = result.first, error = result.second, canSpeak = canSpeak)
+            val prompt = buildTalkPrompt(
+                island.name, cards.map { it.nativeText to it.targetText }, settings.nativeLanguage.first(), coast.language, coast.region, settings.wording.first()
+            )
+            val reply = AskAi(translator, settings).ask(prompt, ::parseTalk)
+            talk.value = TalkUiState(island, talk = reply.value, error = reply.error, canSpeak = canSpeak)
         }
     }
 
