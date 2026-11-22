@@ -14,6 +14,7 @@ import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlin.time.TimeSource
 
 /*
  * Sending a prompt to a cloud AI provider and reading its answer. Every provider gets the same treatment here:
@@ -188,6 +189,11 @@ internal class CloudTransport(private val client: HttpClient) {
         // Set once the provider has begun to answer. A time limit that runs out before that is a connection that
         // couldn't be made, which both platforms report as a timeout too: asking for less would not help then.
         var answering = false
+        // When the time limit ends an answer that is being read, the networking may report it as an error of
+        // its own or simply end the stream, depending on which side notices first. Past the limit, an answer
+        // that started and didn't finish took too long, however it was reported.
+        val started = TimeSource.Monotonic.markNow()
+        fun pastTimeLimit() = started.elapsedNow().inWholeMilliseconds >= patience.totalMillis
         return try {
             client.preparePost {
                 wire.request(this, prompt)
@@ -209,7 +215,13 @@ internal class CloudTransport(private val client: HttpClient) {
                             val line = channel.readUTF8Line() ?: break
                             stream.read(line)
                         }
-                        Attempt.Done(stream.completion())
+                        val completion = stream.completion()
+                        if (completion.text == null && !completion.isTooLarge && pastTimeLimit()) {
+                            logError(TAG, "$name took too long to answer: the stream ended at the time limit")
+                            Attempt.Done(Completion.tooLarge(tookTooLongMessage(name)))
+                        } else {
+                            Attempt.Done(completion)
+                        }
                     }
                 }
             }
@@ -221,7 +233,7 @@ internal class CloudTransport(private val client: HttpClient) {
             Attempt.Done(Completion.tooLarge(tookTooLongMessage(name)))
         } catch (e: Exception) {
             // Everything: this must never throw, and a key pasted with a line break in it, for one, fails before anything is sent.
-            if (answering && ranOutOfTime(e)) {
+            if (answering && (ranOutOfTime(e) || pastTimeLimit())) {
                 logError(TAG, "$name took too long to answer", e)
                 Attempt.Done(Completion.tooLarge(tookTooLongMessage(name)))
             } else {
