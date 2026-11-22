@@ -60,7 +60,10 @@ class BackupViewModel(
     /** A backup of everything in the app, as the file's text. */
     suspend fun buildBackup(): BackupFile {
         val backup = backups.createBackup()
-        return BackupFile(encodeBackup(backup), backup.cards.size)
+        val file = BackupFile(encodeBackup(backup), backup.cards.size)
+        // Ticks off "Back up your cards once" on Today.
+        backups.recordBackup()
+        return file
     }
 
     /** A file name with today's date, like "language-coast-backup-2026-10-11.json". */

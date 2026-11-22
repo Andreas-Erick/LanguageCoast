@@ -156,7 +156,9 @@ class SuggestionPool(
     private val suggester: SentenceSuggester,
     private val clock: Clock,
     /** Where background top-ups run; tests pass a scope of their own. */
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    /** The first sentences a brand-new coast gets at once, by native and coast language (see [StarterBundle]). */
+    private val shipped: (nativeLanguage: String, coastLanguage: String) -> List<ProposedSentence> = StarterBundle::firstSentences
 ) {
     private val lock = Mutex()
     private val jobs = MutableStateFlow<Map<Int, Job>>(emptyMap())
@@ -214,9 +216,20 @@ class SuggestionPool(
 
         _preparing.update { it + coastId }
         try {
+            val nativeLanguage = settings.nativeLanguage.first()
+            // A brand-new coast gets the shipped first sentences at once, so its first session never waits for a
+            // download or a key; the rest is still prepared below and joins them when it is ready.
+            if (cards.isEmpty() && flashcards.getAllSuggestions(coastId).isEmpty()) {
+                val firstSentences = shipped(nativeLanguage, coast.language)
+                if (firstSentences.isNotEmpty()) {
+                    flashcards.addSuggestions(
+                        firstSentences.map { SuggestedSentence(coastId = coastId, nativeText = it.nativeText, targetText = it.targetText, category = it.category, emoji = it.emoji) }
+                    )
+                    flashcards.recordBankOffered(coastId, firstSentences.size)
+                }
+            }
             val known = flashcards.getAllSuggestions(coastId)
             val avoid = cards.map { it.card.nativeText } + known.map { it.nativeText }
-            val nativeLanguage = settings.nativeLanguage.first()
             val existingCategories = flashcards.observeIslands(coastId).first().map { it.name }
             // A translation that never comes back (a language pack that won't download, a request that stalls)
             // must not keep every coast waiting.

@@ -22,7 +22,11 @@ class SuggestionPoolTest {
     private val flashcards = FakeFlashcardRepository()
     private val settings = FakeSettingsRepository()
     private val translator = FakeTranslator()
-    private val pool = SuggestionPool(flashcards, settings, SentenceSuggester(translator, settings, StarterTranslator(translator)), TEST_CLOCK, CoroutineScope(Job()))
+    // Without the shipped first sentences, so each test sees only what it is about; those have tests of their own below.
+    private val pool = SuggestionPool(flashcards, settings, SentenceSuggester(translator, settings, StarterTranslator(translator)), TEST_CLOCK, CoroutineScope(Job())) { _, _ -> emptyList() }
+
+    /** A pool that gives a brand-new coast the shipped first sentences, as the app's does. */
+    private val shippingPool = SuggestionPool(flashcards, settings, SentenceSuggester(translator, settings, StarterTranslator(translator)), TEST_CLOCK, CoroutineScope(Job()))
 
     @Before
     fun setUp() {
@@ -190,7 +194,7 @@ class SuggestionPoolTest {
         val stuck = object : Translator {
             override suspend fun translateAndCategorize(request: TranslationRequest): TranslationResult = awaitCancellation()
         }
-        val stuckPool = SuggestionPool(flashcards, settings, SentenceSuggester(stuck, settings, StarterTranslator(stuck)), TEST_CLOCK, CoroutineScope(Job()))
+        val stuckPool = SuggestionPool(flashcards, settings, SentenceSuggester(stuck, settings, StarterTranslator(stuck)), TEST_CLOCK, CoroutineScope(Job())) { _, _ -> emptyList() }
         settings.translationProvider.value = TranslationProvider.OnDevice
 
         stuckPool.topUp(1)
@@ -219,7 +223,7 @@ class SuggestionPoolTest {
                 awaitCancellation()
             }
         }
-        val stuckPool = SuggestionPool(flashcards, settings, SentenceSuggester(stuck, settings, StarterTranslator(stuck)), clock, CoroutineScope(Job()))
+        val stuckPool = SuggestionPool(flashcards, settings, SentenceSuggester(stuck, settings, StarterTranslator(stuck)), clock, CoroutineScope(Job())) { _, _ -> emptyList() }
         settings.translationProvider.value = TranslationProvider.OnDevice
 
         stuckPool.topUp(1)
@@ -248,5 +252,40 @@ class SuggestionPoolTest {
         assertEquals(TranslationEngine.OnDevice, translator.lastRequest?.engine)
         assertTrue(translator.prompts.isEmpty())
         assertEquals(1, flashcards.coasts.value.single().bankOffered)
+    }
+
+    @Test
+    fun aNewCoastGetsTheShippedSentencesAtOnceEvenWhenTranslationFails() = runTest {
+        settings.apiKey.value = ""
+        translator.result = TranslationResult.FAILURE
+
+        shippingPool.topUp(1)
+
+        val stored = flashcards.suggestions.value
+        assertEquals(StarterBundle.SENTENCES, stored.map { it.nativeText })
+        assertEquals(listOf("Hallo, wie geht's?", "Vielen Dank.", "Ja, bitte."), stored.map { it.targetText })
+        assertEquals(StarterBundle.SENTENCES.size, flashcards.coasts.value.single().bankOffered)
+    }
+
+    @Test
+    fun theShippedSentencesAreOnlyForACoastWithNothingYet() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1, coastId = 1)
+        settings.apiKey.value = ""
+        translator.result = TranslationResult.FAILURE
+
+        shippingPool.topUp(1)
+
+        assertTrue(flashcards.suggestions.value.none { it.nativeText in StarterBundle.SENTENCES })
+    }
+
+    @Test
+    fun aLanguageTheBundleDoesNotHaveWaitsForTranslation() = runTest {
+        settings.nativeLanguage.value = "Albanian"
+        settings.apiKey.value = ""
+        translator.result = TranslationResult.FAILURE
+
+        shippingPool.topUp(1)
+
+        assertTrue(flashcards.suggestions.value.isEmpty())
     }
 }

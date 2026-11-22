@@ -143,6 +143,12 @@ internal object SettingKeys {
     /** After a restore the invitation may show once more; it is one tap to wave away. */
     val ABOUT_YOU_INVITE_DISMISSED = deviceOnly(booleanPreferencesKey("about_you_invite_dismissed"))
 
+    /** A restore brings cards that were already set up elsewhere, so the card stays hidden only on this phone. */
+    val GETTING_STARTED_DISMISSED = deviceOnly(booleanPreferencesKey("getting_started_dismissed"))
+
+    /** Whether this phone ever made a backup: a fact about the phone, not about the cards. */
+    val HAS_BACKED_UP = deviceOnly(booleanPreferencesKey("has_backed_up"))
+
     /** One model id per line. A check for new models brings the list back. */
     fun modelOptions(provider: TranslationProvider) = stringPreferencesKey("model_options_${provider.name.lowercase()}")
 

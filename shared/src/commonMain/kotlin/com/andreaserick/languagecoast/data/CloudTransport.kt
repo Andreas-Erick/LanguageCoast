@@ -252,6 +252,14 @@ internal class CloudTransport(private val client: HttpClient) {
 internal fun tookTooLongMessage(providerName: String): String = "$providerName took too long to answer. Try again or pick a faster model."
 
 /**
+ * What the user is told when [providerName] turned a request away for now because the key sent too many in a
+ * short time. Said without "rate limit": a learner who pasted a key has no reason to know the term, only what to do.
+ * An account without credit has its own message ([providerErrorMessage]), since no wait fixes that.
+ */
+internal fun tooManyRequestsMessage(providerName: String): String =
+    "$providerName is getting too many requests from your key right now. Wait a minute and try again, or pick another provider in Settings."
+
+/**
  * Whether [error] says an answer took too long or stopped coming, rather than failing to connect at all.
  * Each platform's networking says that its own way, and while an answer is being read it arrives wrapped
  * ("channel closed: Read timed out"), so the causes are looked through as well.
@@ -278,7 +286,7 @@ internal fun providerErrorMessage(providerName: String, status: Int, detail: Str
     val aboutAccount = detail != null && ACCOUNT_WORDS.any { detail.contains(it, ignoreCase = true) }
     return when {
         status == 402 || aboutAccount ->
-            "Your $providerName account is out of credit or over its quota. Check your plan with $providerName, or pick another provider in Settings."
+            "Your $providerName account is out of credit, or has used up what its plan allows. Check your plan with $providerName, or pick another provider in Settings."
         status == 403 -> "$providerName didn't allow this request. Check that your key can use the selected model, or pick another model in Settings."
         status >= 500 -> "$providerName is having trouble right now. Try again in a moment."
         else -> "$providerName couldn't answer. Try again, or pick another model in Settings."

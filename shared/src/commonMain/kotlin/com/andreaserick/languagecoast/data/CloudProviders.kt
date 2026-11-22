@@ -22,8 +22,12 @@ internal class ModelListEndpoint(
     val isUsable: (name: String, entry: JsonObject) -> Boolean
 )
 
-/** What Settings says about a provider's key: the field's title, where a key comes from, and how one starts. */
-class KeyCopy(val title: String, val intro: String, val placeholder: String)
+/**
+ * What Settings says about a provider's key: the field's title, where a key comes from, and how one starts.
+ *
+ * @property site What the provider calls the place where keys are made, for "Open …" in the guided key setup.
+ */
+class KeyCopy(val title: String, val intro: String, val placeholder: String, val site: String)
 
 /**
  * One cloud provider.
@@ -32,7 +36,7 @@ class KeyCopy(val title: String, val intro: String, val placeholder: String)
  * @property keyPreference Where the API key is kept: its name in [SecretStore] (and, from old versions, DataStore).
  * @property modelPreference Where the picked model is kept.
  * @property defaultModel The model a new user starts with, and the one a blank model stands for.
- * @property models The models offered until "Check for new models" asks the provider; empty when the model is typed.
+ * @property models The models offered until "Refresh model list" asks the provider; empty when the model is typed.
  * @property normalizeModel Turns a stored model that the provider has retired into its replacement.
  * @property wire Builds the provider's wire for a key and a model.
  * @property capacity How much the provider's models take on at once, for a model where it is known.
@@ -58,7 +62,7 @@ class CloudProvider internal constructor(
     val keyCopy: KeyCopy,
     val modelHint: String? = null
 ) {
-    /** Whether the model is picked from a list that "Check for new models" keeps current, rather than typed. */
+    /** Whether the model is picked from a list that "Refresh model list" keeps current, rather than typed. */
     val hasModelList: Boolean get() = modelList != null
 
     /** [model] as it is sent: the provider's default for a blank one, and a retired one's replacement. */
@@ -86,7 +90,7 @@ val CLOUD_PROVIDERS: Map<TranslationProvider, CloudProvider> = listOf(
         },
         keyUrl = "https://aistudio.google.com/apikey",
         privacyPolicyUrl = "https://policies.google.com/privacy",
-        keyCopy = KeyCopy("Google Gemini API key", "Google AI Studio gives you a key that is free to start with.", "AIzaSy..."),
+        keyCopy = KeyCopy("Google Gemini API key", "Google AI Studio gives you a key that is free to start with.", "AIzaSy...", "Google AI Studio"),
         modelHint = "The default model answers in under a second and is plenty for translating, sorting cards onto islands and " +
             "suggesting alternatives. The larger models think before they answer, so they take a few seconds longer."
     ),
@@ -104,7 +108,7 @@ val CLOUD_PROVIDERS: Map<TranslationProvider, CloudProvider> = listOf(
         },
         keyUrl = "https://platform.openai.com/api-keys",
         privacyPolicyUrl = "https://openai.com/policies/privacy-policy/",
-        keyCopy = KeyCopy("OpenAI API key", "Create a key in your OpenAI account.", "sk-proj-...")
+        keyCopy = KeyCopy("OpenAI API key", "Create a key in your OpenAI account.", "sk-proj-...", "the OpenAI Platform")
     ),
     CloudProvider(
         provider = TranslationProvider.Claude,
@@ -123,7 +127,7 @@ val CLOUD_PROVIDERS: Map<TranslationProvider, CloudProvider> = listOf(
         ) { name, _ -> name.startsWith("claude-") },
         keyUrl = "https://platform.claude.com/settings/keys",
         privacyPolicyUrl = "https://www.anthropic.com/legal/privacy",
-        keyCopy = KeyCopy("Anthropic Claude API key", "Create a key in your Anthropic account.", "sk-ant-...")
+        keyCopy = KeyCopy("Anthropic Claude API key", "Create a key in your Anthropic account.", "sk-ant-...", "the Claude Console")
     ),
     CloudProvider(
         provider = TranslationProvider.Groq,
@@ -138,7 +142,7 @@ val CLOUD_PROVIDERS: Map<TranslationProvider, CloudProvider> = listOf(
         },
         keyUrl = "https://console.groq.com/keys",
         privacyPolicyUrl = "https://groq.com/privacy-policy/",
-        keyCopy = KeyCopy("Groq API key", "Create a key in your Groq account.", "gsk_..."),
+        keyCopy = KeyCopy("Groq API key", "Create a key in your Groq account.", "gsk_...", "GroqCloud"),
         modelHint = "Groq runs open models such as Llama and Qwen, and answers quickly."
     ),
     CloudProvider(
@@ -152,7 +156,7 @@ val CLOUD_PROVIDERS: Map<TranslationProvider, CloudProvider> = listOf(
         modelList = ModelListEndpoint("https://api.deepseek.com/models", ::bearer) { _, _ -> true },
         keyUrl = "https://platform.deepseek.com/api_keys",
         privacyPolicyUrl = "https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html",
-        keyCopy = KeyCopy("DeepSeek API key", "Create a key in your DeepSeek account.", "sk-...")
+        keyCopy = KeyCopy("DeepSeek API key", "Create a key in your DeepSeek account.", "sk-...", "the DeepSeek Platform")
     ),
     CloudProvider(
         provider = TranslationProvider.OpenRouter,
@@ -166,8 +170,9 @@ val CLOUD_PROVIDERS: Map<TranslationProvider, CloudProvider> = listOf(
         modelList = null,
         keyUrl = "https://openrouter.ai/settings/keys",
         privacyPolicyUrl = "https://openrouter.ai/privacy",
-        keyCopy = KeyCopy("OpenRouter API key", "One key for models from many companies, paid from your OpenRouter credits.", "sk-or-..."),
-        modelHint = "\"${SettingsDefaults.OPENROUTER_MODEL}\" picks a model for you. Find other model IDs on openrouter.ai/models."
+        keyCopy = KeyCopy("OpenRouter API key", "One key for models from many companies, paid from your OpenRouter credits.", "sk-or-...", "OpenRouter"),
+        // The placeholder shows the id that stands for a blank field; the hint says what that means without the id.
+        modelHint = "Leave as is to let OpenRouter choose. To pick one yourself, find its ID on openrouter.ai/models."
     )
 ).associateBy { it.provider }
 

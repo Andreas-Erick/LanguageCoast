@@ -6,6 +6,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andreaserick.languagecoast.data.AddedCard
+import com.andreaserick.languagecoast.data.CardEdit
+import com.andreaserick.languagecoast.data.DeletedContent
+import com.andreaserick.languagecoast.data.Flashcard
 import com.andreaserick.languagecoast.data.Coast
 import com.andreaserick.languagecoast.data.CoastSummary
 import com.andreaserick.languagecoast.data.DEFAULT_CATEGORY
@@ -184,7 +187,11 @@ data class CreateUiState(
     /** The picked cloud provider while it has a key but may not be sent text yet; null otherwise. */
     val awaitingPermission: TranslationProvider? = null,
     /** Why new sentences for the selected coast couldn't be prepared, when the last attempt failed. */
-    val suggestionError: String? = null
+    val suggestionError: String? = null,
+    /** Whether the user hid the "Getting started" card. Hidden until known, so it never flashes. */
+    val gettingStartedDismissed: Boolean = true,
+    /** Whether this phone ever made a backup. */
+    val hasBackedUp: Boolean = false
 ) {
     /** True when the selected coast is in the user's native language, so there's nothing to translate. */
     val isSameLanguage: Boolean get() = selectedCoast?.language == nativeLanguage
@@ -192,6 +199,17 @@ data class CreateUiState(
 
     /** The selected coast's counts, once known. */
     val focusSummary: CoastSummary? get() = coastSummaries.firstOrNull { it.coast.coastId == selectedCoast?.coastId }
+
+    /**
+     * The "Getting started" card's steps, or null when it isn't shown: hidden by the user, or every step done.
+     * Where translation works from the start (on-device translation) its step is simply ticked already, so
+     * the card opens at "1 of 3" and the first step shows that something is already done.
+     */
+    val gettingStarted: GettingStarted? get() {
+        if (gettingStartedDismissed || selectedCoast == null) return null
+        val steps = GettingStarted(translationReady = engineReady, studied = lastStudy != null, backedUp = hasBackedUp)
+        return steps.takeUnless { it.isDone }
+    }
 
     /** A session was completed today, so Today's job is done; another round is offered, not pushed. */
     val doneToday: Boolean get() = lastStudy != null && lastStudy == today
@@ -203,6 +221,15 @@ data class CreateUiState(
         val summary = focusSummary ?: return null
         return dailyPlan(summary.reviewCount, summary.newCount, readySuggestions, lastStudy, day, pace)
     }
+}
+
+/**
+ * The first three things a new user does, for the calm checklist on Today: translation working, a first
+ * session finished and a first backup. Each ticks itself off from what really happened.
+ */
+data class GettingStarted(val translationReady: Boolean, val studied: Boolean, val backedUp: Boolean) {
+    val doneCount: Int get() = listOf(translationReady, studied, backedUp).count { it }
+    val isDone: Boolean get() = doneCount == 3
 }
 
 /** Outcome of the last save, shown as a feedback card. */
@@ -340,6 +367,8 @@ class CreateViewModel(
             }
         }
         viewModelScope.launch { settings.providerAwaitingPermission().collect { uiState = uiState.copy(awaitingPermission = it) } }
+        viewModelScope.launch { settings.gettingStartedDismissed.collect { uiState = uiState.copy(gettingStartedDismissed = it) } }
+        viewModelScope.launch { settings.hasBackedUp.collect { uiState = uiState.copy(hasBackedUp = it) } }
         viewModelScope.launch {
             // A different provider may manage where the last one failed, and so may the same one once it has its key or permission.
             combine(
@@ -445,6 +474,24 @@ class CreateViewModel(
     fun dismissAboutYouInvite() {
         viewModelScope.launch { settings.dismissAboutYouInvite() }
     }
+
+    /** Hides the "Getting started" card for good. */
+    fun dismissGettingStarted() {
+        viewModelScope.launch { settings.dismissGettingStarted() }
+    }
+
+    /** Saves [edit] to card [cardId], from the list of recently added cards. */
+    fun editCard(cardId: Int, edit: CardEdit) {
+        viewModelScope.launch { flashcards.editCard(cardId, edit) }
+    }
+
+    /** Deletes [card] right away; [onDeleted] receives it so the delete can be undone. */
+    fun deleteCard(card: Flashcard, onDeleted: (DeletedContent) -> Unit) {
+        viewModelScope.launch { onDeleted(flashcards.deleteFlashcard(card)) }
+    }
+
+    /** Puts back a deleted card. Not tied to this ViewModel's scope, so undo works after leaving the screen. */
+    suspend fun restore(content: DeletedContent) = flashcards.restore(content)
 
     /** Makes [coast] the one new cards are added to. */
     fun onCoastSelected(coast: Coast) {

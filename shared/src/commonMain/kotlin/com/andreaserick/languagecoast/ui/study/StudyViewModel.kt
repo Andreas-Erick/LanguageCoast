@@ -7,6 +7,7 @@ import com.andreaserick.languagecoast.data.AiConnection
 import com.andreaserick.languagecoast.data.AiReply
 import com.andreaserick.languagecoast.data.AlternativeVerdict
 import com.andreaserick.languagecoast.data.AskAi
+import com.andreaserick.languagecoast.data.BONUS_NEW_SENTENCES
 import com.andreaserick.languagecoast.data.CardExchange
 import com.andreaserick.languagecoast.data.CardEdit
 import com.andreaserick.languagecoast.data.CardVerdict
@@ -204,7 +205,18 @@ data class StudyUiState(
     /** The daily session was shrunk because the user was away for days. */
     val isWelcomeBack: Boolean = false,
     /** Whether the scope has any card to practice; a coast without cards has none after every new sentence was skipped. */
-    val canPracticeAll: Boolean = true
+    val canPracticeAll: Boolean = true,
+    /**
+     * A daily session that is the user's first ever (nothing was studied before it started). Its end screen
+     * says where the cards live and offers a bonus round, so install day doesn't end after a minute.
+     */
+    val isFirstSession: Boolean = false,
+    /** New items a bonus round could offer now: never-studied cards on the coast and prepared sentences, up to [BONUS_NEW_SENTENCES]. */
+    val bonusAvailable: Int = 0,
+    /** The pace picked in Settings, for the pace sheet on the first session's end screen. */
+    val pace: Pace = Pace.Steady,
+    /** Cards on the session's coast that were never studied, which the pace sheet says how long take. */
+    val newWaiting: Int = 0
 ) {
     val currentPlaced: PlacedCard? get() = sessionCards.getOrNull(currentIndex)
     val currentCard: Flashcard? get() = currentPlaced?.card
@@ -269,8 +281,11 @@ class StudyViewModel(
     // Populated by Navigation from the StudyScreenRoute properties.
     private val scope: StudyScope = StudyScope.fromKey(savedStateHandle["scope"])
     private val islandId: Int = savedStateHandle["islandId"] ?: 0
-    private val coastId: Int = savedStateHandle["coastId"] ?: 0
+    /** The coast of a coast or daily session; 0 for the other scopes. */
+    val coastId: Int = savedStateHandle["coastId"] ?: 0
     private val title: String = savedStateHandle["islandName"] ?: ""
+    /** Above 0 for a bonus round (see [StudyScreenRoute.bonus]): no reviews, up to this many new items. */
+    private val bonusNew: Int = savedStateHandle["bonusNew"] ?: 0
 
     /** Asks the AI provider picked in Settings: to explain a word, check a card, answer a question. */
     private val ai = AskAi(translator, settings)
@@ -343,14 +358,25 @@ class StudyViewModel(
             }
         }
 
+    /** Prepared sentences still in the coast's pool, live, so the end screen knows whether a bonus round has any to offer. */
+    private val poolSize: Flow<Int> =
+        if (scope == StudyScope.Daily) flashcards.observeSuggestions(coastId).map { it.size }.distinctUntilChanged() else flowOf(0)
+
+    /** What the screen shows besides the session and its sheets that comes from elsewhere. */
+    private data class Surroundings(val spoken: Set<String>, val islands: List<LanguageIsland>, val poolSize: Int, val pace: Pace)
+
     val uiState: StateFlow<StudyUiState> = combine(
         combine(session, explanation, cardCheck, cardQuestions) { s, e, c, q -> s to Sheets(e, c, q) },
         settings.nativeLanguage,
-        combine(spokenLanguages, flashcards.observeAllIslands()) { spoken, islands -> spoken to islands },
+        combine(spokenLanguages, flashcards.observeAllIslands(), poolSize, settings.pace) { spoken, islands, pool, pace ->
+            Surroundings(spoken, islands, pool, pace)
+        },
         settings.streakCount,
         settings.studyReversed
-    ) { (s, sheets), nativeLanguage, (spoken, islands), streak, reversed ->
+    ) { (s, sheets), nativeLanguage, surroundings, streak, reversed ->
+        val (spoken, islands) = surroundings
         val now = clock.now()
+        val newWaiting = if (scope == StudyScope.Daily) s.allCards.count { it.card.due == null } else 0
         StudyUiState(
             islandName = title,
             scope = scope,
@@ -390,7 +416,12 @@ class StudyViewModel(
             learnLeft = s.learnQueue.size,
             keptCount = s.keptCount,
             isWelcomeBack = s.plan?.isWelcomeBack == true,
-            canPracticeAll = s.allCards.isNotEmpty()
+            canPracticeAll = s.allCards.isNotEmpty(),
+            isFirstSession = isFirstSession,
+            // The same order a daily session takes new items in: the coast's own cards, then prepared sentences.
+            bonusAvailable = minOf(BONUS_NEW_SENTENCES, newWaiting + surroundings.poolSize),
+            pace = surroundings.pace,
+            newWaiting = newWaiting
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StudyUiState(islandName = title, scope = scope))
 
@@ -399,6 +430,9 @@ class StudyViewModel(
     private var lastStudy: LocalDate? = null
     private var pace: Pace = Pace.Steady
 
+    /** Whether this daily session is the user's first ever; a bonus round never is. Read before the session starts. */
+    private var isFirstSession: Boolean = false
+
     init {
         viewModelScope.launch {
             if (scope == StudyScope.Daily) {
@@ -406,6 +440,7 @@ class StudyViewModel(
                 dailySuggestions = flashcards.observeSuggestions(coastId).first()
                 lastStudy = settings.lastStudyDate.first()
                 pace = settings.pace.first()
+                isFirstSession = lastStudy == null && bonusNew == 0
             }
             scopeCards().collect(::onCardsChanged)
         }
@@ -427,7 +462,7 @@ class StudyViewModel(
      */
     private fun onCardsChanged(cards: List<PlacedCard>) = updateSession { s ->
         if (!s.isStarted && (cards.isNotEmpty() || scope == StudyScope.Daily)) {
-            val daily = if (scope == StudyScope.Daily) DailyContext(dailySuggestions, lastStudy, pace) else null
+            val daily = if (scope == StudyScope.Daily) DailyContext(dailySuggestions, lastStudy, pace, bonusNew) else null
             val start = startSession(scope, cards, clock.now().toEpochMilliseconds(), clock.todayIn(timeZone), daily)
             val opening = start.opening
             val introQueue = start.intro
@@ -642,6 +677,11 @@ class StudyViewModel(
      */
     fun setReversed(reversed: Boolean) {
         viewModelScope.launch { settings.setStudyReversed(reversed) }
+    }
+
+    /** Stores [pace] for the sessions to come; this one keeps the size it started with. */
+    fun setPace(pace: Pace) {
+        viewModelScope.launch { settings.setPace(pace) }
     }
 
     /** Switches between revealing the answer and typing it. */

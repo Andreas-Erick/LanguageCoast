@@ -16,7 +16,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlin.time.Instant
 
 /*
- * "Check for new models" in Settings. The models offered for a cloud provider are a list in the app
+ * "Refresh model list" in Settings. The models offered for a cloud provider are a list in the app
  * ([SettingsDefaults]), and providers retire models faster than the app is updated. The check asks the
  * provider what it offers right now, keeps the models this app can talk to, adds the ones the list didn't
  * have, drops the ones the provider no longer has, and moves the user off a model that is gone.
@@ -89,7 +89,7 @@ internal fun parseModelListing(provider: TranslationProvider, status: Int, body:
         return ModelListing.Failed(
             when (status) {
                 400, 401, 403 -> "${provider.label} didn't accept the API key. Check your key and try again."
-                429 -> "${provider.label} is busy or rate-limited. Wait a moment and try again."
+                429 -> "${provider.label} is busy or getting too many requests from your key right now. Wait a minute and try again."
                 else -> "${provider.label} couldn't list its models right now. Try again later."
             }
         )
