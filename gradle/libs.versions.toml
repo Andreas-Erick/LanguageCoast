@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.1"
+agp = "9.5.2"
 coreKtx = "1.19.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"
@@ -8,14 +8,14 @@ lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 kotlin = "2.4.0"
 ksp = "2.3.9"
-composeBom = "2026.06.01"
+composeBom = "2026.11.01"
 kotlinxSerialization = "1.12.0"
 
-room = "2.8.4"
+room = "2.8.5"
 sqlite = "2.6.2"
 navigationCompose = "2.9.8"
 datastore = "1.2.1"
-ktor = "3.2.3"
+ktor = "3.6.1"
 # Compose Multiplatform 1.9 fails with AGP 9; 1.12 works
 composeMultiplatform = "1.12.1"
 # Multiplatform Material 3 and icons have their own (newest stable) versions
@@ -26,7 +26,7 @@ jetbrainsLifecycle = "2.11.0"
 work = "2.11.2"
 koin = "4.1.1"
 coroutines = "1.10.2"
-splashscreen = "1.0.1"
+splashscreen = "1.2.0"
 # On-device translation & Local AI (LiteRT-LM)
 mlkitTranslate = "17.0.3"
 mlkitTextRecognition = "16.0.1"
