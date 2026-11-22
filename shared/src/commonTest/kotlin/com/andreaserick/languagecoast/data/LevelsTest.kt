@@ -142,3 +142,19 @@ class LevelsTest {
         assertNull(parseTalk("TALK:\n\nMEANING:\nI have a sister."))
     }
 }
+
+class CoastRecordsTest {
+    @Test
+    fun aCoastGetsItsOwnRecordsWithoutTheCoastInFront() {
+        val records = coastRecords(
+            coastId = 3,
+            topicsAdded = setOf(starterTopicKey(3, "Greetings"), starterTopicKey(13, "Travel"), starterTopicKey(3, "Food")),
+            built = mapOf(personalIslandKey(3, "pets") to "abc", personalIslandKey(4, "pets") to "def", personalIslandKey(3, builtKey("pets", Level.B1)) to "ghi"),
+            celebrated = setOf(levelKey(3, Level.A1), levelKey(30, Level.A2))
+        )
+
+        assertEquals(setOf("Greetings", "Food"), records.topicsAdded)
+        assertEquals(mapOf("pets" to "abc", builtKey("pets", Level.B1) to "ghi"), records.built)
+        assertEquals(setOf(Level.A1), records.celebrated)
+    }
+}

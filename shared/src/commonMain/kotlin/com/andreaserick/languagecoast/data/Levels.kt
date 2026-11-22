@@ -212,6 +212,27 @@ fun routeFor(
 fun builtKey(islandId: String, level: Level?): String = if (level == null) islandId else "$islandId@${level.label}"
 
 /**
+ * What the settings remember about one coast. They keep it for every coast in one place, each entry starting with
+ * its coast ("3:Greetings", see [starterTopicKey], [personalIslandKey] and [levelKey]); these are one coast's
+ * share, with the coast taken off, so no screen needs to know how the entries are written.
+ *
+ * @property topicsAdded Starter topics added whole, by name.
+ * @property built Islands about the user written here, by [builtKey], to the fingerprint of the facts they came from.
+ * @property celebrated Levels whose reaching was congratulated on.
+ */
+data class CoastRecords(val topicsAdded: Set<String>, val built: Map<String, String>, val celebrated: Set<Level> = emptySet())
+
+/** Coast [coastId]'s share of the settings' records for every coast; see [CoastRecords]. */
+fun coastRecords(coastId: Int, topicsAdded: Set<String>, built: Map<String, String>, celebrated: Set<String> = emptySet()): CoastRecords {
+    val prefix = "$coastId:"
+    return CoastRecords(
+        topicsAdded = topicsAdded.filter { it.startsWith(prefix) }.mapTo(HashSet()) { it.removePrefix(prefix) },
+        built = built.filterKeys { it.startsWith(prefix) }.mapKeys { it.key.removePrefix(prefix) },
+        celebrated = Level.entries.filterTo(HashSet()) { levelKey(coastId, it) in celebrated }
+    )
+}
+
+/**
  * The route of coast [coastId] as it changes, for screens that show where the user stands without showing
  * the coast itself (Today, My Coasts). Due cards are counted at [now].
  */
@@ -223,14 +244,8 @@ fun observeRoute(flashcards: FlashcardRepository, settings: SettingsRepository, 
         settings.profile,
         settings.personalAnswers
     ) { islands, topics, built, profile, answers ->
-        val prefix = "$coastId:"
-        routeFor(
-            islands = islands,
-            topicsAdded = topics.filter { it.startsWith(prefix) }.mapTo(HashSet()) { it.removePrefix(prefix) },
-            built = built.filterKeys { it.startsWith(prefix) }.mapKeys { it.key.removePrefix(prefix) },
-            profile = profile,
-            answers = answers
-        )
+        val records = coastRecords(coastId, topics, built)
+        routeFor(islands, records.topicsAdded, records.built, profile, answers)
     }
 
 /** The entry in [SettingsRepository.levelsCelebrated] for [level] on coast [coastId]. */
