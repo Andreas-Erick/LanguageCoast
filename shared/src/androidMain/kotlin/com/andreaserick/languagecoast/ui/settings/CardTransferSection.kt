@@ -171,7 +171,14 @@ actual fun CardTransferSection() {
     Spacer(modifier = Modifier.height(20.dp))
 
     Text("Import", style = MaterialTheme.typography.titleSmall)
-    Hint("Add cards from an Anki deck (.apkg), or from a CSV or tab-separated file, e.g. one saved from a spreadsheet.")
+    // What it is for comes first, in words anyone knows; the file endings are for those who look for them.
+    Hint("Add cards from another flashcard app (Anki) or a spreadsheet.")
+    Text(
+        "Anki decks (.apkg), and CSV or tab-separated files (.csv, .tsv).",
+        color = TextSecondary,
+        style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier.padding(top = 2.dp)
+    )
     Spacer(modifier = Modifier.height(12.dp))
     CoastSecondaryButton(
         onClick = { importLauncher.launch(IMPORT_MIME_TYPES) },

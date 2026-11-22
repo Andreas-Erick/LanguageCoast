@@ -80,6 +80,7 @@ import com.andreaserick.languagecoast.data.RouteLevel
 import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
 import com.andreaserick.languagecoast.ui.theme.tabular
 import com.andreaserick.languagecoast.ui.components.TileEmoji
+import com.andreaserick.languagecoast.ui.components.TooltipIconButton
 import kotlin.math.roundToInt
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
@@ -142,15 +143,13 @@ fun MyCoastScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(
             title = "My Coasts",
+            subtitle = "Your languages and their topics",
             actions = {
+                // The recap has nothing to show before any card; search is always there and says so itself.
                 if (uiState.coasts.any { it.cardCount > 0 }) {
-                    IconButton(onClick = onRecapClick) {
-                        Icon(Icons.Default.Insights, contentDescription = "This month's recap", tint = TextPrimary)
-                    }
-                    IconButton(onClick = onSearchClick) {
-                        Icon(Icons.Default.Search, contentDescription = "Search cards", tint = TextPrimary)
-                    }
+                    TooltipIconButton(icon = Icons.Default.Insights, label = "This month's recap", onClick = onRecapClick)
                 }
+                TooltipIconButton(icon = Icons.Default.Search, label = "Search cards", onClick = onSearchClick)
             }
         )
 
@@ -160,7 +159,7 @@ fun MyCoastScreen(
             uiState.coasts.isEmpty() -> EmptyState(
                 icon = Icons.Default.Sailing,
                 title = "No coasts yet",
-                body = "Pick a language to start your first one.",
+                body = "Each language you learn is a coast. Start one and its topics, the islands, fill up as you learn.",
                 action = {
                     CoastButton(
                         onClick = { showNewCoastDialog = true },
@@ -342,8 +341,12 @@ private fun LeakyCard(count: Int, onClick: () -> Unit, modifier: Modifier = Modi
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("${plural(count, "leaky word")}", style = MaterialTheme.typography.titleMedium)
-                Text("Cards you keep forgetting. A short session plugs the leaks.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text("Words you keep forgetting", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    (if (count == 1) "1 leaky card keeps" else "$count leaky cards keep") + " slipping away. A short session plugs the leaks.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Pill("Study")
@@ -445,7 +448,7 @@ fun CoastCard(
         if (level != null) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 12.dp, end = 12.dp)) {
                 // The level is a status, not something to tap, so it stays out of the accent.
-                Pill(level.level.label, container = SurfaceSelected, content = TextPrimary)
+                Pill(level.level.shortLabel, container = SurfaceSelected, content = TextPrimary)
                 Spacer(modifier = Modifier.width(10.dp))
                 LinearProgressIndicator(
                     progress = { level.progress },

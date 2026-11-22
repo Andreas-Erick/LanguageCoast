@@ -77,8 +77,16 @@ data class SettingsUiState(
     val modelCheck: ModelCheckState = ModelCheckState(),
     /** The cloud providers the user allowed text to be sent to, by [TranslationProvider.name]. */
     val aiSharingAllowed: Set<String> = emptySet(),
-    val keyCheck: KeyCheckState = KeyCheckState()
+    val keyCheck: KeyCheckState = KeyCheckState(),
+    /**
+     * Whether the stored settings have been read. Until then the provider and keys are placeholders, so nothing
+     * may be decided from them, such as opening the key setup for a provider that only seems to have no key.
+     */
+    val loaded: Boolean = false
 ) {
+    /** Whether the provider picked is a cloud AI that has no key yet, so nothing can be translated with it. */
+    val cloudKeyMissing: Boolean get() = translationProvider.isCloud && savedKey(translationProvider).isEmpty()
+
     /** The saved API key of cloud [provider], or "" if it has none. */
     fun savedKey(provider: TranslationProvider): String = savedKeys[provider].orEmpty()
 
@@ -93,7 +101,7 @@ data class SettingsUiState(
 }
 
 /**
- * "Check for new models" in Settings.
+ * "Refresh model list" in Settings.
  *
  * @property checking The provider being asked for its models right now, or null.
  * @property provider The provider the last check was for, whose model picker shows [message].
@@ -149,7 +157,7 @@ class SettingsViewModel(
     private val flashcards: FlashcardRepository,
     private val reminderScheduler: ReminderScheduler,
     private val localModels: LocalModelController = NoOpLocalModelController(),
-    private val modelLister: ModelLister = ModelLister { _, _ -> ModelListing.Failed("Checking for new models isn't available here.") }
+    private val modelLister: ModelLister = ModelLister { _, _ -> ModelListing.Failed("Refreshing the model list isn't available here.") }
 ) : ViewModel() {
 
     private val keysJustSaved = MutableStateFlow(emptySet<TranslationProvider>())
@@ -265,7 +273,8 @@ class SettingsViewModel(
             // "Allow it first" has nothing left to say once the provider is allowed.
             modelCheck = models.check.takeUnless { it.needsPermission && it.provider?.name.orEmpty() in sharingAllowed } ?: ModelCheckState(),
             aiSharingAllowed = sharingAllowed,
-            keyCheck = models.keyCheck
+            keyCheck = models.keyCheck,
+            loaded = true
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 

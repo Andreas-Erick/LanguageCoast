@@ -41,6 +41,8 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -84,12 +86,16 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.andreaserick.languagecoast.data.Coast
+import com.andreaserick.languagecoast.data.Flashcard
+import com.andreaserick.languagecoast.data.PhraseBank
+import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.daysToLearn
@@ -109,6 +115,13 @@ import com.andreaserick.languagecoast.resources.logo_mark
 import com.andreaserick.languagecoast.resources.logo_mark_light
 import com.andreaserick.languagecoast.ui.theme.isDarkPalette
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
+import com.andreaserick.languagecoast.ui.components.CardOptionsMenu
+import com.andreaserick.languagecoast.ui.components.EditCardSheet
+import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
+import com.andreaserick.languagecoast.ui.components.TooltipIconButton
+import com.andreaserick.languagecoast.ui.settings.HowToUseSheet
+import com.andreaserick.languagecoast.ui.settings.SETTINGS_FOCUS_BACKUP
+import com.andreaserick.languagecoast.ui.settings.SETTINGS_FOCUS_TRANSLATION
 import com.andreaserick.languagecoast.ui.components.ButtonLabel
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
@@ -159,12 +172,31 @@ fun CreateScreen(
     onReviewCoast: (coastId: Int, coastName: String) -> Unit,
     onReviewAll: () -> Unit,
     onAboutYou: () -> Unit,
+    onOpenSettings: (focus: String) -> Unit,
+    onSearch: () -> Unit,
     viewModel: CreateViewModel = koinViewModel()
 ) {
     // The app can sit in the background over midnight: the day and the due counts are taken again on the way back.
     LifecycleResumeEffect(Unit) {
         viewModel.onResume()
         onPauseOrDispose {}
+    }
+    val undoMessenger = LocalUndoMessenger.current
+    // Kept as the card's id, so the open sheet survives a rotation; the card itself is looked up in the list.
+    var editingCardId by rememberSaveable { mutableStateOf<Int?>(null) }
+    val state = viewModel.uiState
+    state.recentCards.firstOrNull { it.card.cardId == editingCardId }?.let { recent ->
+        EditCardSheet(
+            card = recent.card,
+            islands = state.coastIslands,
+            nativeLanguage = state.nativeLanguage,
+            targetLanguage = state.selectedCoast?.language.orEmpty(),
+            onSave = { edit ->
+                viewModel.editCard(recent.card.cardId, edit)
+                editingCardId = null
+            },
+            onDismiss = { editingCardId = null }
+        )
     }
     CreateContent(
         uiState = viewModel.uiState,
@@ -195,7 +227,14 @@ fun CreateScreen(
         onSetPace = viewModel::setPace,
         onAboutYou = onAboutYou,
         onDismissAboutYou = viewModel::dismissAboutYouInvite,
-        onRetrySuggestions = viewModel::retrySuggestions
+        onRetrySuggestions = viewModel::retrySuggestions,
+        onOpenSettings = onOpenSettings,
+        onSearch = onSearch,
+        onDismissGettingStarted = viewModel::dismissGettingStarted,
+        onEditRecent = { editingCardId = it.cardId },
+        onDeleteRecent = { card ->
+            viewModel.deleteCard(card) { deleted -> undoMessenger.show("Card deleted") { viewModel.restore(deleted) } }
+        }
     )
 }
 
@@ -243,7 +282,12 @@ private fun CreateContent(
     onSetPace: (Pace) -> Unit,
     onAboutYou: () -> Unit,
     onDismissAboutYou: () -> Unit,
-    onRetrySuggestions: () -> Unit
+    onRetrySuggestions: () -> Unit,
+    onOpenSettings: (focus: String) -> Unit,
+    onSearch: () -> Unit,
+    onDismissGettingStarted: () -> Unit,
+    onEditRecent: (Flashcard) -> Unit,
+    onDeleteRecent: (Flashcard) -> Unit
 ) {
     // Open sheets and dialogs are saved, so turning or unfolding the phone doesn't close them.
     var showNewCoastDialog by rememberSaveable { mutableStateOf(false) }
@@ -252,6 +296,8 @@ private fun CreateContent(
         PaceSheet(pace = uiState.pace, waiting = uiState.plan?.newOnCoast ?: 0, onPick = onSetPace, onDismiss = { showPace = false })
     }
     var showBatchSheet by rememberSaveable { mutableStateOf(false) }
+    var showHowToUse by rememberSaveable { mutableStateOf(false) }
+    if (showHowToUse) HowToUseSheet(onDismiss = { showHowToUse = false })
     // The form is folded away: the day starts with the session, and a sentence of your own is the exception.
     var composerOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -276,7 +322,15 @@ private fun CreateContent(
     uiState.goalPrompt?.let { coast ->
         // Keyed by the coast, so a goal typed for one coast is never restored into the sheet of another.
         key(coast.coastId) {
-            GoalSheet(coast = coast, onSave = { goal, region -> onSetGoal(coast, goal, region) }, onDismiss = onDismissGoalPrompt)
+            // The coast just started during onboarding: its goal is the last of the first steps.
+            val isFirstCoast = uiState.coasts.size == 1 && coast.goal == null && (uiState.focusSummary?.cardCount ?: 0) == 0
+            GoalSheet(
+                coast = coast,
+                nativeLanguage = uiState.nativeLanguage,
+                isOnboarding = isFirstCoast,
+                onSave = { goal, region -> onSetGoal(coast, goal, region) },
+                onDismiss = onDismissGoalPrompt
+            )
         }
     }
 
@@ -339,8 +393,10 @@ private fun CreateContent(
     if (batch?.isSaving == true) KeepScreenOn()
 
     Column(modifier = Modifier.fillMaxSize()) {
+        // The tab is called Today; only the welcome before the first coast carries the app's name.
+        val welcoming = !uiState.isLoadingCoasts && uiState.selectedCoast == null
         ScreenHeader(
-            title = "Language Coast",
+            title = if (welcoming) "Language Coast" else "Today",
             leading = {
                 // The mark sits in the middle of its canvas, so it's drawn larger than it looks and pulled left.
                 Image(
@@ -351,7 +407,11 @@ private fun CreateContent(
                         .offset(x = (-8).dp)
                 )
             },
-            actions = { if (uiState.streakCount > 0) StreakBadge(uiState.streakCount) }
+            actions = {
+                if (uiState.streakCount > 0) StreakBadge(uiState.streakCount)
+                // Finding a card is a job of every day, so it is here as well as on My Coasts.
+                if (uiState.selectedCoast != null) TooltipIconButton(icon = Icons.Default.Search, label = "Search cards", onClick = onSearch)
+            }
         )
 
         val selectedCoast = uiState.selectedCoast
@@ -393,8 +453,19 @@ private fun CreateContent(
                     engineReady = uiState.engineReady,
                     awaitingPermission = uiState.awaitingPermission,
                     suggestionError = uiState.suggestionError,
-                    onRetrySuggestions = onRetrySuggestions
+                    onRetrySuggestions = onRetrySuggestions,
+                    onSetUpTranslation = { onOpenSettings(SETTINGS_TRANSLATION) }
                 )
+
+                uiState.gettingStarted?.let { steps ->
+                    GettingStartedCard(
+                        steps = steps,
+                        onSetUpTranslation = { onOpenSettings(SETTINGS_TRANSLATION) },
+                        onBackUp = { onOpenSettings(SETTINGS_BACKUP) },
+                        onHowItWorks = { showHowToUse = true },
+                        onHide = onDismissGettingStarted
+                    )
+                }
 
                 // The islands it leads to are written by an AI model, so it is only offered where one can write them.
                 if (uiState.showAboutYouInvite && uiState.engineReady && uiState.translationProvider != TranslationProvider.OnDevice) {
@@ -417,6 +488,7 @@ private fun CreateContent(
                         onSave = onSave,
                         onAddMany = { showBatchSheet = true },
                         onBrowseStarters = { showStarters = true },
+                        onSetUpTranslation = { onOpenSettings(SETTINGS_TRANSLATION) },
                         photoOffered = readPhoto != null
                     )
                 }
@@ -462,11 +534,17 @@ private fun CreateContent(
                     }
                 }
 
-                if (uiState.recentCards.isNotEmpty()) RecentCards(uiState.recentCards, language = selectedCoast.language)
+                if (uiState.recentCards.isNotEmpty()) {
+                    RecentCards(uiState.recentCards, language = selectedCoast.language, onEdit = onEditRecent, onDelete = onDeleteRecent)
+                }
             }
         }
     }
 }
+
+/** What Settings is opened at from Today (see [SettingsScreen]'s `focus`). */
+private const val SETTINGS_TRANSLATION = SETTINGS_FOCUS_TRANSLATION
+private const val SETTINGS_BACKUP = SETTINGS_FOCUS_BACKUP
 
 /** Long enough for the save preview's expand animation to finish before scrolling to it. */
 private const val RESULT_SCROLL_DELAY_MILLIS = 350L
@@ -500,6 +578,7 @@ private fun StreakBadge(streak: Int) {
  *     and where to give it, and starter sentences aren't offered: they would only fail to translate.
  * @param awaitingPermission [provider], while all it lacks is the permission to be sent text.
  * @param suggestionError Why no new sentences could be prepared, when the last attempt failed.
+ * @param onSetUpTranslation Opens Settings at Translation, where the provider gets its key or permission.
  */
 @Composable
 private fun DailyCard(
@@ -524,7 +603,8 @@ private fun DailyCard(
     engineReady: Boolean,
     awaitingPermission: TranslationProvider?,
     suggestionError: String?,
-    onRetrySuggestions: () -> Unit
+    onRetrySuggestions: () -> Unit,
+    onSetUpTranslation: () -> Unit
 ) {
     val language = Languages.byName(coast.language)
     ContentCard(padding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
@@ -547,7 +627,7 @@ private fun DailyCard(
         } else {
             // The line under the coast is the level's progress: where today's session is taking the user.
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
-                Pill(level.level.label, container = Sunlit, content = OnSunlit)
+                Pill(level.level.shortLabel, container = Sunlit, content = OnSunlit)
                 Spacer(modifier = Modifier.width(10.dp))
                 LinearProgressIndicator(
                     progress = { level.progress },
@@ -623,8 +703,9 @@ private fun DailyCard(
                             coastHasCards -> "Nothing due. Preparing new sentences…"
                             // The first translation on the phone fetches a language pack, on whatever network there is; better said than not.
                             provider == TranslationProvider.OnDevice ->
-                                "Preparing your first sentences… On-device translation first downloads about 30 MB per language."
-                            else -> "Preparing your first sentences…"
+                                "Getting your first sentences ready. The first time, the phone downloads its ${coast.language} translator " +
+                                    "(about 30 MB), which usually takes under a minute on Wi-Fi. Meanwhile, browse the starter sentences."
+                            else -> "Getting your first sentences ready. This usually takes under a minute."
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
@@ -644,12 +725,17 @@ private fun DailyCard(
                     // Two actions one above the other need a gap, or a tap meant for one lands on the other.
                     Spacer(modifier = Modifier.height(8.dp))
                 }
+                if (!engineReady) {
+                    TextButton(onClick = onSetUpTranslation, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                        Text(setUpAction(awaitingPermission), style = MaterialTheme.typography.labelMedium, color = SunlitText)
+                    }
+                }
                 TextButton(onClick = onReviewCoast, contentPadding = PaddingValues(horizontal = 0.dp)) {
                     Text("Practice anyway", style = MaterialTheme.typography.labelMedium, color = SunlitText)
                 }
             }
             !engineReady -> {
-                Text("Set up translation", style = MaterialTheme.typography.titleMedium)
+                Text("One quick step before your first sentences", style = MaterialTheme.typography.titleMedium)
                 Text(
                     text = setUpText(provider, awaitingPermission),
                     style = MaterialTheme.typography.bodyMedium,
@@ -678,9 +764,13 @@ private fun DailyCard(
                     Text("Or add your own", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
                 }
             } else {
-                // Starter sentences need translating, so until a provider is ready the way in is a card typed by hand.
-                CoastSecondaryButton(onClick = onAddOwn, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
-                    Text("Type a card yourself")
+                // Starter sentences need translating, so the way in is setting up translation, or a card typed by hand meanwhile.
+                CoastButton(onClick = onSetUpTranslation, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                    if (awaitingPermission != null) Text(setUpAction(awaitingPermission)) else ButtonLabel(setUpAction(null), "about 2 minutes")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = onAddOwn, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text("Or type a card yourself", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
                 }
             }
         }
@@ -695,21 +785,24 @@ private fun DailyCard(
 }
 
 /**
- * What translation still needs before it works, where to give it, and what can be done meanwhile. There is
- * no way from this screen into Settings, so the place is named.
+ * What translation still needs before it works, in plain words and with how long it takes. The button next
+ * to it ([setUpAction]) opens Settings right where it is given, so no path through the menus is named.
  */
-private fun setUpText(provider: TranslationProvider, awaitingPermission: TranslationProvider?): String {
-    val needs = when {
-        awaitingPermission != null ->
-            "Language Coast needs your permission before it sends text to ${awaitingPermission.label}. You can give it under Settings › Translation."
-        // Only where the phone can translate by itself is that a way out worth naming.
-        onDeviceTranslationAvailable ->
-            "${provider.label} needs a key before it can translate. Add one under Settings › Translation, or pick ${TranslationProvider.OnDevice.label} there."
-        else ->
-            "Translation runs through an AI provider with your own key. Gemini offers a free one. Add a key under Settings › Translation."
-    }
-    return "$needs Until then you can type both sides of a card yourself."
+private fun setUpText(provider: TranslationProvider, awaitingPermission: TranslationProvider?): String = when {
+    awaitingPermission != null ->
+        "Language Coast needs your permission before it sends text to ${awaitingPermission.label}. It takes one tap."
+    // Only where the phone can translate by itself is that a way out worth naming.
+    onDeviceTranslationAvailable ->
+        "${provider.label} needs a key before it can translate. Setting one up takes about 2 minutes, " +
+            "or switch to ${TranslationProvider.OnDevice.label}, which translates on this phone for free."
+    provider == TranslationProvider.Gemini ->
+        "Language Coast translates with Google Gemini. It's free with your own Gemini key, and getting one takes about 2 minutes."
+    else -> "Language Coast translates with ${provider.label}, using your own key. Setting it up takes about 2 minutes."
 }
+
+/** The label of the button that opens Settings at Translation. */
+private fun setUpAction(awaitingPermission: TranslationProvider?): String =
+    if (awaitingPermission != null) "Allow ${awaitingPermission.label}" else "Set up translation"
 
 /** Why no new sentences could be prepared, with a way to have it tried again. */
 @Composable
@@ -847,7 +940,13 @@ private val GOAL_EXAMPLES = listOf("A trip to ", "Talking with ", "Work", "A sho
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Unit, onDismiss: () -> Unit) {
+private fun GoalSheet(
+    coast: Coast,
+    nativeLanguage: String,
+    isOnboarding: Boolean,
+    onSave: (goal: String, region: String) -> Unit,
+    onDismiss: () -> Unit
+) {
     // Saved, so what was typed survives turning the phone.
     var text by rememberSaveable(coast.coastId) { mutableStateOf(coast.goal.orEmpty()) }
     var region by rememberSaveable(coast.coastId) { mutableStateOf(coast.region.orEmpty()) }
@@ -868,6 +967,7 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
         ) {
+            if (isOnboarding) Text("Step 3 of 3", style = MaterialTheme.typography.labelMedium, color = SunlitText)
             Text("Why ${coast.language}?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
             Text(
                 text = "A trip, a person, a job, a show you love. Each day's new sentences are picked for it, so the more specific the better.",
@@ -897,6 +997,7 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
                     )
                 }
             }
+            GoalPreview(goal = text, coastLanguage = coast.language, nativeLanguage = nativeLanguage)
             CoastTextField(
                 value = region,
                 onValueChange = { region = it },
@@ -933,6 +1034,34 @@ private fun GoalSheet(coast: Coast, onSave: (goal: String, region: String) -> Un
         )
     }
 }
+
+/**
+ * What the goal being typed changes, while it is typed: the topic the first new sentences come from, with one
+ * of them. The starter sentences are written in English, so for anyone else only the topic is shown.
+ */
+@Composable
+private fun GoalPreview(goal: String, coastLanguage: String, nativeLanguage: String) {
+    val preview = remember(goal, coastLanguage) { PhraseBank.goalPreview(goal, mapOf(PhraseBank.LANGUAGE_PLACEHOLDER to coastLanguage)) }
+    AnimatedVisibility(visible = preview != null, enter = expandEnter(), exit = collapseExit()) {
+        // Kept while it folds away, so the card doesn't empty before it is gone.
+        val shown = remember { mutableStateOf(preview) }
+        if (preview != null) shown.value = preview
+        val (theme, sentence) = shown.value ?: return@AnimatedVisibility
+        ContentCard(
+            padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+        ) {
+            Text("Picked for this goal", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            Text("${theme.emoji} ${theme.category}", style = MaterialTheme.typography.titleSmall)
+            if (nativeLanguage == PHRASE_BANK_LANGUAGE) {
+                Text("e.g. \u201C$sentence\u201D", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            }
+        }
+    }
+}
+
+/** The language the starter sentences are written in. */
+private const val PHRASE_BANK_LANGUAGE = "English"
 
 /** The fold of the new card form: a title that opens and closes it. */
 @Composable
@@ -977,6 +1106,7 @@ private fun NewCardForm(
     onSave: () -> Unit,
     onAddMany: () -> Unit,
     onBrowseStarters: () -> Unit,
+    onSetUpTranslation: () -> Unit,
     photoOffered: Boolean
 ) {
     val mode = uiState.inputMode
@@ -993,7 +1123,8 @@ private fun NewCardForm(
         }
 
         SegmentedSwitch(
-            options = listOf("AI translates", "I write it", "Manual"),
+            // Named by what the user does: have it translated, write it in the coast's language and have it corrected, or type both sides.
+            options = listOf("Translate", "Correct mine", "Type both"),
             selectedIndex = mode.ordinal,
             onSelect = { onInputModeChange(InputMode.entries[it]) },
             modifier = Modifier.fillMaxWidth()
@@ -1002,15 +1133,20 @@ private fun NewCardForm(
         Text(
             text = when {
                 needsSetUp && awaitingPermission != null ->
-                    "Allow Language Coast to send text to ${awaitingPermission.label} under Settings › Translation first, or switch to Manual."
-                needsSetUp -> "${uiState.translationProvider.label} isn't set up yet. Add its key under Settings › Translation, or switch to Manual."
-                mode == InputMode.Translate -> "${uiState.translationProvider.label} · ${uiState.nativeLanguage} → ${selectedCoast.language}"
+                    "Language Coast needs your permission to send text to ${awaitingPermission.label} first, or switch to Type both."
+                needsSetUp -> "${uiState.translationProvider.label} isn't set up yet. Set it up first, or switch to Type both."
+                mode == InputMode.Translate -> "${uiState.translationProvider.label} translates it: ${uiState.nativeLanguage} → ${selectedCoast.language}"
                 mode == InputMode.WriteInTarget -> "Write in ${selectedCoast.language}. ${uiState.translationProvider.label} fills in the ${uiState.nativeLanguage} and corrects slips."
-                else -> "You type both sides."
+                else -> "You type both sides yourself."
             },
             color = if (needsSetUp) CoralText else TextSecondary,
             style = MaterialTheme.typography.bodySmall
         )
+        if (needsSetUp) {
+            TextButton(onClick = onSetUpTranslation, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                Text(setUpAction(awaitingPermission), style = MaterialTheme.typography.labelMedium, color = SunlitText)
+            }
+        }
 
         CoastTextField(
             value = uiState.nativeSentence,
@@ -1047,8 +1183,16 @@ private fun NewCardForm(
             value = uiState.category,
             onValueChange = onCategoryChange,
             // Manual cards fall back to DEFAULT_MANUAL_CATEGORY; the AI picks one otherwise.
-            label = { Text("Island (optional)") },
+            // "Topic" is the plain word; the islands are what the topics are called on the coast.
+            label = { Text("Topic (optional)") },
             placeholder = { Text("e.g. Travel") },
+            supportingText = {
+                Text(
+                    text = if (mode == InputMode.Manual) "Cards are grouped by topic, the islands of your coast. Left empty, it goes on $DEFAULT_MANUAL_CATEGORY."
+                    else "Cards are grouped by topic, the islands of your coast. Left empty, one is picked for you.",
+                    color = TextSecondary
+                )
+            },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -1176,15 +1320,26 @@ private fun CoastPicker(coasts: List<Coast>, selected: Coast, onSelected: (Coast
     }
 }
 
-/** The last few cards added to the selected coast (whose [language] their translations are in), so the user sees their coast growing. */
+/**
+ * The last few cards added to the selected coast (whose [language] their translations are in), so the user sees
+ * their coast growing. Right after saving is when a typo is spotted, so a row opens the card to fix it, and its
+ * ⋮ menu edits or deletes it.
+ */
 @Composable
-private fun RecentCards(cards: List<RecentCard>, language: String) {
+private fun RecentCards(cards: List<RecentCard>, language: String, onEdit: (Flashcard) -> Unit, onDelete: (Flashcard) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Recently added", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp).semantics { heading() })
         ContentCard {
             cards.forEachIndexed { index, recent ->
-                if (index > 0) HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (index > 0) HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp)
+                        .clickable(onClickLabel = "edit the card", role = Role.Button) { onEdit(recent.card) }
+                        .padding(vertical = 6.dp)
+                ) {
                     IconTile(size = 40.dp) { TileEmoji(recent.emoji, tileSize = 40.dp) }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -1204,7 +1359,12 @@ private fun RecentCards(cards: List<RecentCard>, language: String) {
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     // Capped, so a long island name is cut and not the card's own text.
-                    Pill(text = recent.islandName, modifier = Modifier.widthIn(max = 120.dp), container = SurfaceRaised, content = TextSecondary)
+                    Pill(text = recent.islandName, modifier = Modifier.widthIn(max = 100.dp), container = SurfaceRaised, content = TextSecondary)
+                    CardOptionsMenu(
+                        onEdit = { onEdit(recent.card) },
+                        onDelete = { onDelete(recent.card) },
+                        description = "Options for ${recent.card.nativeText}"
+                    )
                 }
             }
         }
@@ -1229,6 +1389,14 @@ private fun Onboarding(
 
     PlatformBackHandler(enabled = step == 2) { step = 1 }
 
+    // Most people speak the language their phone is set to, so that is picked to start with, unless a language
+    // was chosen already. The welcome only shows once the settings are read, so the stored choice is known here.
+    LaunchedEffect(Unit) {
+        if (nativeLanguage == SettingsDefaults.NATIVE_LANGUAGE) {
+            phoneLanguage()?.takeIf { it.name != nativeLanguage }?.let { onNativeLanguage(it.name) }
+        }
+    }
+
     if (showNativePicker) {
         LanguagePickerDialog(
             title = "Native language",
@@ -1251,12 +1419,22 @@ private fun Onboarding(
             .verticalScroll(rememberScrollState())
             .padding(ScreenMargin)
     ) {
-        Image(
-            painter = painterResource(if (isDarkPalette) Res.drawable.logo_mark else Res.drawable.logo_mark_light),
-            contentDescription = "Language Coast",
-            modifier = Modifier.size(150.dp)
+        // What the app is for comes first: the logo is already in the header above.
+        Text(
+            "Learn the sentences you'll actually say",
+            style = MaterialTheme.typography.headlineSmall,
+            color = SunlitText,
+            textAlign = TextAlign.Center
         )
-        Text("Step $step of 2", style = MaterialTheme.typography.labelMedium, color = SunlitText)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            "A few minutes a day, picked for why you're learning.",
+            color = TextSecondary,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(28.dp))
+        // The goal question that follows "Start a coast" is the third step.
+        Text("Step $step of 3", style = MaterialTheme.typography.labelMedium, color = SunlitText)
         Spacer(modifier = Modifier.height(6.dp))
         if (step == 1) {
             Text(
@@ -1318,6 +1496,72 @@ private fun Onboarding(
             CoastSecondaryButton(onClick = { step = 1 }, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
                 Text("Back")
             }
+        }
+    }
+}
+
+/** The language the phone is set to, if a coast can be in it ("nb" and "nn" both being Norwegian). */
+private fun phoneLanguage(): Language? {
+    val code = Locale.current.language.let { if (it == "nb" || it == "nn") "no" else it }
+    return Languages.ALL.firstOrNull { it.code == code }
+}
+
+/**
+ * A calm checklist under today's session for someone new: translation working, a first session and a first
+ * backup. Each step ticks itself off from what really happened, and the card goes once all three are done or
+ * the user hides it. No popups: it waits here until wanted.
+ */
+@Composable
+private fun GettingStartedCard(
+    steps: GettingStarted,
+    onSetUpTranslation: () -> Unit,
+    onBackUp: () -> Unit,
+    onHowItWorks: () -> Unit,
+    onHide: () -> Unit
+) {
+    ContentCard(padding = PaddingValues(start = 16.dp, top = 14.dp, end = 8.dp, bottom = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
+            Text("Getting started", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).semantics { heading() })
+            Text("${steps.doneCount} of 3", style = MaterialTheme.typography.labelMedium.tabular, color = TextSecondary)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        ChecklistStep(done = steps.translationReady, text = if (steps.translationReady) "Translation works" else "Set up translation", onClick = onSetUpTranslation)
+        ChecklistStep(done = steps.studied, text = "Finish your first session", onClick = null)
+        ChecklistStep(done = steps.backedUp, text = "Back up your cards once", detail = "They're saved on this phone only.", onClick = onBackUp)
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = onHowItWorks) { Text("New here? See how it works", style = MaterialTheme.typography.labelMedium, color = SunlitText) }
+            TextButton(onClick = onHide) { Text("Hide", style = MaterialTheme.typography.labelMedium, color = TextSecondary) }
+        }
+    }
+}
+
+/** One step of [GettingStartedCard]: ticked when done, otherwise tappable where there is somewhere to go. */
+@Composable
+private fun ChecklistStep(done: Boolean, text: String, onClick: (() -> Unit)?, detail: String? = null) {
+    val tappable = onClick != null && !done
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .then(if (tappable) Modifier.clickable(role = Role.Button, onClick = onClick!!) else Modifier)
+            .semantics(mergeDescendants = true) { contentDescription = if (done) "$text, done" else text }
+            .padding(vertical = 6.dp)
+    ) {
+        Icon(
+            imageVector = if (done) Icons.Default.Check else Icons.Default.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (done) Seafoam else TextSecondary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (done) TextSecondary else if (tappable) SunlitText else TextPrimary
+            )
+            if (detail != null && !done) Text(detail, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         }
     }
 }

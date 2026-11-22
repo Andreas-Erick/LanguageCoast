@@ -122,6 +122,8 @@ import com.andreaserick.languagecoast.data.checkAnswer
 import com.andreaserick.languagecoast.data.emojiForCategory
 import com.andreaserick.languagecoast.data.isListItem
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
+import com.andreaserick.languagecoast.ui.components.ButtonLabel
+import com.andreaserick.languagecoast.ui.components.PaceSheet
 import com.andreaserick.languagecoast.ui.components.CardOptionsMenu
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
@@ -166,10 +168,21 @@ import kotlin.random.Random
  *
  * @param onNavigateBack Callback to navigate back to the previous screen.
  * @param onShowCards Opens the list of the island's cards; null for sessions that span islands.
+ * @param onKeepGoing Opens a bonus round on coast `coastId` in `language` ([com.andreaserick.languagecoast.navigation.StudyScreenRoute.bonus]),
+ *     offered at the end of the user's first daily session; null leaves "Keep going" out.
  */
 @Composable
-fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewModel: StudyViewModel = koinViewModel()) {
+fun StudyScreen(
+    onNavigateBack: () -> Unit,
+    onShowCards: (() -> Unit)?,
+    onKeepGoing: ((coastId: Int, language: String) -> Unit)? = null,
+    viewModel: StudyViewModel = koinViewModel()
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showPaceSheet by rememberSaveable { mutableStateOf(false) }
+    if (showPaceSheet) {
+        PaceSheet(pace = uiState.pace, waiting = uiState.newWaiting, onPick = viewModel::setPace, onDismiss = { showPaceSheet = false })
+    }
     val currentCard = uiState.currentCard
     val currentPlaced = uiState.currentPlaced
     val undoMessenger = LocalUndoMessenger.current
@@ -275,7 +288,15 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                 isCounted = uiState.countsAsStudied,
                 canPracticeAll = uiState.canPracticeAll,
                 onPracticeAll = viewModel::practiceAll,
-                onBack = onNavigateBack
+                onBack = onNavigateBack,
+                firstSession = if (uiState.scope == StudyScope.Daily && uiState.isFirstSession && uiState.countsAsStudied) {
+                    FirstSessionEnd(
+                        bonusCount = uiState.bonusAvailable,
+                        onKeepGoing = onKeepGoing?.takeIf { uiState.bonusAvailable > 0 && uiState.scopeLanguage.isNotEmpty() }
+                            ?.let { keepGoing -> { keepGoing(viewModel.coastId, uiState.scopeLanguage) } },
+                        onPickPace = { showPaceSheet = true }
+                    )
+                } else null
             )
             introducing != null -> IntroduceView(
                 card = introducing,
@@ -1139,6 +1160,7 @@ fun CaughtUpView(nextDueInDays: Int?, onPracticeAll: () -> Unit, onBack: () -> U
  * @param onPracticeAll Callback to study every card of the island again.
  * @param onBack Callback to navigate back to the previous screen.
  * @param canPracticeAll Whether there is any card to practice; without one "Practice all cards" is left out.
+ * @param firstSession What the end of the user's first daily session adds; null for every other session.
  */
 @Composable
 fun SessionCompleteView(
@@ -1150,7 +1172,8 @@ fun SessionCompleteView(
     scope: StudyScope = StudyScope.Island,
     keptCount: Int = 0,
     isCounted: Boolean = true,
-    canPracticeAll: Boolean = true
+    canPracticeAll: Boolean = true,
+    firstSession: FirstSessionEnd? = null
 ) {
     val reducedMotion = com.andreaserick.languagecoast.ui.components.LocalReducedMotion.current
     val markScale = remember { Animatable(if (reducedMotion) 1f else 0f) }
@@ -1191,7 +1214,8 @@ fun SessionCompleteView(
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = if (isCounted) completionTitle(scope) else "Nothing kept",
+                // "Done for today" would argue with the "Keep going" button under it.
+                text = if (!isCounted) "Nothing kept" else if (firstSession != null) "First session done" else completionTitle(scope),
                 style = MaterialTheme.typography.headlineLarge,
                 color = TextPrimary,
                 textAlign = TextAlign.Center,
@@ -1201,6 +1225,9 @@ fun SessionCompleteView(
                 text = when {
                     // Only about this session: today may count already, from an earlier one.
                     !isCounted -> "You skipped every new sentence, so this session doesn't count as studying."
+                    // The first day ends after a minute; "see you tomorrow" would send the user away right then.
+                    firstSession != null && keptCount > 0 -> "${plural(keptCount, "new card")} learned. Nice start!"
+                    firstSession != null -> "Your first session is done. Nice start!"
                     scope == StudyScope.Daily && keptCount > 0 -> "${plural(keptCount, "new card")} learned. That's today done; see you tomorrow."
                     scope == StudyScope.Daily -> "That's today done; see you tomorrow."
                     againCount == 0 -> "Every card on the first try."
@@ -1227,8 +1254,54 @@ fun SessionCompleteView(
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
-            SessionEndButtons(scope = scope, onPracticeAll = onPracticeAll.takeIf { canPracticeAll }, onBack = onBack)
+            if (firstSession != null) FirstSessionEndButtons(firstSession, scope = scope, onBack = onBack)
+            else SessionEndButtons(scope = scope, onPracticeAll = onPracticeAll.takeIf { canPracticeAll }, onBack = onBack)
         }
+    }
+}
+
+/**
+ * What the end of the user's first daily session adds to the usual one.
+ *
+ * @property bonusCount New items a bonus round would bring.
+ * @property onKeepGoing Starts the bonus round; null when there is nothing new left to offer (or no way to open one).
+ * @property onPickPace Opens the pace sheet.
+ */
+class FirstSessionEnd(val bonusCount: Int, val onKeepGoing: (() -> Unit)?, val onPickPace: () -> Unit)
+
+/**
+ * The end of the first daily session: where the cards are kept (no account, so nobody wonders), a bonus round
+ * for someone who wants more on install day, and the pace for someone who wants more every day. "Practice
+ * all cards" is left out here: the few cards were just practiced, and the bonus round is the better "more".
+ */
+@Composable
+private fun FirstSessionEndButtons(end: FirstSessionEnd, scope: StudyScope, onBack: () -> Unit) {
+    Text(
+        text = "Your cards are saved on this phone. No account needed. Back up anytime in Settings › Backup.",
+        style = MaterialTheme.typography.bodySmall,
+        color = TextSecondary,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(bottom = 20.dp)
+    )
+
+    val keepGoing = end.onKeepGoing
+    if (keepGoing != null) {
+        CoastButton(onClick = keepGoing, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+            ButtonLabel("Keep going", plural(end.bonusCount, "more sentence"))
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        CoastSecondaryButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+            Text(backLabel(scope))
+        }
+    } else {
+        CoastButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+            Text(backLabel(scope))
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+    TextButton(onClick = end.onPickPace, modifier = Modifier.heightIn(min = 48.dp)) {
+        Text("Want more each day? Pick a faster pace", style = MaterialTheme.typography.labelMedium, color = SunlitText, textAlign = TextAlign.Center)
     }
 }
 

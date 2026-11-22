@@ -26,6 +26,12 @@ const val WELCOME_BACK_NEW_SENTENCES = 2
 /** After this many days without a session the next one is a smaller welcome-back session. */
 const val WELCOME_BACK_AFTER_DAYS = 3
 
+/**
+ * New items a bonus round offers: the "Keep going" after the very first daily session, so install day
+ * doesn't end after a minute for someone who wants more.
+ */
+const val BONUS_NEW_SENTENCES = 5
+
 /** How many sentences are asked for at a time when the pool runs low. */
 const val SUGGESTION_BATCH = 8
 
@@ -99,11 +105,31 @@ fun isWelcomeBack(lastStudy: LocalDate?, today: LocalDate): Boolean =
  * [readySuggestions] prepared sentences, given when the user last studied and their [pace]. The cards
  * already on the coast come before suggested sentences: what the user put there is what they asked for.
  * After days away the session is a third of the usual size (never under the welcome-back minimum).
+ *
+ * A bonus round ([bonusNew] above 0) reviews nothing and brings up to [bonusNew] new items in the same
+ * order, whatever the pace: the reviews were just done, and it is extra on top of the day, not the day.
  */
-fun dailyPlan(dueOnCoast: Int, newOnCoast: Int, readySuggestions: Int, lastStudy: LocalDate?, today: LocalDate, pace: Pace = Pace.Steady): DailyPlan {
-    val welcomeBack = isWelcomeBack(lastStudy, today)
-    val reviewCap = if (welcomeBack) maxOf(WELCOME_BACK_REVIEW_CAP, pace.reviewCap / 3) else pace.reviewCap
-    val newCap = if (welcomeBack) maxOf(WELCOME_BACK_NEW_SENTENCES, pace.newPerDay / 3) else pace.newPerDay
+fun dailyPlan(
+    dueOnCoast: Int,
+    newOnCoast: Int,
+    readySuggestions: Int,
+    lastStudy: LocalDate?,
+    today: LocalDate,
+    pace: Pace = Pace.Steady,
+    bonusNew: Int = 0
+): DailyPlan {
+    val bonus = bonusNew > 0
+    val welcomeBack = !bonus && isWelcomeBack(lastStudy, today)
+    val reviewCap = when {
+        bonus -> 0
+        welcomeBack -> maxOf(WELCOME_BACK_REVIEW_CAP, pace.reviewCap / 3)
+        else -> pace.reviewCap
+    }
+    val newCap = when {
+        bonus -> bonusNew
+        welcomeBack -> maxOf(WELCOME_BACK_NEW_SENTENCES, pace.newPerDay / 3)
+        else -> pace.newPerDay
+    }
     val newCards = minOf(newOnCoast, newCap)
     return DailyPlan(
         reviewCount = minOf(dueOnCoast, reviewCap),

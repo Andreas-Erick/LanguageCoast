@@ -370,6 +370,10 @@ class FakeSettingsRepository : SettingsRepository {
     override suspend fun setWording(wording: Wording) { this.wording.value = wording }
     override suspend fun setPace(pace: Pace) { this.pace.value = pace }
     override suspend fun dismissAboutYouInvite() { aboutYouInviteDismissed.value = true }
+    override val gettingStartedDismissed = MutableStateFlow(false)
+    override suspend fun dismissGettingStarted() { gettingStartedDismissed.value = true }
+    override val hasBackedUp = MutableStateFlow(false)
+    override suspend fun recordBackup() { hasBackedUp.value = true }
     override val reminderSettings = MutableStateFlow(ReminderSettings())
     override val studyReversed = MutableStateFlow(false)
     override val weeklyGoal = MutableStateFlow(SettingsDefaults.WEEKLY_GOAL)
