@@ -65,34 +65,14 @@ interface SettingsRepository {
     val activeCoastId: Flow<Int?>
     /** Where translations come from. Until one is picked: on-device where available and no Gemini key was saved, otherwise Gemini. */
     val translationProvider: Flow<TranslationProvider>
-    /** The Gemini API key. */
-    val apiKey: Flow<String>
-    /** The Gemini model used for translations. */
-    val geminiModel: Flow<String>
-    /** The OpenRouter API key. */
-    val openRouterKey: Flow<String>
-    /** The OpenRouter model used for translations. */
-    val openRouterModel: Flow<String>
     /** The selected Local AI model ID from [LocalAiCatalog]. */
     val localAiModel: Flow<String>
-    /** The OpenAI API key. */
-    val openAiKey: Flow<String>
-    /** The OpenAI model used for translations. */
-    val openAiModel: Flow<String>
-    /** The Anthropic Claude API key. */
-    val claudeKey: Flow<String>
-    /** The Anthropic Claude model used for translations. */
-    val claudeModel: Flow<String>
-    /** The Groq API key. */
-    val groqKey: Flow<String>
+    /** Cloud [provider]'s API key; "" for what runs on the phone. */
+    fun key(provider: TranslationProvider): Flow<String>
+    /** The model picked for cloud [provider], or its default (see [CloudProvider.defaultModel]); "" for what runs on the phone. */
+    fun model(provider: TranslationProvider): Flow<String>
     /** A Hugging Face access token, for downloading gated local models. */
     val huggingFaceToken: Flow<String>
-    /** The Groq model used for translations. */
-    val groqModel: Flow<String>
-    /** The DeepSeek API key. */
-    val deepSeekKey: Flow<String>
-    /** The DeepSeek model used for translations. */
-    val deepSeekModel: Flow<String>
     /**
      * The models offered for [provider] in Settings: what the last "Check for new models" found the provider
      * to offer, or the app's own list ([SettingsDefaults.models]) if it was never checked.
@@ -151,34 +131,14 @@ interface SettingsRepository {
     suspend fun setActiveCoastId(coastId: Int)
     /** Stores where translations come from. */
     suspend fun setTranslationProvider(provider: TranslationProvider)
-    /** Stores the Gemini API key. */
-    suspend fun setApiKey(key: String)
-    /** Stores the Gemini model used for translations. */
-    suspend fun setGeminiModel(model: String)
-    /** Stores the OpenRouter API key. */
-    suspend fun setOpenRouterKey(key: String)
-    /** Stores the OpenRouter model used for translations. */
-    suspend fun setOpenRouterModel(model: String)
     /** Stores the active Local AI model ID. */
     suspend fun setLocalAiModel(modelId: String)
-    /** Stores the OpenAI API key. */
-    suspend fun setOpenAiKey(key: String)
-    /** Stores the OpenAI model used for translations. */
-    suspend fun setOpenAiModel(model: String)
-    /** Stores the Anthropic Claude API key. */
-    suspend fun setClaudeKey(key: String)
-    /** Stores the Anthropic Claude model used for translations. */
-    suspend fun setClaudeModel(model: String)
-    /** Stores the Groq API key. */
-    suspend fun setGroqKey(key: String)
+    /** Stores [key] as cloud [provider]'s API key; a blank one removes it. */
+    suspend fun setKey(provider: TranslationProvider, key: String)
+    /** Stores the model picked for cloud [provider]. */
+    suspend fun setModel(provider: TranslationProvider, model: String)
     /** Stores the Hugging Face access token. */
     suspend fun setHuggingFaceToken(token: String)
-    /** Stores the Groq model used for translations. */
-    suspend fun setGroqModel(model: String)
-    /** Stores the DeepSeek API key. */
-    suspend fun setDeepSeekKey(key: String)
-    /** Stores the DeepSeek model used for translations. */
-    suspend fun setDeepSeekModel(model: String)
     /** Stores the models offered for [provider], as a check for new models found them. */
     suspend fun setModelOptions(provider: TranslationProvider, models: List<String>)
     /** Stores whether and when the daily study reminder is shown. */
@@ -280,41 +240,19 @@ class DataStoreSettingsRepository(
             ?: if (onDeviceTranslationAvailable && !hasGeminiKey) TranslationProvider.OnDevice else TranslationProvider.Gemini
     }
 
-    override val apiKey: Flow<String> = secretFlow(SettingKeys.API_KEY)
-
-    override val geminiModel: Flow<String> =
-        // A model picked in an earlier version may be retired by now; show and use its replacement.
-        dataStore.data.map { normalizeGeminiModel(it[SettingKeys.GEMINI_MODEL] ?: SettingsDefaults.GEMINI_MODEL) }
-
-    override val openRouterKey: Flow<String> = secretFlow(SettingKeys.OPENROUTER_KEY)
-
-    override val openRouterModel: Flow<String> =
-        dataStore.data.map { it[SettingKeys.OPENROUTER_MODEL] ?: SettingsDefaults.OPENROUTER_MODEL }
-
     override val localAiModel: Flow<String> =
         dataStore.data.map { it[SettingKeys.LOCAL_AI_MODEL] ?: SettingsDefaults.LOCAL_AI_MODEL }
 
-    override val openAiKey: Flow<String> = secretFlow(SettingKeys.OPENAI_KEY)
+    override fun key(provider: TranslationProvider): Flow<String> =
+        provider.cloud?.let { secretFlow(it.keyPreference) } ?: flowOf("")
 
-    override val openAiModel: Flow<String> =
-        dataStore.data.map { it[SettingKeys.OPENAI_MODEL] ?: SettingsDefaults.OPENAI_MODEL }
-
-    override val claudeKey: Flow<String> = secretFlow(SettingKeys.CLAUDE_KEY)
-
-    override val claudeModel: Flow<String> =
-        dataStore.data.map { it[SettingKeys.CLAUDE_MODEL] ?: SettingsDefaults.CLAUDE_MODEL }
-
-    override val groqKey: Flow<String> = secretFlow(SettingKeys.GROQ_KEY)
+    override fun model(provider: TranslationProvider): Flow<String> {
+        val cloud = provider.cloud ?: return flowOf("")
+        // A model picked in an earlier version may be retired by now; show and use its replacement.
+        return dataStore.data.map { cloud.normalizeModel(it[cloud.modelPreference] ?: cloud.defaultModel) }
+    }
 
     override val huggingFaceToken: Flow<String> = secretFlow(SettingKeys.HUGGING_FACE_TOKEN)
-
-    override val groqModel: Flow<String> =
-        dataStore.data.map { it[SettingKeys.GROQ_MODEL] ?: SettingsDefaults.GROQ_MODEL }
-
-    override val deepSeekKey: Flow<String> = secretFlow(SettingKeys.DEEPSEEK_KEY)
-
-    override val deepSeekModel: Flow<String> =
-        dataStore.data.map { it[SettingKeys.DEEPSEEK_MODEL] ?: SettingsDefaults.DEEPSEEK_MODEL }
 
     override val streakCount: Flow<Int> =
         dataStore.data.map { it[SettingKeys.STREAK_COUNT] ?: 0 }
@@ -449,16 +387,11 @@ class DataStoreSettingsRepository(
     override suspend fun setSoundsEnabled(enabled: Boolean) = set(SettingKeys.SOUNDS_ENABLED, enabled)
     override suspend fun setActiveCoastId(coastId: Int) = set(SettingKeys.ACTIVE_COAST_ID, coastId)
     override suspend fun setTranslationProvider(provider: TranslationProvider) = set(SettingKeys.TRANSLATION_PROVIDER, provider.name)
-    override suspend fun setApiKey(key: String) = setKey(TranslationProvider.Gemini, key)
-    override suspend fun setGeminiModel(model: String) = set(SettingKeys.GEMINI_MODEL, model)
-    override suspend fun setOpenRouterKey(key: String) = setKey(TranslationProvider.OpenRouter, key)
-    override suspend fun setOpenRouterModel(model: String) = set(SettingKeys.OPENROUTER_MODEL, model)
     override suspend fun setLocalAiModel(modelId: String) = set(SettingKeys.LOCAL_AI_MODEL, modelId)
-    override suspend fun setOpenAiKey(key: String) = setKey(TranslationProvider.OpenAI, key)
-    override suspend fun setOpenAiModel(model: String) = set(SettingKeys.OPENAI_MODEL, model)
-    override suspend fun setClaudeKey(key: String) = setKey(TranslationProvider.Claude, key)
-    override suspend fun setClaudeModel(model: String) = set(SettingKeys.CLAUDE_MODEL, model)
-    override suspend fun setGroqKey(key: String) = setKey(TranslationProvider.Groq, key)
+    override suspend fun setModel(provider: TranslationProvider, model: String) {
+        val cloud = provider.cloud ?: return
+        set(cloud.modelPreference, model)
+    }
     override suspend fun setHuggingFaceToken(token: String) {
         // A blank token is no token: removing it leaves nothing of it behind.
         if (token.isBlank()) {
@@ -469,9 +402,6 @@ class DataStoreSettingsRepository(
         // Clear any legacy plaintext copy from DataStore.
         dataStore.edit { it.remove(SettingKeys.HUGGING_FACE_TOKEN) }
     }
-    override suspend fun setGroqModel(model: String) = set(SettingKeys.GROQ_MODEL, model)
-    override suspend fun setDeepSeekKey(key: String) = setKey(TranslationProvider.DeepSeek, key)
-    override suspend fun setDeepSeekModel(model: String) = set(SettingKeys.DEEPSEEK_MODEL, model)
 
     override fun modelOptions(provider: TranslationProvider): Flow<List<String>> =
         dataStore.data.map { preferences ->
@@ -561,7 +491,7 @@ class DataStoreSettingsRepository(
     }
 
     /** Stores [provider]'s API key in [secretStore]. A blank one removes the key and revokes AI sharing consent. */
-    private suspend fun setKey(provider: TranslationProvider, key: String) {
+    override suspend fun setKey(provider: TranslationProvider, key: String) {
         val preference = SettingKeys.apiKeyPreference(provider) ?: return
         if (key.isBlank()) {
             removeApiKey(provider)

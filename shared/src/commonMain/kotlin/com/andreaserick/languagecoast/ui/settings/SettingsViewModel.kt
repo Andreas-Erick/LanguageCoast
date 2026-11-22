@@ -23,7 +23,6 @@ import com.andreaserick.languagecoast.data.SunLocation
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Profile
 import com.andreaserick.languagecoast.data.checkForNewModels
-import com.andreaserick.languagecoast.data.keyOf
 import com.andreaserick.languagecoast.data.nativeLanguageOptions
 import com.andreaserick.languagecoast.data.recommendModelsForHardware
 import com.andreaserick.languagecoast.data.sharingNotAllowedMessage
@@ -260,15 +259,15 @@ class SettingsViewModel(
 
     private val cloudState = combine(
         combine(
-            combine(settings.geminiModel, settings.apiKey, apiKeySaved, ::Triple),
-            combine(settings.openRouterModel, settings.openRouterKey, openRouterSaved, ::Triple),
-            combine(settings.openAiModel, settings.openAiKey, openAiSaved, ::Triple),
+            combine(settings.model(TranslationProvider.Gemini), settings.key(TranslationProvider.Gemini), apiKeySaved, ::Triple),
+            combine(settings.model(TranslationProvider.OpenRouter), settings.key(TranslationProvider.OpenRouter), openRouterSaved, ::Triple),
+            combine(settings.model(TranslationProvider.OpenAI), settings.key(TranslationProvider.OpenAI), openAiSaved, ::Triple),
             ::Triple
         ),
         combine(
-            combine(settings.claudeModel, settings.claudeKey, claudeSaved, ::Triple),
-            combine(settings.groqModel, settings.groqKey, groqSaved, ::Triple),
-            combine(settings.deepSeekModel, settings.deepSeekKey, deepSeekSaved, ::Triple),
+            combine(settings.model(TranslationProvider.Claude), settings.key(TranslationProvider.Claude), claudeSaved, ::Triple),
+            combine(settings.model(TranslationProvider.Groq), settings.key(TranslationProvider.Groq), groqSaved, ::Triple),
+            combine(settings.model(TranslationProvider.DeepSeek), settings.key(TranslationProvider.DeepSeek), deepSeekSaved, ::Triple),
             ::Triple
         )
     ) { (gemini, openRouter, openAi), (claude, groq, deepSeek) ->
@@ -375,7 +374,7 @@ class SettingsViewModel(
             val provider = settings.translationProvider.first()
             // A key saved before the app asked for permission: until the user allows it the provider gets nothing, not even the key.
             // Without a key the check itself says to save one first, and saving is the step that asks for the permission.
-            if (settings.keyOf(provider).first().isNotBlank() && provider.name !in settings.aiSharingAllowed.first()) {
+            if (settings.key(provider).first().isNotBlank() && provider.name !in settings.aiSharingAllowed.first()) {
                 modelCheck.value =
                     ModelCheckState(provider = provider, message = sharingNotAllowedMessage(provider), failed = true, needsPermission = true)
                 return@launch
@@ -522,7 +521,7 @@ class SettingsViewModel(
 
     /** Saves the OpenRouter model ID as typed; a blank one means [SettingsDefaults.OPENROUTER_MODEL] when translating. */
     fun setOpenRouterModel(model: String) {
-        viewModelScope.launch { settings.setOpenRouterModel(model) }
+        viewModelScope.launch { settings.setModel(TranslationProvider.OpenRouter, model) }
     }
 
     /**
@@ -593,12 +592,12 @@ class SettingsViewModel(
     }
 
     private suspend fun storeKey(provider: TranslationProvider, key: String) = when (provider) {
-        TranslationProvider.Gemini -> settings.setApiKey(key)
-        TranslationProvider.OpenAI -> settings.setOpenAiKey(key)
-        TranslationProvider.Claude -> settings.setClaudeKey(key)
-        TranslationProvider.Groq -> settings.setGroqKey(key)
-        TranslationProvider.DeepSeek -> settings.setDeepSeekKey(key)
-        TranslationProvider.OpenRouter -> settings.setOpenRouterKey(key)
+        TranslationProvider.Gemini -> settings.setKey(TranslationProvider.Gemini, key)
+        TranslationProvider.OpenAI -> settings.setKey(TranslationProvider.OpenAI, key)
+        TranslationProvider.Claude -> settings.setKey(TranslationProvider.Claude, key)
+        TranslationProvider.Groq -> settings.setKey(TranslationProvider.Groq, key)
+        TranslationProvider.DeepSeek -> settings.setKey(TranslationProvider.DeepSeek, key)
+        TranslationProvider.OpenRouter -> settings.setKey(TranslationProvider.OpenRouter, key)
         TranslationProvider.OnDevice, TranslationProvider.LocalAi -> Unit
     }
 
@@ -627,7 +626,7 @@ class SettingsViewModel(
 
     /** Changes the Gemini model used for translations. */
     fun setGeminiModel(model: String) {
-        viewModelScope.launch { settings.setGeminiModel(model) }
+        viewModelScope.launch { settings.setModel(TranslationProvider.Gemini, model) }
     }
 
     /** Saves the Gemini API key and shows the "saved" confirmation. */
@@ -638,22 +637,22 @@ class SettingsViewModel(
 
     /** Changes the OpenAI model used for translations. */
     fun setOpenAiModel(model: String) {
-        viewModelScope.launch { settings.setOpenAiModel(model) }
+        viewModelScope.launch { settings.setModel(TranslationProvider.OpenAI, model) }
     }
 
     /** Changes the Anthropic Claude model used for translations. */
     fun setClaudeModel(model: String) {
-        viewModelScope.launch { settings.setClaudeModel(model) }
+        viewModelScope.launch { settings.setModel(TranslationProvider.Claude, model) }
     }
 
     /** Changes the Groq model used for translations. */
     fun setGroqModel(model: String) {
-        viewModelScope.launch { settings.setGroqModel(model) }
+        viewModelScope.launch { settings.setModel(TranslationProvider.Groq, model) }
     }
 
     /** Changes the DeepSeek model used for translations. */
     fun setDeepSeekModel(model: String) {
-        viewModelScope.launch { settings.setDeepSeekModel(model) }
+        viewModelScope.launch { settings.setModel(TranslationProvider.DeepSeek, model) }
     }
 
     /** Turns the daily study reminder on or off. */

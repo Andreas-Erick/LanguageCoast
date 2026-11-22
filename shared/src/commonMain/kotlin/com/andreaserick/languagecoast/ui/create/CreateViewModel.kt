@@ -34,7 +34,6 @@ import com.andreaserick.languagecoast.data.engineReady
 import com.andreaserick.languagecoast.data.fallbackCloudEngine
 import com.andreaserick.languagecoast.data.isSameSentence
 import com.andreaserick.languagecoast.data.islandEmoji
-import com.andreaserick.languagecoast.data.keyOf
 import com.andreaserick.languagecoast.data.logError
 import com.andreaserick.languagecoast.data.normalizedWords
 import com.andreaserick.languagecoast.data.providerAwaitingPermission
@@ -347,7 +346,7 @@ class CreateViewModel(
                 settings.translationProvider,
                 settings.engineReady(),
                 // A key that replaces one the provider refused leaves "ready" as it was, so the key counts too.
-                settings.translationProvider.flatMapLatest { settings.keyOf(it) }
+                settings.translationProvider.flatMapLatest { settings.key(it) }
             ) { provider, ready, key -> Triple(provider, ready, key) }
                 .distinctUntilChanged()
                 .drop(1)

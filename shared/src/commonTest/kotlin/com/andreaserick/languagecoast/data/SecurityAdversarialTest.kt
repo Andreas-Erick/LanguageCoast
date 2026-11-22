@@ -165,7 +165,7 @@ class SecurityAdversarialTest {
 
         val repo = DataStoreSettingsRepository(store, clock, TimeZone.UTC, secretStore)
         // Readable immediately even before migration.
-        assertEquals("AIzaLegacyKey1234567890", repo.apiKey.first())
+        assertEquals("AIzaLegacyKey1234567890", repo.key(TranslationProvider.Gemini).first())
         assertEquals("hf_LegacyToken12345678", repo.huggingFaceToken.first())
 
         repo.migrateLegacySecrets()
@@ -177,8 +177,8 @@ class SecurityAdversarialTest {
         assertNull(store.data.first()[stringPreferencesKey("hugging_face_token")])
 
         // New keys go straight to SecretStore, never DataStore.
-        repo.setClaudeKey("sk-ant-NewSecret1234567890")
-        assertEquals("sk-ant-NewSecret1234567890", repo.claudeKey.first())
+        repo.setKey(TranslationProvider.Claude, "sk-ant-NewSecret1234567890")
+        assertEquals("sk-ant-NewSecret1234567890", repo.key(TranslationProvider.Claude).first())
         assertNull(store.data.first()[stringPreferencesKey("claude_api_key")])
     }
 
