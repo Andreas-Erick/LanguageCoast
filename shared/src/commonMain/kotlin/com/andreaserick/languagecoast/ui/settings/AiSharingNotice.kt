@@ -19,20 +19,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
-import com.andreaserick.languagecoast.data.SettingsRepository
 import com.andreaserick.languagecoast.data.TranslationProvider
-import com.andreaserick.languagecoast.data.providerAwaitingPermission
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
-import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 
 /*
  * A cloud AI provider gets the user's sentences, and with them things about the user. Nothing is sent to one
@@ -100,15 +96,13 @@ private var promptsPutOff by mutableStateOf(emptySet<TranslationProvider>())
  * "Not now" hides it until the app is started again; Settings keeps offering the same permission.
  */
 @Composable
-fun AiSharingPrompt() {
-    val settings = koinInject<SettingsRepository>()
-    val awaiting by remember(settings) { settings.providerAwaitingPermission() }.collectAsState(initial = null)
-    val scope = rememberCoroutineScope()
+fun AiSharingPrompt(viewModel: AiSharingPromptViewModel = koinViewModel()) {
+    val awaiting by viewModel.awaiting.collectAsState()
     val provider = awaiting ?: return
     if (provider in promptsPutOff) return
     AiSharingDialog(
         provider = provider,
-        onAllow = { scope.launch { settings.allowAiSharing(provider) } },
+        onAllow = { viewModel.allow(provider) },
         onDismiss = { promptsPutOff = promptsPutOff + provider }
     )
 }
