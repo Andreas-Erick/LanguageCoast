@@ -102,6 +102,19 @@ class StudyViewModelTest {
     }
 
     @Test
+    fun aSecondTapForACardAlreadyGradedDoesNotGradeTheNextOne() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 3)
+        val viewModel = createViewModel()
+        val first = viewModel.state.currentCard!!.cardId
+
+        viewModel.onGrade(Grade.Good, first)
+        viewModel.onGrade(Grade.Good, first)
+
+        assertEquals(listOf("n2", "n3"), viewModel.state.sessionCards.map { it.card.nativeText })
+        assertEquals(null, flashcards.cards.value.first { it.nativeText == "n2" }.due)
+    }
+
+    @Test
     fun passingEveryCardCompletesSessionAndRecordsStreakOnce() = runTest {
         flashcards.seed(islandId = 1, cardCount = 2)
         val viewModel = createViewModel()
@@ -493,6 +506,58 @@ class StudyViewModelTest {
     }
 
     @Test
+    fun aSecondTapForASentenceAlreadyDecidedDoesNotDecideTheNextOne() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "Spanish")
+        suggest("s1", "s2", "s3")
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+
+        viewModel.keepSuggestion(1)
+        viewModel.keepSuggestion(1)
+        assertEquals("s2", viewModel.state.learning?.nativeText)
+
+        viewModel.skipSuggestion(2)
+        viewModel.skipSuggestion(2)
+        assertEquals("s3", viewModel.state.learning?.nativeText)
+        assertEquals(1, viewModel.state.keptCount)
+        assertEquals(listOf("s1"), flashcards.cards.value.map { it.nativeText })
+    }
+
+    @Test
+    fun aSkippedSentenceCanBeTakenBackAndIsOfferedAgain() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "Spanish")
+        suggest("s1", "s2")
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+        var skipped: SuggestedSentence? = null
+
+        viewModel.skipSuggestion(1) { skipped = it }
+        assertEquals("s2", viewModel.state.learning?.nativeText)
+        assertTrue(flashcards.suggestions.value.first { it.nativeText == "s1" }.skipped)
+
+        viewModel.undoSkipSuggestion(skipped!!)
+
+        assertEquals("s1", viewModel.state.learning?.nativeText)
+        assertEquals(2, viewModel.state.learnLeft)
+        // Back in the pool, so later sessions can offer it too.
+        assertFalse(flashcards.suggestions.value.first { it.nativeText == "s1" }.skipped)
+    }
+
+    @Test
+    fun skippingTheLastSentenceAndTakingItBackReopensTheSession() = runTest {
+        flashcards.seedCoast(coastId = 1, language = "Spanish")
+        suggest("s1")
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+        var skipped: SuggestedSentence? = null
+
+        viewModel.skipSuggestion(1) { skipped = it }
+        assertTrue(viewModel.state.isSessionComplete)
+
+        viewModel.undoSkipSuggestion(skipped!!)
+
+        assertFalse(viewModel.state.isSessionComplete)
+        assertEquals("s1", viewModel.state.learning?.nativeText)
+    }
+
+    @Test
     fun dailySessionOnAnEmptyCoastStartsWithTheNewSentences() = runTest {
         flashcards.seedCoast(coastId = 1, language = "Spanish")
         suggest("s1", "s2")
@@ -617,6 +682,40 @@ class StudyViewModelTest {
     }
 
     @Test
+    fun aCardMarkedKnownCanBeTakenBackAndIsIntroducedAgain() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 30)
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+        val first = viewModel.state.introducing!!.card
+        var known: com.andreaserick.languagecoast.data.PlacedCard? = null
+
+        viewModel.knowIntroduced(first.cardId) { known = it }
+        // A quick second tap is for the card that was just decided, not the next one.
+        viewModel.knowIntroduced(first.cardId) { known = null }
+        assertEquals("n2", viewModel.state.introducing?.card?.nativeText)
+        assertTrue(flashcards.cards.value.first { it.cardId == first.cardId }.due!! > TEST_CLOCK.now().toEpochMilliseconds())
+
+        viewModel.undoKnowIntroduced(known!!)
+
+        // Introduced next, and never studied, as it was.
+        assertEquals(first.cardId, viewModel.state.introducing?.card?.cardId)
+        assertEquals(null, flashcards.cards.value.first { it.cardId == first.cardId }.due)
+        assertEquals(null, flashcards.cards.value.first { it.cardId == first.cardId }.lastReviewed)
+    }
+
+    @Test
+    fun aSecondTapForACardAlreadyLearnedDoesNotTakeOnTheNextOne() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 30)
+        val viewModel = createViewModel(scope = "daily", coastId = 1)
+        val first = viewModel.state.introducing!!.card
+
+        viewModel.learnIntroduced(first.cardId)
+        viewModel.learnIntroduced(first.cardId)
+
+        assertEquals(1, viewModel.state.learnedCount)
+        assertEquals("n2", viewModel.state.introducing?.card?.nativeText)
+    }
+
+    @Test
     fun aFasterPaceIntroducesMoreNewCardsADay() = runTest {
         flashcards.seed(islandId = 1, cardCount = 30)
         settings.pace.value = Pace.Sprint
@@ -712,6 +811,28 @@ class StudyViewModelTest {
         assertEquals("t1 bien", card.targetText)
         assertEquals(listOf("a1"), card.alternatives)
         assertEquals("The verb was missing. a1 is informal.", card.note)
+    }
+
+    @Test
+    fun aTranslationReplacedByTheCheckCanBePutBack() = runTest {
+        flashcards.seed(islandId = 1, cardCount = 1)
+        flashcards.cards.update { all -> all.map { it.copy(alternatives = listOf("a1"), note = "a1 is informal.") } }
+        settings.apiKey.value = "key"
+        translator.completion = Completion("BETTER: t1 bien\nWHY: The verb was missing.\nCURRENT: WRONG")
+        val viewModel = createViewModel()
+        var undo: Pair<Int, CardEdit>? = null
+
+        viewModel.checkCard()
+        viewModel.applyCardCheck { cardId, previous -> undo = cardId to previous }
+        assertEquals("t1 bien", viewModel.state.currentCard?.targetText)
+
+        val (cardId, previous) = undo!!
+        viewModel.restoreCard(cardId, previous)
+
+        val card = viewModel.state.currentCard!!
+        assertEquals("t1", card.targetText)
+        assertEquals(listOf("a1"), card.alternatives)
+        assertEquals("a1 is informal.", card.note)
     }
 
     @Test

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -60,6 +62,8 @@ actual fun BackupSection() {
     val scope = rememberCoroutineScope()
     val undoMessenger = LocalUndoMessenger.current
     var isWorking by remember { mutableStateOf(false) }
+    // Which of the two buttons started the work, so the progress label shows on that one.
+    var restoreStarted by remember { mutableStateOf(false) }
 
     // Shows [text] briefly at the bottom of the screen.
     fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
@@ -68,6 +72,7 @@ actual fun BackupSection() {
         uri ?: return@rememberLauncherForActivityResult
         if (isWorking) return@rememberLauncherForActivityResult
         isWorking = true
+        restoreStarted = false
         scope.launch {
             try {
                 // Writing out every card takes a moment on a large collection, so it happens away from the main thread.
@@ -84,6 +89,7 @@ actual fun BackupSection() {
         uri ?: return@rememberLauncherForActivityResult
         if (isWorking) return@rememberLauncherForActivityResult
         isWorking = true
+        restoreStarted = true
         scope.launch {
             try {
                 val text = withContext(Dispatchers.IO) { readText(context.contentResolver, uri, MAX_BACKUP_CHARS) }
@@ -115,7 +121,7 @@ actual fun BackupSection() {
                 .weight(1f)
                 .heightIn(min = ButtonHeight)
         ) {
-            Text(if (isWorking) "Working…" else "Back up")
+            Text(if (isWorking && !restoreStarted) "Saving…" else "Back up")
         }
         CoastSecondaryButton(
             onClick = { restoreLauncher.launch(BACKUP_MIME_TYPES) },
@@ -124,9 +130,10 @@ actual fun BackupSection() {
                 .weight(1f)
                 .heightIn(min = ButtonHeight)
         ) {
-            Text("Restore")
+            Text(if (isWorking && restoreStarted) "Reading…" else "Restore")
         }
     }
+    if (!uiState.hasCoasts) Hint("Start a coast first: there's nothing to back up yet.")
 
     uiState.restoreSummary?.let { summary ->
         RestoreDialog(
@@ -153,7 +160,7 @@ private fun RestoreDialog(summary: BackupSummary, isRestoring: Boolean, onRestor
         onDismissRequest = { if (!isRestoring) onDismiss() },
         title = { Text("Restore backup?") },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text("Backup from $date")
                 Text(
                     "${plural(summary.coastCount, "coast")} · ${plural(summary.islandCount, "island")} · " +
@@ -170,7 +177,7 @@ private fun RestoreDialog(summary: BackupSummary, isRestoring: Boolean, onRestor
         },
         confirmButton = {
             TextButton(onClick = onRestore, enabled = !isRestoring) {
-                Text(if (isRestoring) "Restoring…" else "Restore", color = SunlitText, style = MaterialTheme.typography.labelMedium)
+                Text(if (isRestoring) "Restoring…" else "Restore", color = CoralText, style = MaterialTheme.typography.labelMedium)
             }
         },
         dismissButton = {

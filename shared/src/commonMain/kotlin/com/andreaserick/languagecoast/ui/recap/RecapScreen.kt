@@ -29,16 +29,17 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
+import com.andreaserick.languagecoast.ui.components.TileEmoji
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.ui.theme.tabular
 import org.koin.compose.viewmodel.koinViewModel
 
 /** The month so far in numbers, with a button that shares it as a picture. */
@@ -80,7 +81,8 @@ fun RecapScreen(onNavigateBack: () -> Unit, viewModel: RecapViewModel = koinView
                     uiState.coasts.forEachIndexed { index, coast ->
                         if (index > 0) HorizontalDivider(color = SurfaceRaised, modifier = Modifier.padding(vertical = 10.dp)) else Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(coast.flag, fontSize = 22.sp)
+                            // Sized like the flag in a standard tile, so it doesn't grow with the font size.
+                            TileEmoji(coast.flag)
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(coast.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                             Text(plural(coast.cardsReviewed, "card"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
@@ -112,7 +114,8 @@ fun RecapScreen(onNavigateBack: () -> Unit, viewModel: RecapViewModel = koinView
                             )
                         )
                     },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight).padding(top = 4.dp)
+                    // The gap goes outside the button, so the button itself stays ButtonHeight tall.
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).heightIn(min = ButtonHeight)
                 ) {
                     Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                     Text("Share as a picture")
@@ -135,7 +138,7 @@ internal fun recapHeadline(state: RecapUiState): String = when {
 @Composable
 private fun StatTile(value: String, label: String, modifier: Modifier = Modifier) {
     ContentCard(modifier = modifier, padding = PaddingValues(vertical = 14.dp, horizontal = 8.dp)) {
-        Text(value, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        Text(value, style = MaterialTheme.typography.headlineSmall.tabular, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Text(label, style = MaterialTheme.typography.bodySmall, color = TextSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
     }
 }

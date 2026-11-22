@@ -38,11 +38,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.ui.components.CardListRow
 import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.EditCardSheet
+import com.andreaserick.languagecoast.ui.components.LocalReducedMotion
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.ui.theme.tabular
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -60,6 +62,7 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
     var editingCardId by rememberSaveable { mutableStateOf<Int?>(null) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val reducedMotion = LocalReducedMotion.current
 
     LaunchedEffect(Unit) {
         viewModel.onQueryChange(query)
@@ -122,7 +125,8 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
             uiState.isLoading -> null
             !uiState.hasCards -> "No cards yet. Add some on Today, and you can find them here."
             !uiState.hasQuery -> "Find a card on any coast by its native text, translation or alternatives."
-            uiState.results.isEmpty() -> "No cards found."
+            // Every word has to appear, but may be part of a longer one, and both sides of a card are searched.
+            uiState.results.isEmpty() -> "No cards match \"${query.trim()}\". Try fewer letters or words, or the other language."
             else -> null
         }
         // What a search gave arrives while the keyboard has the focus: a screen reader reads it out.
@@ -144,7 +148,7 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
                 modifier = Modifier.fillMaxSize()
             ) {
                 item(key = "count") {
-                    Text(plural(uiState.results.size, "card") + " found", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(top = 8.dp).then(announced))
+                    Text(plural(uiState.results.size, "card") + " found", style = MaterialTheme.typography.labelMedium.tabular, color = TextSecondary, modifier = Modifier.padding(top = 8.dp).then(announced))
                 }
                 items(uiState.results, key = { it.card.cardId }) { placed ->
                     CardListRow(
@@ -158,7 +162,9 @@ fun SearchScreen(onNavigateBack: () -> Unit, viewModel: SearchViewModel = koinVi
                                 undoMessenger.show("Card deleted") { viewModel.restore(deleted) }
                             }
                         },
-                        modifier = Modifier.animateItem()
+                        // With reduced motion, the rows close up at once when a card is deleted.
+                        modifier = if (reducedMotion) Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null)
+                        else Modifier.animateItem()
                     )
                 }
             }

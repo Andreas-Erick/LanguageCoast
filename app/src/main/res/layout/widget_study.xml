@@ -89,6 +89,8 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:gravity="center"
+                android:fontFamily="@font/nunito"
+                android:fontVariationSettings="'wght' 600"
                 android:maxLines="1"
                 android:text="@string/widget_streak_label"
                 android:textColor="@color/text_secondary"
@@ -131,6 +133,8 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:gravity="center"
+                android:fontFamily="@font/nunito"
+                android:fontVariationSettings="'wght' 600"
                 android:maxLines="1"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
@@ -144,6 +148,8 @@
         android:layout_marginTop="8dp"
         android:ellipsize="end"
         android:gravity="center"
+        android:fontFamily="@font/nunito"
+        android:fontVariationSettings="'wght' 600"
         android:maxLines="1"
         android:textColor="@color/text_secondary"
         android:textSize="12sp" />

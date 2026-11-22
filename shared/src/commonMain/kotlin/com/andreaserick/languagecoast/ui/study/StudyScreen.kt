@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -12,6 +13,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
@@ -126,6 +129,7 @@ import com.andreaserick.languagecoast.ui.components.EmptyState
 import com.andreaserick.languagecoast.ui.components.FeedbackKind
 import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.LocalFeedback
+import com.andreaserick.languagecoast.ui.components.LocalReducedMotion
 import com.andreaserick.languagecoast.ui.components.LocalUndoMessenger
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
@@ -142,6 +146,7 @@ import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.ui.theme.tabular
 import com.andreaserick.languagecoast.util.dictCcSearchUrl
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -182,7 +187,11 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
     uiState.cardCheck?.let { check ->
         CardCheckSheet(
             check = check,
-            onApply = viewModel::applyCardCheck,
+            onApply = {
+                viewModel.applyCardCheck { cardId, previous ->
+                    undoMessenger.show("Translation replaced") { viewModel.restoreCard(cardId, previous) }
+                }
+            },
             onAskAlternative = viewModel::askAlternative,
             onSaveAlternative = viewModel::saveAlternative,
             onRetry = viewModel::checkCard,
@@ -269,8 +278,13 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                 card = introducing,
                 index = uiState.introTotal - uiState.introLeft + 1,
                 total = uiState.introTotal,
-                onLearn = viewModel::learnIntroduced,
-                onKnow = viewModel::knowIntroduced,
+                // Each tap names the card it was for, so a quick second tap can't decide the next one too.
+                onLearn = { viewModel.learnIntroduced(introducing.card.cardId) },
+                onKnow = {
+                    viewModel.knowIntroduced(introducing.card.cardId) { known ->
+                        undoMessenger.show("Marked as known") { viewModel.undoKnowIntroduced(known) }
+                    }
+                },
                 onSpeak = { viewModel.speak(introducing.card.targetText) }.takeIf { uiState.canSpeak },
                 targetLanguage = introducing.language,
                 nativeLanguage = uiState.nativeLanguage
@@ -279,8 +293,12 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                 sentence = learning,
                 index = uiState.learnTotal - uiState.learnLeft + 1,
                 total = uiState.learnTotal,
-                onKeep = viewModel::keepSuggestion,
-                onSkip = viewModel::skipSuggestion,
+                onKeep = { viewModel.keepSuggestion(learning.suggestionId) },
+                onSkip = {
+                    viewModel.skipSuggestion(learning.suggestionId) { skipped ->
+                        undoMessenger.show("Sentence skipped") { viewModel.undoSkipSuggestion(skipped) }
+                    }
+                },
                 onSpeak = { viewModel.speak(learning.targetText) }.takeIf { uiState.canSpeak },
                 targetLanguage = uiState.targetLanguage,
                 nativeLanguage = uiState.nativeLanguage
@@ -330,7 +348,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                                     currentCard = currentCard,
                                     cloze = cloze,
                                     intervals = uiState.gradeIntervals,
-                                    onGrade = viewModel::onGrade,
+                                    onGrade = { grade -> viewModel.onGrade(grade, currentCard.cardId) },
                                     onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak },
                                     nativeLang = uiState.nativeLanguage,
                                     targetLang = uiState.targetLanguage
@@ -342,7 +360,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                                     targetLang = uiState.targetLanguage,
                                     isReversed = uiState.isReversed && mode == StudyMode.Type,
                                     intervals = uiState.gradeIntervals,
-                                    onGrade = viewModel::onGrade,
+                                    onGrade = { grade -> viewModel.onGrade(grade, currentCard.cardId) },
                                     onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak }
                                 )
                                 else -> FlipStudyView(
@@ -355,7 +373,7 @@ fun StudyScreen(onNavigateBack: () -> Unit, onShowCards: (() -> Unit)?, viewMode
                                     // Swiping is worth a reminder, but not on every card.
                                     showSwipeHint = uiState.sessionCards.size == uiState.totalCards,
                                     intervals = uiState.gradeIntervals,
-                                    onGrade = viewModel::onGrade,
+                                    onGrade = { grade -> viewModel.onGrade(grade, currentCard.cardId) },
                                     onSpeak = viewModel::speakAnswer.takeIf { uiState.canSpeak },
                                     onSpeakText = viewModel::speak.takeIf { uiState.canSpeak },
                                     onMakeMain = viewModel::makeMainTranslation,
@@ -389,7 +407,12 @@ private fun SessionTopBar(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val progress by animateFloatAsState(uiState.progress, label = "progress")
+    val reducedMotion = LocalReducedMotion.current
+    val progress by animateFloatAsState(
+        targetValue = uiState.progress,
+        animationSpec = if (reducedMotion) snap() else spring(),
+        label = "progress"
+    )
     val canBrowse = uiState.sessionCards.size > 1
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -417,10 +440,14 @@ private fun SessionTopBar(
                 uiState.learning != null -> "${uiState.learnLeft} new"
                 else -> "${uiState.sessionCards.size} left"
             },
-            style = MaterialTheme.typography.labelMedium,
+            // Even-width digits and a fixed least width, so the bar beside it doesn't change length as the count drops.
+            style = MaterialTheme.typography.labelMedium.tabular,
             color = TextSecondary,
             maxLines = 1,
-            modifier = Modifier.padding(start = 12.dp, end = if (showCardOptions) 4.dp else 16.dp)
+            textAlign = TextAlign.End,
+            modifier = Modifier
+                .padding(start = 12.dp, end = if (showCardOptions) 4.dp else 16.dp)
+                .widthIn(min = 52.dp)
         )
         if (showCardOptions) CardOptionsMenu(
             onEdit = onEdit,
@@ -550,7 +577,8 @@ fun FlipStudyView(
     val reducedMotion = com.andreaserick.languagecoast.ui.components.LocalReducedMotion.current
     // A new card settles into place rather than just appearing, which makes the change easy to notice.
     val arrival = remember(currentCard.cardId) { Animatable(if (reducedMotion) 1f else 0f) }
-    var gradedCardId by remember(currentCard.cardId) { mutableStateOf<Int?>(null) }
+    // Keyed on the card, not its ID: graded Again with one card left, the same card comes back and must be gradable again.
+    var gradedCardId by remember(currentCard) { mutableStateOf<Int?>(null) }
     LaunchedEffect(currentCard.cardId, reducedMotion) {
         if (reducedMotion) arrival.snapTo(1f) else arrival.animateTo(1f, tween(durationMillis = 220))
     }
@@ -621,20 +649,36 @@ fun FlipStudyView(
                     }
                     // Must come before the rotated graphicsLayer: inside it, the flipped (180°) card
                     // would mirror drag directions and a swipe right would count as "Again".
-                    .pointerInput(isFlipped) {
+                    .pointerInput(isFlipped, reducedMotion) {
                         if (!isFlipped) return@pointerInput
+                        // Whether the drag is far enough to grade, so the tick plays once on the way in, not on every move.
+                        var pastThreshold = false
+                        // A card let go short of the threshold springs back, or just goes back with reduced motion.
+                        fun settle() {
+                            scope.launch {
+                                if (reducedMotion) offsetX.snapTo(0f)
+                                else offsetX.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                            }
+                        }
                         detectHorizontalDragGestures(
+                            onDragStart = { pastThreshold = abs(offsetX.value) > thresholdPx },
                             onDragEnd = {
                                 when {
                                     offsetX.value > thresholdPx -> grade(Grade.Good)
                                     offsetX.value < -thresholdPx -> grade(Grade.Again)
-                                    else -> scope.launch { offsetX.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy)) }
+                                    else -> settle()
                                 }
                             },
-                            onDragCancel = { scope.launch { offsetX.animateTo(0f) } },
+                            onDragCancel = { settle() },
                             onHorizontalDrag = { change, dragAmount ->
                                 change.consume()
-                                scope.launch { offsetX.snapTo(offsetX.value + dragAmount) }
+                                scope.launch {
+                                    offsetX.snapTo(offsetX.value + dragAmount)
+                                    val past = abs(offsetX.value) > thresholdPx
+                                    // A light tick as the card crosses into grading, so a swipe can be felt to count.
+                                    if (past && !pastThreshold) feedback.play(FeedbackKind.Tap)
+                                    pastThreshold = past
+                                }
                             }
                         )
                     }
@@ -711,7 +755,7 @@ fun FlipStudyView(
                             color = TextSecondary,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(bottom = 14.dp)
+                                .padding(bottom = 16.dp)
                                 // The card already says what a tap does.
                                 .clearAndSetSemantics {}
                         )
@@ -729,9 +773,9 @@ fun FlipStudyView(
         ) {
             val hint = when {
                 !isFlipped -> ""
-                hasDictionary && showSwipeHint -> "Tap a word to explain it · Swipe ← Again, Good →"
+                hasDictionary && showSwipeHint -> "Tap a word to explain it. Swipe left for Again, right for Good."
                 hasDictionary -> "Tap a word to explain it"
-                showSwipeHint -> "Swipe ← Again, Good →"
+                showSwipeHint -> "Swipe left for Again, right for Good."
                 else -> ""
             }
             Text(
@@ -834,7 +878,7 @@ internal fun GradeButtons(intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) 
                         color = if (grade == Grade.Again) CoralText else Color.Unspecified,
                         maxLines = 1,
                         // With a large font size the name shrinks to its quarter of the row instead of losing letters.
-                        autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = nameStyle.fontSize)
+                        autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = nameStyle.fontSize)
                     )
                     val label = if (grade == Grade.Again) "Soon" else days?.let(::intervalLabel)
                     label?.let {
@@ -925,6 +969,16 @@ fun TypeStudyView(
         feedback.play(if (outcome == AnswerMatch.Wrong) FeedbackKind.Failure else FeedbackKind.Success)
     }
 
+    // One grade per card: a quick second tap would otherwise grade the same card again when Again brings it
+    // straight back. (A tap that lands on the next card is turned away by the ViewModel.)
+    var isGraded by remember(currentCard) { mutableStateOf(false) }
+    fun grade(grade: Grade, playFeedback: Boolean) {
+        if (isGraded) return
+        isGraded = true
+        if (playFeedback) feedback.play(if (grade == Grade.Again) FeedbackKind.Failure else FeedbackKind.Success)
+        onGrade(grade)
+    }
+
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth()
@@ -994,15 +1048,9 @@ fun TypeStudyView(
                     language = answerLang
                 )
                 when (outcome) {
-                    AnswerMatch.Exact -> GradeButtons(
-                        intervals = intervals,
-                        onGrade = { grade ->
-                            feedback.play(if (grade == Grade.Again) FeedbackKind.Failure else FeedbackKind.Success)
-                            onGrade(grade)
-                        }
-                    )
-                    is AnswerMatch.Almost -> HardContinue(onGrade = onGrade)
-                    AnswerMatch.Wrong -> AgainContinue(onGrade = onGrade)
+                    AnswerMatch.Exact -> GradeButtons(intervals = intervals, onGrade = { grade(it, playFeedback = true) })
+                    is AnswerMatch.Almost -> HardContinue(onGrade = { grade(it, playFeedback = false) })
+                    AnswerMatch.Wrong -> AgainContinue(onGrade = { grade(it, playFeedback = false) })
                 }
             }
         }
@@ -1219,7 +1267,7 @@ private fun SessionEndButtons(scope: StudyScope, onPracticeAll: (() -> Unit)?, o
     }
 
     if (onPracticeAll != null) {
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         CoastSecondaryButton(
             onClick = onPracticeAll,
@@ -1235,10 +1283,10 @@ private fun SessionEndButtons(scope: StudyScope, onPracticeAll: (() -> Unit)?, o
 /** A large [value] with a short [label] below it, for the session summary. */
 @Composable
 private fun StatTile(value: String, label: String, modifier: Modifier = Modifier) {
-    ContentCard(modifier = modifier, padding = PaddingValues(vertical = 14.dp, horizontal = 8.dp)) {
+    ContentCard(modifier = modifier, padding = PaddingValues(vertical = 16.dp, horizontal = 8.dp)) {
         Text(
             value,
-            style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
+            style = MaterialTheme.typography.headlineSmall.tabular,
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1349,9 +1397,13 @@ fun ClickableWordSentence(
         FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .clearAndSetSemantics { text = inLanguage(sentence, language) },
+                .clearAndSetSemantics { text = inLanguage(sentence, language) }
+                // The sentence sits on a card that flips when tapped: a tap that just misses a word, in the gap
+                // between words or lines, is swallowed here instead of turning the card back over.
+                .then(if (onWordClick != null) Modifier.pointerInput(Unit) { detectTapGestures {} } else Modifier),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            // Tappable lines get room between them, so a tap meant for one line doesn't land on the next.
+            verticalArrangement = Arrangement.spacedBy(if (onWordClick != null) 8.dp else 2.dp)
         ) {
             tokens.forEach { (leading, word, trailing) ->
                 Row {
@@ -1361,9 +1413,13 @@ fun ClickableWordSentence(
                             text = word,
                             language = language,
                             style = style,
-                            modifier = if (onWordClick == null || !isLookupWord(word)) Modifier else Modifier
-                                .dottedUnderline(TextSecondary)
-                                .clickable { onWordClick(word) }
+                            // Measured after its punctuation, so a word too long for the line wraps inside
+                            // itself instead of pushing a trailing comma or full stop out of sight.
+                            modifier = Modifier.weight(1f, fill = false).then(
+                                if (onWordClick == null || !isLookupWord(word)) Modifier else Modifier
+                                    .dottedUnderline(TextSecondary)
+                                    .clickable { onWordClick(word) }
+                            )
                         )
                     }
                     if (trailing.isNotEmpty()) WordText(trailing, language, style)

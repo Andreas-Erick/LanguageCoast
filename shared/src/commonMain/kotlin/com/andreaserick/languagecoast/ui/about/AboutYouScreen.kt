@@ -47,7 +47,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.EXTRA_FACT_LABEL
 import com.andreaserick.languagecoast.data.PERSONAL_ISLAND_SENTENCES
@@ -68,6 +67,9 @@ import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.Pill
 import com.andreaserick.languagecoast.ui.components.ScreenHeader
 import com.andreaserick.languagecoast.ui.components.ScreenMargin
+import com.andreaserick.languagecoast.ui.components.TileEmoji
+import com.andreaserick.languagecoast.ui.components.collapseExit
+import com.andreaserick.languagecoast.ui.components.expandEnter
 import com.andreaserick.languagecoast.ui.settings.FREE_GEMINI_KEY_WARNING
 import com.andreaserick.languagecoast.ui.theme.OnSeafoam
 import com.andreaserick.languagecoast.ui.theme.Seafoam
@@ -116,7 +118,9 @@ fun AboutYouScreen(
             contentPadding = PaddingValues(start = ScreenMargin, end = ScreenMargin, top = 12.dp, bottom = 24.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            item(key = "intro") { Introduction(uiState.provider, uiState.engineProblem) }
+            // Not before the settings are read: the provider starts out as on-device translation, which would
+            // flash a card saying islands can't be written. The item stays, so the scroll to [openAt] lands right.
+            item(key = "intro") { if (!uiState.isLoading) Introduction(uiState.provider, uiState.engineProblem) }
             item(key = "basics") {
                 BasicsCard(profile = uiState.profile, wording = uiState.wording, onChange = viewModel::setProfileField, onWording = viewModel::setWording)
             }
@@ -302,7 +306,7 @@ private fun IslandQuestionsCard(
                 .clickable(onClickLabel = if (expanded) "Close ${island.name}" else "Open ${island.name}", role = Role.Button, onClick = onToggle)
                 .padding(start = 16.dp, top = 14.dp, end = 12.dp, bottom = 14.dp)
         ) {
-            IconTile { Text(island.emoji, fontSize = 22.sp) }
+            IconTile { TileEmoji(island.emoji) }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(island.name, style = MaterialTheme.typography.titleMedium)
@@ -322,7 +326,7 @@ private fun IslandQuestionsCard(
                 modifier = Modifier.padding(start = 4.dp).size(24.dp)
             )
         }
-        AnimatedVisibility(visible = expanded) {
+        AnimatedVisibility(visible = expanded, enter = expandEnter(), exit = collapseExit()) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()

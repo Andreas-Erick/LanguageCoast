@@ -98,6 +98,8 @@ import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
+import com.andreaserick.languagecoast.ui.components.collapseExit
+import com.andreaserick.languagecoast.ui.components.expandEnter
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.ChipContainer
 import com.andreaserick.languagecoast.ui.theme.CoralText
@@ -108,6 +110,7 @@ import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.ui.theme.tabular
 
 /**
  * The coast's practice sheet, from picking what it should be like to holding the finished PDF: which way
@@ -357,9 +360,10 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
                 tint = TextSecondary
             )
         }
-        AnimatedVisibility(visible = open) {
+        AnimatedVisibility(visible = open, enter = expandEnter(), exit = collapseExit()) {
             Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp)) {
-                Row(modifier = Modifier.padding(start = 4.dp)) {
+                // Spaced apart, so that None isn't hit when All was meant.
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(start = 4.dp)) {
                     TextButton(onClick = { onChange(all) }, enabled = picked.size < islands.size, contentPadding = PaddingValues(horizontal = 8.dp)) {
                         Text("All", style = MaterialTheme.typography.labelMedium, color = if (picked.size < islands.size) SunlitText else TextSecondary)
                     }
@@ -501,7 +505,7 @@ private fun CountStepper(count: Int, text: String, showError: Boolean, onTextCha
                 field = if (digits == typed.text) typed else TextFieldValue(digits, TextRange(digits.length))
                 if (digits != text) onTextChange(digits)
             },
-            textStyle = MaterialTheme.typography.titleLarge.copy(color = TextPrimary, textAlign = TextAlign.Center, fontFeatureSettings = "tnum"),
+            textStyle = MaterialTheme.typography.titleLarge.tabular.copy(color = TextPrimary, textAlign = TextAlign.Center),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
@@ -568,7 +572,8 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
     Text(
         text = if (state.written > 0) "${state.written} of ${plural(state.options.count, "sentence")} written so far."
         else "${plural(state.options.count, "sentence")} from ${plural(cardCount, "card")}.",
-        style = MaterialTheme.typography.bodyLarge,
+        // Tabular figures, so the count doesn't jitter as it climbs.
+        style = MaterialTheme.typography.bodyLarge.tabular,
         modifier = Modifier.padding(top = 12.dp)
     )
     if (state.written > 0) {
@@ -582,12 +587,8 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(6.dp)
         )
     } else {
-        LinearProgressIndicator(
-            color = Sunlit,
-            trackColor = SurfaceRaised,
-            strokeCap = StrokeCap.Round,
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(6.dp)
-        )
+        // The app's own bar rather than Material's: it holds still when the user has asked for reduced motion.
+        WorkingBar(modifier = Modifier.padding(top = 12.dp))
     }
     Text(
         text = "It keeps going if you close this sheet, as long as you stay on this coast and keep the app open.",

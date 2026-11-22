@@ -241,9 +241,16 @@ class PersonalIslandBuilderTest {
         assertTrue(viewModel.uiState.value.buildReview.kept.isEmpty())
 
         // The second sentence isn't how the user would say it: unticked, it is removed.
-        viewModel.removeCards(setOf(viewModel.uiState.value.buildReview.added.last().cardId))
+        var removed: DeletedContent? = null
+        viewModel.removeCards(setOf(viewModel.uiState.value.buildReview.added.last().cardId)) { removed = it }
         assertEquals(listOf("I have a cat."), flashcards.cards.value.map { it.nativeText })
         assertEquals(1, viewModel.uiState.value.buildReview.added.size)
+
+        // Undo puts it back, and removing it again leaves the same state as before.
+        viewModel.restore(removed!!)
+        assertEquals(listOf("I have a cat.", "His name is Milo."), flashcards.cards.value.map { it.nativeText })
+        viewModel.removeCards(setOf(viewModel.uiState.value.buildReview.added.last().cardId))
+        assertEquals(listOf("I have a cat."), flashcards.cards.value.map { it.nativeText })
 
         // After a rewrite, the studied card that stayed is shown too: the answer behind it changed.
         flashcards.saveReview(flashcards.cards.value.single().copy(lastReviewed = 1L, due = 1L))

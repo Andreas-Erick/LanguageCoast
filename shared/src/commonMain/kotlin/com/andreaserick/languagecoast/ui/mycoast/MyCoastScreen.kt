@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -47,7 +48,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.andreaserick.languagecoast.ui.components.LocalReducedMotion
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.data.CoastSummary
 import com.andreaserick.languagecoast.data.Languages
@@ -76,7 +77,9 @@ import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 import kotlinx.datetime.DateTimeUnit
 import com.andreaserick.languagecoast.data.RouteLevel
-import com.andreaserick.languagecoast.ui.theme.OnSunlit
+import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
+import com.andreaserick.languagecoast.ui.theme.tabular
+import com.andreaserick.languagecoast.ui.components.TileEmoji
 import kotlin.math.roundToInt
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
@@ -102,6 +105,8 @@ fun MyCoastScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val undoMessenger = LocalUndoMessenger.current
+    // With reduced motion, cards jump to their new place instead of sliding and fading there.
+    val reducedMotion = LocalReducedMotion.current
 
     // Saved, so turning or unfolding the phone doesn't close an open dialog.
     var showNewCoastDialog by rememberSaveable { mutableStateOf(false) }
@@ -185,7 +190,7 @@ fun MyCoastScreen(
                 }
                 if (uiState.leakyCount > 0) {
                     item(key = "leaky") {
-                        LeakyCard(count = uiState.leakyCount, onClick = onLeakyClick, modifier = Modifier.animateItem())
+                        LeakyCard(count = uiState.leakyCount, onClick = onLeakyClick, modifier = itemMotion(reducedMotion))
                     }
                 }
                 items(uiState.coasts, key = { it.coast.coastId }) { summary ->
@@ -196,7 +201,7 @@ fun MyCoastScreen(
                         onClick = { onCoastClick(summary.coast.coastId, summary.coast.displayName) },
                         // A whole coast isn't deleted on one tap: the dialog above asks first, and Undo follows as before.
                         onDeleteClick = { pendingDeleteId = summary.coast.coastId },
-                        modifier = Modifier.animateItem()
+                        modifier = itemMotion(reducedMotion)
                     )
                 }
                 if (uiState.availableLanguages.isNotEmpty()) {
@@ -206,7 +211,7 @@ fun MyCoastScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = ButtonHeight)
-                                .animateItem()
+                                .then(itemMotion(reducedMotion))
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                             Text("New coast")
@@ -217,6 +222,11 @@ fun MyCoastScreen(
         }
     }
 }
+
+/** How a list item moves, fades in and fades out; not at all with [reducedMotion]. */
+private fun LazyItemScope.itemMotion(reducedMotion: Boolean): Modifier =
+    if (reducedMotion) Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null)
+    else Modifier.animateItem()
 
 /**
  * Asks before a whole coast is deleted. A coast can hold months of progress, and the Undo that follows is
@@ -269,7 +279,7 @@ fun StreakCard(
             if (streakCount > 0) {
                 Text(
                     "$streakCount",
-                    style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
+                    style = MaterialTheme.typography.headlineMedium.tabular,
                     color = SunlitText
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -411,7 +421,7 @@ fun CoastCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconTile {
                 if (language != null) {
-                    Text(language.flag, fontSize = 24.sp)
+                    TileEmoji(language.flag)
                 } else {
                     // A language the app no longer offers: its first letters stand in for a flag.
                     Text(coast.language.take(2).uppercase(), style = MaterialTheme.typography.titleSmall, color = TextPrimary)
@@ -434,7 +444,8 @@ fun CoastCard(
         }
         if (level != null) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 12.dp, end = 12.dp)) {
-                Pill(level.level.label, container = Sunlit, content = OnSunlit)
+                // The level is a status, not something to tap, so it stays out of the accent.
+                Pill(level.level.label, container = SurfaceSelected, content = TextPrimary)
                 Spacer(modifier = Modifier.width(10.dp))
                 LinearProgressIndicator(
                     progress = { level.progress },
@@ -446,7 +457,7 @@ fun CoastCard(
                     modifier = Modifier.weight(1f).height(6.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
-                Text("${(level.progress * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                Text("${(level.progress * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium.tabular, color = TextSecondary)
             }
         }
         if (summary.islandCount > 0) {
@@ -485,8 +496,9 @@ private fun CoastMenu(coastName: String, onDelete: () -> Unit) {
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text("Delete coast") },
-                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                // Coral, like every destructive action, so it doesn't read as a neutral option.
+                text = { Text("Delete coast", color = CoralText) },
+                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = CoralText) },
                 onClick = {
                     expanded = false
                     onDelete()

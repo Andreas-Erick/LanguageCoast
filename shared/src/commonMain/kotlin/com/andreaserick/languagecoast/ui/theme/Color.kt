@@ -41,7 +41,9 @@ class CoastPalette(
     /** How strongly the background's stars show: 0 for none (the day), 1 for a full night sky. */
     val stars: Float = 0f,
     /** The soft light in the background's top corner; unspecified means the sun's, [sunlit] at 10%. */
-    val glow: Color = Color.Unspecified
+    val glow: Color = Color.Unspecified,
+    /** The colour of the background's stars, a pale lavender white; it only shows where [stars] is above 0. */
+    val starColor: Color = Color(0xFFE9E7FF)
 ) {
     /** The colour of the background's corner glow. */
     val glowColor: Color get() = if (glow.isSpecified) glow else sunlit.copy(alpha = 0.10f)

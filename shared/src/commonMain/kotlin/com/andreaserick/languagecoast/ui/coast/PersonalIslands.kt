@@ -60,7 +60,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.ProviderCapacity
 import com.andreaserick.languagecoast.data.BuildProgress
 import com.andreaserick.languagecoast.data.Flashcard
@@ -74,6 +73,7 @@ import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.IconTile
+import com.andreaserick.languagecoast.ui.components.TileEmoji
 import com.andreaserick.languagecoast.ui.components.inLanguage
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
@@ -84,6 +84,7 @@ import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.ui.theme.tabular
 
 /** Where an island about the user stands on a coast. */
 enum class PersonalIslandState {
@@ -263,7 +264,7 @@ internal fun BuildProgressCard(
                     // A run stopped before it wrote anything didn't succeed at anything: no tick for it.
                     progress.isFinished && progress.stopped && progress.added == 0 -> Icon(Icons.Default.Close, contentDescription = null, tint = TextSecondary)
                     progress.isFinished -> Icon(Icons.Default.Check, contentDescription = null, tint = Seafoam)
-                    else -> Text(progress.emoji, fontSize = 22.sp)
+                    else -> TileEmoji(progress.emoji)
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
@@ -330,7 +331,8 @@ internal fun BuildProgressCard(
                             // The run only goes on while the app is on screen.
                             text = (if (several) "Island ${progress.done + 1} of ${progress.total}, ${plural(progress.added, "card")} so far."
                             else "Up to $PERSONAL_ISLAND_SENTENCES sentences, in both languages.") + " Keep the app open until it is done.",
-                            style = MaterialTheme.typography.bodySmall,
+                            // Tabular figures, so the counts don't jitter as they climb.
+                            style = MaterialTheme.typography.bodySmall.tabular,
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 6.dp)
                         )
@@ -338,7 +340,8 @@ internal fun BuildProgressCard(
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+        // Spaced apart, so that Done isn't hit when Look them over was meant.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
             if (!progress.isFinished) {
                 TextButton(onClick = onStop) { Text("Stop", style = MaterialTheme.typography.labelMedium, color = TextSecondary) }
             } else {
@@ -353,9 +356,12 @@ internal fun BuildProgressCard(
     }
 }
 
-/** A bar with a piece gliding across it: something is at work, and how far it is can't be told. */
+/**
+ * A bar with a piece gliding across it: something is at work, and how far it is can't be told. The piece
+ * holds still in the middle when the user has asked for reduced motion.
+ */
 @Composable
-private fun WorkingBar(modifier: Modifier = Modifier) {
+internal fun WorkingBar(modifier: Modifier = Modifier) {
     val reducedMotion = com.andreaserick.languagecoast.ui.components.LocalReducedMotion.current
     val position = if (reducedMotion) {
         0.5f

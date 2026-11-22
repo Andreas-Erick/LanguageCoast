@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -36,6 +37,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,11 +54,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.andreaserick.languagecoast.ui.theme.tabular
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -115,6 +121,27 @@ fun CoastSecondaryButton(
         colors = ButtonDefaults.buttonColors(containerColor = SurfaceSelected, contentColor = TextPrimary),
         content = content
     )
+}
+
+/**
+ * A button label in two parts: what the tap does, then a quieter detail about it ("Start", "about 5 minutes";
+ * "Download", "1.2 GB"). The action never shrinks or cuts; when space runs out the detail gives way first.
+ * Use it inside a button's content instead of joining the two with " · ".
+ */
+@Composable
+fun RowScope.ButtonLabel(action: String, detail: String?) {
+    Text(action, maxLines = 1, softWrap = false)
+    if (!detail.isNullOrEmpty()) {
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = detail,
+            style = LocalTextStyle.current.copy(fontWeight = FontWeight.SemiBold),
+            color = LocalContentColor.current.copy(alpha = 0.78f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+    }
 }
 
 /**
@@ -255,7 +282,8 @@ fun Pill(
     Surface(shape = RoundedCornerShape(50), color = container, contentColor = content, modifier = modifier) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelSmall,
+            // Tabular, so a count that changes ("2/5" to "3/5") doesn't change the pill's width.
+            style = MaterialTheme.typography.labelSmall.tabular,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -273,6 +301,16 @@ fun IconTile(modifier: Modifier = Modifier, size: Dp = 44.dp, content: @Composab
             .background(SurfaceRaised, MaterialTheme.shapes.small),
         content = { content() }
     )
+}
+
+/**
+ * An emoji or flag inside an [IconTile]. Sized in dp, not sp: it is an icon, so it keeps its size in the tile
+ * at any font scale instead of growing out of it. Half the tile by default, the same in every tile.
+ */
+@Composable
+fun TileEmoji(emoji: String, tileSize: Dp = 44.dp) {
+    val size = with(LocalDensity.current) { (tileSize * 0.5f).toSp() }
+    Text(emoji, fontSize = size, lineHeight = size, maxLines = 1)
 }
 
 /**

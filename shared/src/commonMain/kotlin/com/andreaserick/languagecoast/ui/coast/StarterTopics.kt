@@ -38,7 +38,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.andreaserick.languagecoast.data.ProviderCapacity
 import com.andreaserick.languagecoast.data.ImportProgress
 import com.andreaserick.languagecoast.data.PROFILE_PLACEHOLDERS
@@ -51,6 +50,7 @@ import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.IconTile
+import com.andreaserick.languagecoast.ui.components.TileEmoji
 import com.andreaserick.languagecoast.ui.components.plural
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.Seafoam
@@ -58,6 +58,7 @@ import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.ui.theme.tabular
 
 /**
  * A starter topic the coast doesn't have yet.
@@ -212,7 +213,7 @@ internal fun ImportProgressCard(progress: ImportProgress, onStop: () -> Unit, on
                     nothingAdded && progress.failed > 0 -> Icon(Icons.Default.Error, contentDescription = null, tint = CoralText)
                     nothingAdded -> Icon(Icons.Default.Close, contentDescription = null, tint = TextSecondary)
                     progress.isFinished -> Icon(Icons.Default.Check, contentDescription = null, tint = Seafoam)
-                    else -> Text(theme?.emoji ?: "📚", fontSize = 22.sp)
+                    else -> TileEmoji(theme?.emoji ?: "📚")
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
@@ -293,7 +294,8 @@ internal fun ImportProgressCard(progress: ImportProgress, onStop: () -> Unit, on
                             // The run only goes on while the app is on screen.
                             text = (if (several) "${progress.done} of ${progress.total} translated, ${plural(progress.topicCount, "topic")} in all."
                             else "${progress.done} of ${progress.total} translated.") + " Keep the app open until it is done.",
-                            style = MaterialTheme.typography.bodySmall,
+                            // Tabular figures, so the count doesn't jitter as it climbs.
+                            style = MaterialTheme.typography.bodySmall.tabular,
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 6.dp)
                         )

@@ -213,7 +213,8 @@ private fun mix(a: CoastPalette, b: CoastPalette, backgroundT: Float, textT: Flo
         chipContainer = bg { chipContainer },
         isDark = if (textT < 0.5f) a.isDark else b.isDark,
         stars = a.stars + (b.stars - a.stars) * backgroundT,
-        glow = bg { glowColor }
+        glow = bg { glowColor },
+        starColor = bg { starColor }
     )
 }
 
