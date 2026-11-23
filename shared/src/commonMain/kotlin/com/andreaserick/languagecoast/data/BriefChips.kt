@@ -87,6 +87,9 @@ private fun String.capitalized() = replaceFirstChar { it.uppercaseChar() }
 /** How many chips one brief takes: more drills than this at once make the brief too unclear for the model. */
 const val BRIEF_CHIPS_MAX = 3
 
+/** A brief can be this long: a sentence or two. The prompt quotes its first 300 characters. */
+const val BRIEF_MAX_LENGTH = 400
+
 /** What a tapped chip is joined to the rest of the brief with. */
 private const val CHIP_SEPARATOR = "; "
 
@@ -102,13 +105,12 @@ fun chipsInBrief(brief: String, offered: Collection<String>): List<String> =
 
 /**
  * The brief after tapping a [chip]: a chip it holds already is taken out; any other is added at the end,
- * unless the brief holds [BRIEF_CHIPS_MAX] chips already. What the learner typed is left as it is.
+ * unless the brief holds [BRIEF_CHIPS_MAX] chips already or would be longer than [BRIEF_MAX_LENGTH] with it
+ * (cut to fit, the chip would be a fragment of itself). What the learner typed is left as it is.
  */
 fun toggleChip(brief: String, chip: String, offered: Collection<String>): String {
     val parts = parts(brief)
-    return when {
-        parts.any { it.equals(chip, ignoreCase = true) } -> parts.filterNot { it.equals(chip, ignoreCase = true) }.joinToString(CHIP_SEPARATOR)
-        chipsInBrief(brief, offered).size >= BRIEF_CHIPS_MAX -> brief
-        else -> (parts + chip).joinToString(CHIP_SEPARATOR)
-    }
+    if (parts.any { it.equals(chip, ignoreCase = true) }) return parts.filterNot { it.equals(chip, ignoreCase = true) }.joinToString(CHIP_SEPARATOR)
+    if (chipsInBrief(brief, offered).size >= BRIEF_CHIPS_MAX) return brief
+    return (parts + chip).joinToString(CHIP_SEPARATOR).takeIf { it.length <= BRIEF_MAX_LENGTH } ?: brief
 }

@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.ProviderCapacity
 import com.andreaserick.languagecoast.data.SheetKind
 import com.andreaserick.languagecoast.data.BRIEF_CHIPS_MAX
+import com.andreaserick.languagecoast.data.BRIEF_MAX_LENGTH
 import com.andreaserick.languagecoast.data.briefChips
 import com.andreaserick.languagecoast.data.chipsInBrief
 import com.andreaserick.languagecoast.data.toggleChip
@@ -521,7 +522,7 @@ private fun BriefField(
     LaunchedEffect(brief) { if (!typed) draft = brief }
     val change: (String) -> Unit = {
         typed = true
-        draft = it.take(BRIEF_LENGTH)
+        draft = it.take(BRIEF_MAX_LENGTH)
         onChange(draft)
     }
     CoastTextField(
@@ -560,7 +561,7 @@ private fun ExampleBriefChips(coastLanguage: String, current: String, onChange: 
                 title = group.area.label,
                 chips = group.chips,
                 tapped = tapped,
-                full = tapped.size >= BRIEF_CHIPS_MAX,
+                fits = { toggleChip(current, it, offered) != current },
                 onTap = { onChange(toggleChip(current, it, offered)) }
             )
         }
@@ -569,14 +570,15 @@ private fun ExampleBriefChips(coastLanguage: String, current: String, onChange: 
 
 /**
  * One area of example chips, folded to its name and how many of its chips are in the brief; unfolded, the
- * chips themselves. A tapped chip shows as picked; once the brief holds [BRIEF_CHIPS_MAX], the others rest.
+ * chips themselves. A tapped chip shows as picked; once the brief holds [BRIEF_CHIPS_MAX], or has no room
+ * left for a chip ([BRIEF_MAX_LENGTH]), the others rest.
  *
  * @param tapped The chips the brief holds now, from every area.
- * @param full Whether the brief holds as many chips as it takes.
+ * @param fits Whether a chip not in the brief can go in: not when the brief holds as many chips as it takes, or has no room left for it.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BriefChipRow(title: String, chips: List<String>, tapped: List<String>, full: Boolean, onTap: (String) -> Unit) {
+private fun BriefChipRow(title: String, chips: List<String>, tapped: List<String>, fits: (String) -> Boolean, onTap: (String) -> Unit) {
     var open by rememberSaveable(title) { mutableStateOf(false) }
     val inBrief = chips.count { it in tapped }
     Column(modifier = Modifier.fillMaxWidth().background(ChipContainer, MaterialTheme.shapes.medium)) {
@@ -608,10 +610,10 @@ private fun BriefChipRow(title: String, chips: List<String>, tapped: List<String
                     FilterChip(
                         selected = picked,
                         onClick = { onTap(chip) },
-                        enabled = picked || !full,
+                        enabled = picked || fits(chip),
                         label = { Text(chip, style = MaterialTheme.typography.labelMedium) },
                         colors = coastChipColors(),
-                        border = coastChipBorder(enabled = picked || !full, selected = picked),
+                        border = coastChipBorder(enabled = picked || fits(chip), selected = picked),
                         shape = MaterialTheme.shapes.small
                     )
                 }
@@ -619,9 +621,6 @@ private fun BriefChipRow(title: String, chips: List<String>, tapped: List<String
         }
     }
 }
-
-/** A brief can be this long: a sentence or two. The prompt quotes its first 300 characters. */
-private const val BRIEF_LENGTH = 400
 
 /** The small heading over one of the sheet's settings. */
 @Composable

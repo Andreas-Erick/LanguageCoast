@@ -68,6 +68,19 @@ class BriefChipsTest {
     }
 
     @Test
+    fun aChipThatWouldMakeTheBriefTooLongIsNotAdded() {
+        val offered = briefChips("German").flatMap { it.chips }
+        val long = "x".repeat(BRIEF_MAX_LENGTH - 5)
+        // Cut at the brief's length, the chip would be a fragment of itself; it isn't added at all.
+        assertEquals(long, toggleChip(long, "Modal verbs", offered))
+        // One that fits still is, and one that is in can always be taken out.
+        val fits = "x".repeat(BRIEF_MAX_LENGTH - "; Modal verbs".length)
+        val withChip = toggleChip(fits, "Modal verbs", offered)
+        assertEquals(BRIEF_MAX_LENGTH, withChip.length)
+        assertEquals(fits, toggleChip(withChip, "Modal verbs", offered))
+    }
+
+    @Test
     fun aLanguageOnlyGetsChipsForGrammarItHas() {
         // Like Japanese: no cases, no articles, no plurals, but particles and politeness.
         val japaneseLike = briefChips(
