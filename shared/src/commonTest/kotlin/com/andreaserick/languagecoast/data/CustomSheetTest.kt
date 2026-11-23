@@ -299,6 +299,60 @@ class CustomSheetTest {
     }
 
     @Test
+    fun aShortAnswerThatIsAlsoAnotherWordOfTheSentenceGivesNothingAway() {
+        val read = parseCustomSheetResponse(
+            """
+            gap || Fill in the article. || Mit dem Auto fahre ich zu ___ (der) Bahnhof. || dem
+            choice || Pick the right article. || Mit dem Bus fahre ich zu ___ Bahnhof. || dem || a) den; b) dem; c) der
+            choice || Pick the right form. || Ich sehe ___ (die Katze). || die Katze || a) die Katze; b) der Katze; c) den Katze
+            gap || Fill the gap. || Die Katze schläft, ich sehe ___ (die Katze). || die Katze
+            """.trimIndent()
+        )
+        // "dem" is a word of the sentence too; a phrase that is there word for word still gives the answer away.
+        assertEquals(listOf("dem", "dem", "die Katze"), read.map { it.answer })
+    }
+
+    @Test
+    fun anInstructionThatStartsLikeAPlaceholderIsStillAnInstruction() {
+        val read = parseCustomSheetResponse(
+            """
+            gap || Answer in the past tense. || Gestern ___ (gehen) ich ins Kino. || ging
+            short || Answer in German. || Wie heißt du? || Ich heiße Anna.
+            short || answer in German || Wie alt bist du? || Ich bin zehn.
+            short || Write the plural. || Task in German || die Hunde
+            short || [instruction in English] || der Hund || die Hunde
+            """.trimIndent()
+        )
+        // Only the prompt's own placeholders sent back are dropped, not instructions that happen to start the same way.
+        assertEquals(listOf("Answer in the past tense.", "Answer in German."), read.map { it.instruction })
+    }
+
+    @Test
+    fun theSameTaskWithAnotherInstructionIsKept() {
+        val read = parseCustomSheetResponse(
+            "short || Write the accusative. || der Mann || den Mann\n" +
+                "short || Write the dative. || der Mann || dem Mann\n" +
+                "short || Write the dative. || Der Mann! || dem Mann"
+        )
+        assertEquals(listOf("den Mann", "dem Mann"), read.map { it.answer })
+    }
+
+    @Test
+    fun aMultipleChoiceAnswerIsReadPastItsFullStopOrNoteAndOptionsMayBeSetApartWithCommas() {
+        val read = parseCustomSheetResponse(
+            """
+            choice || Pick. || Ich fahre mit ___ Zug. || dem. || a) den; b) dem; c) der
+            choice || Pick. || Ich gebe ___ Frau das Buch. || b) der (dative) || a) die; b) der; c) den
+            choice || Pick. || Wir helfen ___ Kind. || dem || den, dem, das
+            choice || Pick. || Sie kommt aus ___ Schweiz. || c. || die; das; der
+            """.trimIndent()
+        )
+        assertEquals(listOf("dem", "der", "dem", "der"), read.map { it.answer })
+        assertEquals(listOf("den", "dem", "das"), read[2].options)
+    }
+
+
+    @Test
     fun aGapFillPrintsItsGapWideEnoughToWriteTheAnswerInAndTheKeyFillsItIn() {
         val short = gap("Ich ___ (sein) müde.", "bin")
         val long = gap("Ich gebe ___ (der alte Mann) das Buch.", "dem alten Mann")
