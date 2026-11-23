@@ -247,7 +247,10 @@ private fun ColumnScope.WorksheetOptionsForm(
 
     if (custom) {
         FieldLabel("What to practise")
-        BriefField(brief = options.brief, coastLanguage = coastLanguage, onChange = { onOptionsChange(options.copy(brief = it)) })
+        BriefField(brief = options.brief, onChange = { onOptionsChange(options.copy(brief = it)) }) { current, replace ->
+            RecentBriefChips(briefs = state.recentBriefs, current = current, onPick = replace)
+            ExampleBriefChips(coastLanguage = coastLanguage, current = current, onChange = replace)
+        }
         if (provider == TranslationProvider.LocalAi) {
             Text(
                 text = "Small models write these less well.",
@@ -447,39 +450,55 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
 }
 
 /**
- * The box for a custom sheet's brief, with the example chips for the coast's language under it. What is
- * typed is held here and passed on as it changes, so a keystroke never waits on the round trip through the
- * screen's state (the "About you" fields lost letters that way). A tapped chip changes the same draft, so
- * it shows in the box at once and stays editable there.
+ * The box for a custom sheet's brief. What is typed is held here and passed on as it changes, so a
+ * keystroke never waits on the round trip through the screen's state (the "About you" fields lost letters
+ * that way). Once something was typed the box no longer follows [brief], so chips under it change the brief
+ * through [below]: it gets the text in the box and a way to replace it.
  */
 @Composable
-private fun BriefField(brief: String, coastLanguage: String, onChange: (String) -> Unit) {
+private fun BriefField(
+    brief: String,
+    onChange: (String) -> Unit,
+    below: @Composable (current: String, replace: (String) -> Unit) -> Unit = { _, _ -> }
+) {
     var draft by rememberSaveable { mutableStateOf(brief) }
     var typed by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(brief) { if (!typed) draft = brief }
-    fun change(text: String) {
+    val change: (String) -> Unit = {
         typed = true
-        draft = text.take(BRIEF_LENGTH)
+        draft = it.take(BRIEF_LENGTH)
         onChange(draft)
     }
     CoastTextField(
         value = draft,
-        onValueChange = ::change,
+        onValueChange = change,
         placeholder = { Text("For example: the plural of nouns, or the dative after mit") },
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         minLines = 2,
         modifier = Modifier.fillMaxWidth()
     )
+    below(draft, change)
+}
+
+/**
+ * The example chips for the coast's language, one row per area, under the brief box and after the recent
+ * briefs. Tapping one adds it to the brief or takes it out again, up to [BRIEF_CHIPS_MAX] at once; what the
+ * learner typed stays.
+ *
+ * @param current The text in the brief box now.
+ * @param onChange Replaces the text in the brief box.
+ */
+@Composable
+private fun ExampleBriefChips(coastLanguage: String, current: String, onChange: (String) -> Unit) {
     val groups = remember(coastLanguage) { briefChips(coastLanguage) }
     val offered = remember(groups) { groups.flatMap { it.chips } }
-    val tapped = chipsInBrief(draft, offered)
+    val tapped = chipsInBrief(current, offered)
     Text(
         text = if (tapped.size < BRIEF_CHIPS_MAX) "Or tap up to $BRIEF_CHIPS_MAX examples to add them." else "That's $BRIEF_CHIPS_MAX examples: tap one to take it out.",
         style = MaterialTheme.typography.bodySmall,
         color = TextSecondary,
         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
     )
-    // Rows of other chips (such as the learner's recent briefs) go above these, in the same Column.
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
         groups.forEach { group ->
             BriefChipRow(
@@ -487,7 +506,7 @@ private fun BriefField(brief: String, coastLanguage: String, onChange: (String) 
                 chips = group.chips,
                 tapped = tapped,
                 full = tapped.size >= BRIEF_CHIPS_MAX,
-                onTap = { change(toggleChip(draft, it, offered)) }
+                onTap = { onChange(toggleChip(current, it, offered)) }
             )
         }
     }

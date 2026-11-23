@@ -156,6 +156,12 @@ internal object SettingKeys {
     fun worksheetAnchors(coastId: Int) = stringPreferencesKey("worksheet_anchors_$coastId")
     fun worksheetSentences(coastId: Int) = stringPreferencesKey("worksheet_sentences_$coastId")
 
+    /**
+     * The last briefs of each coast's custom practice sheets, newest first. Like the rings above it is in neither
+     * list below, so it stays on this phone: a backup or a restore never carries it.
+     */
+    fun worksheetBriefs(coastId: Int) = stringPreferencesKey("worksheet_briefs_$coastId")
+
     /** The secrets, in [SecretStore] by these keys' names. */
     // A getter: CLOUD_PROVIDERS reads these keys, so reading it while this object is set up would see nulls.
     val SECRET_KEYS: List<Preferences.Key<String>> get() = CLOUD_PROVIDERS.values.map { it.keyPreference } + HUGGING_FACE_TOKEN
