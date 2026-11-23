@@ -180,7 +180,26 @@ class WorksheetPrinterTest {
         assertEquals(longPdf.pageCount, longPages)
     }
 
+    @Test
+    fun multipleChoicePrintsBeforeShortAnswersWithItsOptionsOnOneLineAndItsLetterInTheKey() {
+        val mixed = customSheet(SHORT_ANSWERS.take(3) + CHOICES, brief = "Articles after prepositions, and plurals").copy(date = LocalDate(2026, 11, 11))
+        val rows = customSheetLayout(mixed.exercises)
+        assertEquals(listOf(ExerciseForm.MultipleChoice, ExerciseForm.MultipleChoice, ExerciseForm.MultipleChoice), rows.take(3).map { it.exercise.form })
+        assertEquals("a) den     b) dem     c) der", choiceLine(rows[0].exercise.options))
+        assertEquals(listOf("b) dem", "a) der", "c) dem", "die Hunde"), rows.take(4).map { keyAnswer(it.exercise) })
+
+        // Six exercises fit the first page; the key starts the second.
+        val (pdf, pages) = print(mixed)
+        assertEquals(2 to 2, pdf.pageCount to pages)
+    }
+
     private companion object {
+        val CHOICES = listOf(
+            Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Ich fahre mit ___ Zug nach Wien.", "dem", listOf("den", "dem", "der")),
+            Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Sie wohnt in ___ Schweiz.", "der", listOf("der", "die", "das")),
+            Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Wir helfen ___ Kind bei den Hausaufgaben.", "dem", listOf("das", "den", "dem"))
+        )
+
         val SHORT_ANSWERS = listOf(
             Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "der Hund", "die Hunde"),
             Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "die Maus", "die Mäuse", wordHelp = listOf(WordHelp("Maus", "mouse"))),

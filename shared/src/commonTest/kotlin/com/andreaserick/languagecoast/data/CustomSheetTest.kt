@@ -74,6 +74,22 @@ class CustomSheetTest {
     }
 
     @Test
+    fun aSheetThatMayHaveMultipleChoiceSaysWhatAGoodOneIsAndAsksForItsThreeOptions() {
+        val prompt = buildCustomSheetPrompt(
+            brief = "Dative articles", forms = customSheetForms(emptySet()), cards = cards, targetLanguage = "German",
+            nativeLanguage = "English", count = 4, difficulty = WorksheetDifficulty.Medium
+        )
+        // Left to the model, a sheet may have multiple choice among its forms.
+        assertTrue("\"choice\"" in prompt.substringAfter("Each exercise is one of these forms:").substringBefore("\n"))
+        val rule = prompt.lines().single { it.startsWith("- A \"choice\" exercise") }
+        assertTrue("three options" in rule && "exactly one of them is right" in rule && "not in the task" in rule, rule)
+        assertTrue("|| [the three options, as \"a) option; b) option; c) option\", or - if it is not multiple choice]" in prompt.substringAfter("in this format:\n"))
+
+        // A sheet of short answers only isn't told about options at all.
+        assertFalse("option" in prompt(), "A short-answer sheet mentions options")
+    }
+
+    @Test
     fun aBriefIsQuotedOnOneLine() {
         val prompt = prompt(brief = "  Nominative →\ndative  ")
         assertTrue("\"Nominative → dative\"" in prompt)
@@ -127,6 +143,57 @@ class CustomSheetTest {
             ),
             read
         )
+    }
+
+    private fun choice(task: String, answer: String, vararg options: String) =
+        Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", task, answer, options = options.toList())
+
+    @Test
+    fun aMultipleChoiceLineIsReadAsItsThreeOptionsWithTheAnswerSpelledOutAndNoWordHelp() {
+        val read = parseCustomSheetResponse(
+            """
+            choice || Pick the right article. || Ich fahre mit ___ Zug. || dem || a) den; b) dem; c) der
+            choice || Pick the right article. || Ich gebe ___ Frau das Buch. || b) der || a) die; b) der; c) den || Buch = book
+            multiple choice || Pick the right article. || Wir helfen ___ Kind. || c || a) das b) den c) dem
+            choice || Pick the right article. || Er wohnt bei ___ Eltern. || seinen || a) seine || b) seinen || c) seiner
+            choice || Pick the right article. || Sie kommt aus ___ Schweiz. || der || die / der / den
+            """.trimIndent()
+        )
+        assertEquals(
+            listOf(
+                choice("Ich fahre mit ___ Zug.", "dem", "den", "dem", "der"),
+                choice("Ich gebe ___ Frau das Buch.", "der", "die", "der", "den"),
+                choice("Wir helfen ___ Kind.", "dem", "das", "den", "dem"),
+                choice("Er wohnt bei ___ Eltern.", "seinen", "seine", "seinen", "seiner"),
+                choice("Sie kommt aus ___ Schweiz.", "der", "die", "der", "den")
+            ),
+            read
+        )
+    }
+
+    @Test
+    fun anAnswerThatIsAlsoAnOptionIsThatOptionEvenWhenItLooksLikeALetter() {
+        // Italian "a" is a word: when the options have it, the answer means that option, not the first one.
+        val read = parseCustomSheetResponse("choice || Pick the preposition. || Vado ___ Roma. || a || a) in; b) a; c) da").single()
+        assertEquals("a", read.answer)
+        assertEquals(listOf("in", "a", "da"), read.options)
+    }
+
+    @Test
+    fun aMultipleChoiceExerciseWithoutThreeDifferentOptionsOrWithoutItsAnswerAmongThemIsDropped() {
+        val read = parseCustomSheetResponse(
+            """
+            choice || Pick. || Ich fahre mit ___ Zug. || dem || a) den; b) dem
+            choice || Pick. || Ich fahre mit ___ Bus. || dem || a) den; b) dem; c) der; d) des
+            choice || Pick. || Ich fahre mit ___ Auto. || dem || a) dem; b) Dem; c) der
+            choice || Pick. || Ich gehe in ___ Park. || den || a) dem; b) der; c) des
+            choice || Pick. || Ich gehe in ___ Stadt. || d || a) dem; b) der; c) die
+            choice || Pick. || Ich gehe in ___ Kino. || das || -
+            choice || Pick. || Ich gehe in ___ Garten. || den
+            choice || Pick. || Ich sitze in ___ Garten. || dem || a) dem; b) den; c) der
+            """.trimIndent()
+        )
+        assertEquals(listOf("Ich sitze in ___ Garten."), read.map { it.task })
     }
 
     @Test
@@ -208,6 +275,15 @@ class CustomSheetTest {
         assertEquals(listOf(1, 2, 3, 4, 5), rows.map { it.number })
         assertEquals(listOf(gap, plural1, plural2, dative), rows.take(4).map { it.exercise })
         assertEquals(listOf("Fill the gap.", "Write the plural.", null, "Put it in the dative.", null), rows.map { it.instruction })
+    }
+
+    @Test
+    fun multipleChoiceOptionsAreLetteredOnOneLineAndTheKeyGivesTheLetterAndTheWord() {
+        val exercise = choice("Ich fahre mit ___ Zug.", "dem", "den", "dem", "der")
+        assertEquals("a) den     b) dem     c) der", choiceLine(exercise.options))
+        assertEquals("b) dem", keyAnswer(exercise))
+        // Every other form's key is its answer as it is.
+        assertEquals("die Hunde", keyAnswer(short("der Hund", "die Hunde")))
     }
 
     @Test
