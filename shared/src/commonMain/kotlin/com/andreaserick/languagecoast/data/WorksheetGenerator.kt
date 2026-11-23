@@ -269,6 +269,8 @@ class WorksheetGenerator(
         ai: AiConnection.Ready,
         onProgress: (Int) -> Unit
     ): WorksheetResult {
+        // Where the dealer stood before the last prompt's cards, as the translation loop keeps it.
+        var dealSnapshot: WorksheetCardDealer.Snapshot? = null
         val request = CustomSheetRequest(
             brief = options.brief,
             forms = customSheetForms(options.forms),
@@ -283,7 +285,8 @@ class WorksheetGenerator(
             limits = limits,
             batch = batch,
             vocabulary = vocabulary,
-            cardsFor = { dealer.next(it).cards }
+            cardsFor = { dealSnapshot = dealer.snapshot(); dealer.next(it).cards },
+            takeBackCards = { dealSnapshot?.let(dealer::restore) }
         )
         val written = CustomSheetWriter(ai, background, random).write(request, onProgress)
         if (written.exercises.isEmpty()) return WorksheetResult.Failed(written.error ?: CUSTOM_SHEET_UNUSABLE)
