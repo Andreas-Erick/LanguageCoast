@@ -75,12 +75,14 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.ProviderCapacity
+import com.andreaserick.languagecoast.data.SheetKind
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.islandEmoji
@@ -96,6 +98,7 @@ import com.andreaserick.languagecoast.data.worksheetRequests
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
+import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
 import com.andreaserick.languagecoast.ui.components.collapseExit
@@ -153,6 +156,7 @@ internal fun WorksheetSheet(
                     sentenceCount = state.sentenceCount,
                     askedFor = state.options.count,
                     toLanguage = toLanguage,
+                    custom = state.options.kind == SheetKind.Custom,
                     provider = provider,
                     files = files,
                     onStartNew = onStartNew
@@ -186,6 +190,7 @@ private fun ColumnScope.WorksheetOptionsForm(
     onCreate: () -> Unit
 ) {
     val options = state.options
+    val custom = options.kind == SheetKind.Custom
     val picked = islands.filter { options.includes(it.island.islandId) }
     val allPicked = picked.size == islands.size
     // What the number field says, which while typing can be no number or one outside the limits.
@@ -201,24 +206,48 @@ private fun ColumnScope.WorksheetOptionsForm(
             "The ${if (picked.size == 1) "island" else "islands"} you picked ${if (picked.size == 1) "has" else "have"} ${plural(cardCount, "card")}. A sheet needs at least $WORKSHEET_MIN_CARDS: pick more."
         cardCount < WORKSHEET_MIN_CARDS ->
             "A practice sheet is made from the coast's cards, and this coast has ${plural(cardCount, "card")}. Add at least $WORKSHEET_MIN_CARDS first."
-        provider == TranslationProvider.OnDevice -> "On-device translation can't write sentences. Pick an AI provider in Settings to make a practice sheet."
+        provider == TranslationProvider.OnDevice ->
+            "On-device translation can't write ${if (custom) "exercises" else "sentences"}. Pick an AI provider in Settings to make a practice sheet."
         else -> null
+    }
+    val theCards = when {
+        allPicked -> "this coast's ${plural(cardCount, "card")}"
+        picked.isEmpty() -> "the cards on the islands you pick"
+        else -> "the ${plural(cardCount, "card")} on the islands you picked"
     }
 
     Text("Practice sheet", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+    SegmentedSwitch(
+        options = SheetKind.entries.map { it.label },
+        selectedIndex = options.kind.ordinal,
+        onSelect = { onOptionsChange(options.copy(kind = SheetKind.entries[it])) },
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+    )
     Text(
-        text = "New sentences to translate, each built from one of ${
-            when {
-                allPicked -> "this coast's ${plural(cardCount, "card")}"
-                picked.isEmpty() -> "the cards on the islands you pick"
-                else -> "the ${plural(cardCount, "card")} on the islands you picked"
-            }
-        }, as a PDF to print or fill in. A sentence may bring a new word or two where it needs them; " +
-            "with a cloud AI provider they are explained under it. The answers come on a page of their own.",
+        text = if (custom) {
+            "Exercises on the grammar you name, written with words from $theCards, as a PDF to print or fill in. " +
+                "The answers come on a page of their own."
+        } else {
+            "New sentences to translate, each built from one of $theCards, as a PDF to print or fill in. A sentence may bring a new word or two where it needs them; " +
+                "with a cloud AI provider they are explained under it. The answers come on a page of their own."
+        },
         style = MaterialTheme.typography.bodyMedium,
         color = TextSecondary,
-        modifier = Modifier.padding(top = 4.dp)
+        modifier = Modifier.padding(top = 10.dp)
     )
+
+    if (custom) {
+        FieldLabel("What to practise")
+        BriefField(brief = options.brief, onChange = { onOptionsChange(options.copy(brief = it)) })
+        if (provider == TranslationProvider.LocalAi) {
+            Text(
+                text = "Small models write these less well.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+    }
 
     if (islands.size > 1) {
         IslandPicker(
@@ -229,13 +258,16 @@ private fun ColumnScope.WorksheetOptionsForm(
         )
     }
 
-    FieldLabel("Direction")
-    DirectionSwitch(
-        direction = options.direction,
-        coastLanguage = coastLanguage,
-        nativeLanguage = nativeLanguage,
-        onChange = { onOptionsChange(options.copy(direction = it)) }
-    )
+    // A custom sheet's instructions are in the learner's language and its exercises in the coast's: there is no way round to pick.
+    if (!custom) {
+        FieldLabel("Direction")
+        DirectionSwitch(
+            direction = options.direction,
+            coastLanguage = coastLanguage,
+            nativeLanguage = nativeLanguage,
+            onChange = { onOptionsChange(options.copy(direction = it)) }
+        )
+    }
 
     FieldLabel("Difficulty")
     SegmentedSwitch(
@@ -245,7 +277,7 @@ private fun ColumnScope.WorksheetOptionsForm(
         modifier = Modifier.fillMaxWidth()
     )
     Text(
-        text = options.difficulty.hint,
+        text = if (custom) options.difficulty.customHint else options.difficulty.hint,
         style = MaterialTheme.typography.bodySmall,
         color = TextSecondary,
         modifier = Modifier.padding(top = 6.dp)
@@ -253,7 +285,7 @@ private fun ColumnScope.WorksheetOptionsForm(
 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("Sentences", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            Text(if (custom) "Exercises" else "Sentences", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
             Text(
                 // A number outside the limits is said in words too, not by the colour alone.
                 text = (if (showCountError) "Enter " else "") + "${WORKSHEET_COUNT_RANGE.first} to ${WORKSHEET_COUNT_RANGE.last}",
@@ -263,6 +295,7 @@ private fun ColumnScope.WorksheetOptionsForm(
         }
         CountStepper(
             count = options.count,
+            unit = if (custom) "exercise" else "sentence",
             text = countText,
             showError = showCountError,
             onTextChange = { typed ->
@@ -300,14 +333,15 @@ private fun ColumnScope.WorksheetOptionsForm(
     }
     CoastButton(
         onClick = onCreate,
-        enabled = blocker == null && countIsValid,
+        // A custom sheet is nothing without its brief.
+        enabled = blocker == null && countIsValid && !(custom && options.brief.isBlank()),
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = ButtonHeight)
     ) {
         Text(if (state.error != null && blocker == null) "Try again" else "Create PDF")
     }
     if (blocker == null) {
         Text(
-            text = worksheetEstimate(options.count, provider, options.difficulty),
+            text = worksheetEstimate(options.count, provider, options.difficulty, options.kind),
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
             textAlign = TextAlign.Center,
@@ -403,6 +437,33 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
     }
 }
 
+/**
+ * The box for a custom sheet's brief. What is typed is held here and passed on as it changes, so a
+ * keystroke never waits on the round trip through the screen's state (the "About you" fields lost letters
+ * that way).
+ */
+@Composable
+private fun BriefField(brief: String, onChange: (String) -> Unit) {
+    var draft by rememberSaveable { mutableStateOf(brief) }
+    var typed by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(brief) { if (!typed) draft = brief }
+    CoastTextField(
+        value = draft,
+        onValueChange = {
+            typed = true
+            draft = it.take(BRIEF_LENGTH)
+            onChange(draft)
+        },
+        placeholder = { Text("For example: the plural of nouns, or the dative after mit") },
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+        minLines = 2,
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+/** A brief can be this long: a sentence or two. The prompt quotes its first 300 characters. */
+private const val BRIEF_LENGTH = 400
+
 /** The small heading over one of the sheet's settings. */
 @Composable
 private fun FieldLabel(text: String) {
@@ -453,8 +514,10 @@ private fun DirectionSwitch(direction: WorksheetDirection, coastLanguage: String
 internal fun worksheetEstimate(
     count: Int,
     provider: TranslationProvider,
-    difficulty: WorksheetDifficulty = WorksheetDifficulty.Medium
+    difficulty: WorksheetDifficulty = WorksheetDifficulty.Medium,
+    kind: SheetKind = SheetKind.Translation
 ): String {
+    val what = if (kind == SheetKind.Custom) "exercises" else "sentences"
     val batch = WorksheetBatch.of(provider, difficulty)
     val requests = worksheetRequests(count, batch)
     val seconds = requests * batch.seconds
@@ -465,8 +528,8 @@ internal fun worksheetEstimate(
         seconds < 5400 -> "about an hour"
         else -> "about ${(seconds + 1800) / 3600} hours"
     }
-    return if (requests == 1) "${provider.label} writes the sentences. It takes $duration."
-    else "${provider.label} writes the sentences a few at a time, in $requests requests. It takes $duration."
+    return if (requests == 1) "${provider.label} writes the $what. It takes $duration."
+    else "${provider.label} writes the $what a few at a time, in $requests requests. It takes $duration."
 }
 
 /**
@@ -474,11 +537,12 @@ internal fun worksheetEstimate(
  * the ends of [WORKSHEET_COUNT_RANGE].
  *
  * @param count The number the sheet will have.
+ * @param unit What is counted, for a screen reader: "sentence" or "exercise".
  * @param text What the field shows, which while typing may be no valid number ([isValid]).
  * @param onDone Called when the user is done typing: the keyboard's Done, or leaving the field.
  */
 @Composable
-private fun CountStepper(count: Int, text: String, showError: Boolean, onTextChange: (String) -> Unit, onDone: () -> Unit, onChange: (Int) -> Unit) {
+private fun CountStepper(count: Int, unit: String, text: String, showError: Boolean, onTextChange: (String) -> Unit, onDone: () -> Unit, onChange: (Int) -> Unit) {
     val focusManager = LocalFocusManager.current
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusedAsState()
@@ -496,7 +560,7 @@ private fun CountStepper(count: Int, text: String, showError: Boolean, onTextCha
     }
     val shape = MaterialTheme.shapes.small
     Row(verticalAlignment = Alignment.CenterVertically) {
-        StepButton(Icons.Default.Remove, "One sentence fewer", enabled = count > WORKSHEET_COUNT_RANGE.first) { onChange(count - 1) }
+        StepButton(Icons.Default.Remove, "One $unit fewer", enabled = count > WORKSHEET_COUNT_RANGE.first) { onChange(count - 1) }
         BasicTextField(
             value = field,
             onValueChange = { typed ->
@@ -526,13 +590,13 @@ private fun CountStepper(count: Int, text: String, showError: Boolean, onTextCha
                     ) else Modifier
                 )
                 .semantics {
-                    contentDescription = "Number of sentences"
+                    contentDescription = "Number of ${unit}s"
                     // What is wrong with the number, for a screen reader; sighted users get it from the text beside the field.
                     if (showError) this[SemanticsProperties.Error] = "Enter a number from ${WORKSHEET_COUNT_RANGE.first} to ${WORKSHEET_COUNT_RANGE.last}"
                 },
             decorationBox = { field -> Box(contentAlignment = Alignment.Center) { field() } }
         )
-        StepButton(Icons.Default.Add, "One sentence more", enabled = count < WORKSHEET_COUNT_RANGE.last) { onChange(count + 1) }
+        StepButton(Icons.Default.Add, "One $unit more", enabled = count < WORKSHEET_COUNT_RANGE.last) { onChange(count + 1) }
     }
 }
 
@@ -561,7 +625,7 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
         Spacer(modifier = Modifier.width(10.dp))
         Text(
             text = if (state.written == 0 && (ProviderCapacity.of(provider).thinksFirst || state.options.difficulty == WorksheetDifficulty.Hard)) {
-                "Asking ${provider.label} (planning longer sentences takes a moment)…"
+                "Asking ${provider.label} (planning longer ${if (state.options.kind == SheetKind.Custom) "exercises" else "sentences"} takes a moment)…"
             } else {
                 "Asking ${provider.label}…"
             },
@@ -569,9 +633,10 @@ private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: In
             color = TextSecondary
         )
     }
+    val unit = if (state.options.kind == SheetKind.Custom) "exercise" else "sentence"
     Text(
-        text = if (state.written > 0) "${state.written} of ${plural(state.options.count, "sentence")} written so far."
-        else "${plural(state.options.count, "sentence")} from ${plural(cardCount, "card")}.",
+        text = if (state.written > 0) "${state.written} of ${plural(state.options.count, unit)} written so far."
+        else "${plural(state.options.count, unit)} from ${plural(cardCount, "card")}.",
         // Tabular figures, so the count doesn't jitter as it climbs.
         style = MaterialTheme.typography.bodyLarge.tabular,
         modifier = Modifier.padding(top = 12.dp)
@@ -608,6 +673,7 @@ private fun ColumnScope.WorksheetReady(
     sentenceCount: Int,
     askedFor: Int,
     toLanguage: String,
+    custom: Boolean,
     provider: TranslationProvider,
     files: WorksheetFiles?,
     onStartNew: () -> Unit
@@ -633,13 +699,14 @@ private fun ColumnScope.WorksheetReady(
         }
     }
     Text(
-        text = "${plural(sentenceCount, "sentence")} to translate into $toLanguage on ${plural(pdf.pageCount, "page")}, with the answers at the end.",
+        text = if (custom) "${plural(sentenceCount, "exercise")} on ${plural(pdf.pageCount, "page")}, with the answers at the end."
+        else "${plural(sentenceCount, "sentence")} to translate into $toLanguage on ${plural(pdf.pageCount, "page")}, with the answers at the end.",
         style = MaterialTheme.typography.bodyLarge,
         modifier = Modifier.padding(top = 16.dp)
     )
     if (sentenceCount < askedFor) {
         Text(
-            text = "${provider.label} wrote $sentenceCount of the $askedFor sentences you asked for.",
+            text = "${provider.label} wrote $sentenceCount of the $askedFor ${if (custom) "exercises" else "sentences"} you asked for.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             modifier = Modifier.padding(top = 6.dp)
