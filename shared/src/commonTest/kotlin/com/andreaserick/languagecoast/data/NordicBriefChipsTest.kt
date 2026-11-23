@@ -145,8 +145,10 @@ class NordicBriefChipsTest {
                     "Negative verb: en puhu, et puhu, ei puhu"
                 ),
                 ChipArea.Tenses to listOf("Past tense", "Perfect tense", "Negative past tense: en puhunut", "Conditional: puhuisin"),
-                ChipArea.Pronouns to listOf("Personal pronouns in every case", "Possessive pronouns", "Possessive suffixes: taloni, talosi, talonsa"),
-                ChipArea.Prepositions to listOf("Prepositions and their case", "Postpositions with the genitive: talon edessä"),
+                // "My house" is minun taloni: the pronoun's genitive plus an ending, not a possessive pronoun.
+                ChipArea.Pronouns to listOf("Personal pronouns in every case", "Possessive suffixes: taloni, talosi, talonsa"),
+                // Finnish uses case endings and postpositions where other languages use prepositions.
+                ChipArea.Prepositions to listOf("Postpositions with the genitive: talon edessä"),
                 ChipArea.WordOrder to listOf("Questions with -ko or -kö: Puhutko suomea?")
             ),
             chipsOf("Finnish")
