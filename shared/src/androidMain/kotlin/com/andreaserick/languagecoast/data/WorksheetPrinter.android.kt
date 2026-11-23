@@ -247,7 +247,14 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
             }
             newPage()
             place(answerHeader(), gapAfter = 18f)
-            rows.forEach { place(answer(it.number, keyAnswer(it.exercise), it.exercise.task, card = null), gapAfter = 9f) }
+            rows.forEach {
+                val exercise = it.exercise
+                // A gap fill's key reads as the whole sentence, so the answer can be checked in its place; so does a
+                // multiple-choice sentence with a gap (a question without one is left as it is).
+                val gapped = exercise.form == ExerciseForm.GapFill || exercise.form == ExerciseForm.MultipleChoice
+                val asked = if (gapped) filledGapFill(exercise.task, exercise.answer) else exercise.task
+                place(answer(it.number, keyAnswer(exercise), asked, card = null), gapAfter = 9f)
+            }
         } else {
             // Ten one-line sentences without word help, the usual sheet, fit on the first page of either paper size with
             // these gaps, and their answers, each with its card, on the next.
@@ -287,8 +294,20 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         val chipsWidth = chipWidths.sum() + CHIP_GAP * (chips.size - 1)
         // What to do, then what the sheet practises: the islands whose cards need it most, or the learner's brief.
         val helpText = if (custom) {
-            "Practising: “${shortened(WorksheetCardDealer.oneLine(sheet.options.brief), BRIEF_ON_SHEET)}”. " +
-                "Write each answer in the box under its exercise. The answers are at the end."
+            val forms = sheet.exercises.map { it.form }.toSet()
+            val written = forms - ExerciseForm.MultipleChoice
+            val write = when {
+                written.isEmpty() -> null
+                written == setOf(ExerciseForm.GapFill) -> "write each answer in its gap"
+                ExerciseForm.GapFill in written -> "write each answer in its gap, or in the box under its exercise"
+                else -> "write each answer in the box under its exercise"
+            }
+            val where = when {
+                ExerciseForm.MultipleChoice !in forms -> "${write!!.replaceFirstChar { it.uppercaseChar() }}."
+                write == null -> "Circle the right option of each exercise."
+                else -> "Circle the right option where there are three, and $write."
+            }
+            "Practising: “${shortened(WorksheetCardDealer.oneLine(sheet.options.brief), BRIEF_ON_SHEET)}”. $where The answers are at the end."
         } else {
             listOfNotNull("Write each sentence in ${sheet.toLanguage} on the lines under it. The answers are at the end.", sheet.focusLine)
                 .joinToString(" ")
@@ -397,19 +416,23 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
      * A custom sheet's exercise: its instruction when it is the first of a run that shares one, the numbered
      * task, word help in small print, and an empty box to write the answer in, with a line for each line the
      * key answer takes ([answerBoxLines]). The instruction is part of the block, so it never sits alone at
-     * the bottom of a page.
+     * the bottom of a page. A gap fill is answered in its gap, printed as long as its answer needs
+     * ([printedGapFill]), so it has no box, and the base form in brackets stays right after the gap.
      */
     private fun customExercise(row: CustomSheetRow): Block {
         val exercise = row.exercise
+        val gapFill = exercise.form == ExerciseForm.GapFill
         val instructionText = row.instruction?.let { wrap(it, instruction, contentWidth, lineSpacing = 1.2f) }
         val instructionHeight = instructionText?.let { it.height + INSTRUCTION_GAP } ?: 0f
-        val text = wrap(exercise.task, sentenceText, contentWidth - numberColumn)
+        val task = if (gapFill) printedGapFill(exercise.task, exercise.answer) else exercise.task
+        // A gap fill gets more room between its lines, so the handwriting in a gap doesn't touch the line above.
+        val text = wrap(task, sentenceText, contentWidth - numberColumn, lineSpacing = if (gapFill) 1.6f else 1.12f)
         val help = exercise.wordHelp.takeIf { it.isNotEmpty() }?.joinToString(" · ") { "${it.word} = ${it.meaning}" }
         val helpText = help?.let { wrap("Word help: $it", answerQuestion, contentWidth - numberColumn) }
         val helpHeight = helpText?.let { it.height + HELP_GAP } ?: 0f
-        val lines = answerBoxLines(exercise.answer)
-        val boxTop = instructionHeight + text.height + helpHeight + 8f
-        val boxHeight = lines * WRITING_LINE_GAP + 6f
+        val lines = if (gapFill) 0 else answerBoxLines(exercise.answer)
+        val boxTop = instructionHeight + text.height + helpHeight + if (gapFill) 0f else 8f
+        val boxHeight = if (gapFill) 0f else lines * WRITING_LINE_GAP + 6f
         val mirrored = text.isRightToLeft
         val box = stroke(WRITING_LINE, 0.8f)
         val line = stroke(HAIRLINE, 0.6f)
@@ -424,6 +447,7 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
             canvas.drawText("${row.number}", badge, middle - (digits.ascent() + digits.descent()) / 2, digits)
             canvas.drawLayout(text, textLeft, taskTop)
             helpText?.let { canvas.drawLayout(it, textLeft, taskTop + text.height + HELP_GAP) }
+            if (gapFill) return@Block
             val boxRect = RectF(textLeft, top + boxTop, textLeft + contentWidth - numberColumn, top + boxTop + boxHeight)
             canvas.drawRoundRect(boxRect, ANSWER_BOX_RADIUS, ANSWER_BOX_RADIUS, box)
             // A taller box gets faint lines to keep the handwriting straight.
