@@ -164,6 +164,7 @@ fun CoastTextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     singleLine: Boolean = false,
     minLines: Int = 1,
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     interactionSource: MutableInteractionSource? = null
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -186,6 +187,7 @@ fun CoastTextField(
         keyboardActions = keyboardActions,
         singleLine = singleLine,
         minLines = minLines,
+        maxLines = maxLines,
         interactionSource = source,
         shape = shape,
         colors = coastTextFieldColors()

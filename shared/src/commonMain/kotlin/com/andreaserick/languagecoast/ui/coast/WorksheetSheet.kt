@@ -68,6 +68,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -84,7 +85,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -239,16 +242,7 @@ private fun ColumnScope.WorksheetOptionsForm(
     // Only show red error state after blur/done (never punish on first keystroke while replacing digits).
     val showCountError = !countIsValid && countBlurred
     // What stands in the way, if anything: said here, before a request is spent on finding out.
-    val blocker = when {
-        picked.isEmpty() -> "Pick at least one island to make the sheet from."
-        cardCount < WORKSHEET_MIN_CARDS && !allPicked ->
-            "The ${if (picked.size == 1) "island" else "islands"} you picked ${if (picked.size == 1) "has" else "have"} ${plural(cardCount, "card")}. A sheet needs at least $WORKSHEET_MIN_CARDS: pick more."
-        cardCount < WORKSHEET_MIN_CARDS ->
-            "A practice sheet is made from the coast's cards, and this coast has ${plural(cardCount, "card")}. Add at least $WORKSHEET_MIN_CARDS first."
-        provider == TranslationProvider.OnDevice ->
-            "On-device translation can't write ${if (custom) "exercises" else "sentences"}. Pick an AI provider in Settings to make a practice sheet."
-        else -> null
-    }
+    val blocker = worksheetBlocker(picked.size, allPicked, cardCount, provider, options.kind, options.brief)
     val theCards = when {
         allPicked -> "this coast's ${plural(cardCount, "card")}"
         picked.isEmpty() -> "the cards on the islands you pick"
@@ -377,8 +371,7 @@ private fun ColumnScope.WorksheetOptionsForm(
         }
         CoastButton(
             onClick = onCreate,
-            // A custom sheet is nothing without its brief.
-            enabled = blocker == null && countIsValid && !(custom && options.brief.isBlank()),
+            enabled = blocker == null && countIsValid,
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = ButtonHeight)
         ) {
             Text(if (state.error != null && blocker == null) "Try again" else "Create PDF")
@@ -509,7 +502,7 @@ private fun FormChips(picked: Set<ExerciseForm>, onChange: (Set<ExerciseForm>) -
             FormChip(
                 label = form.label,
                 on = isOn,
-                enabled = !(isOn && on.size == 1),
+                locked = isOn && on.size == 1,
                 // Shared by the length of the labels, so "Multiple choice" fits on one line without shrinking the others.
                 modifier = Modifier.weight(form.label.length + 4f).fillMaxHeight()
             ) { onChange(tickForm(picked, form)) }
@@ -526,10 +519,13 @@ private fun FormChips(picked: Set<ExerciseForm>, onChange: (Set<ExerciseForm>) -
 /**
  * One form of [FormChips], drawn as a tile of [SegmentedSwitch]: the lighter tile, a brighter label and a
  * small check while on; plain quieter text while off. A label that doesn't fit shrinks a little, as the
- * switch's do, and stays on one line. A form that can't be turned off right now still reads as on.
+ * switch's do, and stays on one line.
+ *
+ * @param locked Whether this is the last form that's on, which a tap leaves on. It still answers a tap with
+ *     a ripple, and a screen reader says why it stays on, rather than calling it disabled.
  */
 @Composable
-private fun FormChip(label: String, on: Boolean, enabled: Boolean, modifier: Modifier, onToggle: () -> Unit) {
+private fun FormChip(label: String, on: Boolean, locked: Boolean, modifier: Modifier, onToggle: () -> Unit) {
     val labelStyle = MaterialTheme.typography.labelMedium
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -538,7 +534,8 @@ private fun FormChip(label: String, on: Boolean, enabled: Boolean, modifier: Mod
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(if (on) SurfaceSelected else androidx.compose.ui.graphics.Color.Transparent)
-            .toggleable(value = on, enabled = enabled, role = Role.Checkbox) { onToggle() }
+            .toggleable(value = on, role = Role.Checkbox) { if (!locked) onToggle() }
+            .then(if (locked) Modifier.semantics { stateDescription = "On; a sheet needs at least one form" } else Modifier)
             .padding(horizontal = 6.dp, vertical = 8.dp)
     ) {
         if (on) {
@@ -590,6 +587,8 @@ private fun BriefField(
         },
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         minLines = 2,
+        // A long brief scrolls inside the box rather than pushing the chips and the button off the screen.
+        maxLines = 6,
         modifier = Modifier.fillMaxWidth()
     )
     briefCounter(draft)?.let { counter ->
@@ -697,19 +696,23 @@ private fun AreaTab(title: String, inBrief: Int, selected: Boolean, onSelect: ()
             text = title,
             style = MaterialTheme.typography.labelMedium,
             color = if (selected) TextPrimary else TextSecondary,
-            maxLines = 1
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
         )
-        if (inBrief > 0) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .padding(start = 6.dp)
-                    .clearAndSetSemantics { }
-                    .size(18.dp)
-                    .background(Sunlit, CircleShape)
-            ) {
-                Text("$inBrief", style = MaterialTheme.typography.labelSmall.tabular, color = OnSunlit)
-            }
+        // The count's place is kept while it is empty, so a tab doesn't grow, and the row reflow, when a chip is tapped.
+        // It grows with large text instead of cutting the number off.
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .padding(start = 6.dp)
+                .clearAndSetSemantics { }
+                .alpha(if (inBrief > 0) 1f else 0f)
+                .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
+                .background(Sunlit, CircleShape)
+                .padding(horizontal = 5.dp)
+        ) {
+            Text("${inBrief.coerceAtLeast(1)}", style = MaterialTheme.typography.labelSmall.tabular, color = OnSunlit, maxLines = 1)
         }
     }
 }
@@ -753,6 +756,37 @@ private fun DirectionSwitch(direction: WorksheetDirection, coastLanguage: String
             }
             Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = TextSecondary, modifier = Modifier.padding(start = 10.dp))
         }
+    }
+}
+
+/**
+ * What stands in the way of a sheet, said over the greyed-out button so it is never greyed out without a
+ * reason; null when nothing does. What can't be put right in this form (islands, cards, the provider) comes
+ * first, then a custom sheet's missing brief, which is nothing without one.
+ *
+ * @param picked How many islands are picked.
+ * @param allPicked Whether those are all of the coast's islands.
+ * @param cardCount The cards on the picked islands.
+ */
+internal fun worksheetBlocker(
+    picked: Int,
+    allPicked: Boolean,
+    cardCount: Int,
+    provider: TranslationProvider,
+    kind: SheetKind,
+    brief: String
+): String? {
+    val custom = kind == SheetKind.Custom
+    return when {
+        picked == 0 -> "Pick at least one island to make the sheet from."
+        cardCount < WORKSHEET_MIN_CARDS && !allPicked ->
+            "The ${if (picked == 1) "island" else "islands"} you picked ${if (picked == 1) "has" else "have"} ${plural(cardCount, "card")}. A sheet needs at least $WORKSHEET_MIN_CARDS: pick more."
+        cardCount < WORKSHEET_MIN_CARDS ->
+            "A practice sheet is made from the coast's cards, and this coast has ${plural(cardCount, "card")}. Add at least $WORKSHEET_MIN_CARDS first."
+        provider == TranslationProvider.OnDevice ->
+            "On-device translation can't write ${if (custom) "exercises" else "sentences"}. Pick an AI provider in Settings to make a practice sheet."
+        custom && brief.isBlank() -> "Name what to practise above, or tap an example."
+        else -> null
     }
 }
 
@@ -826,7 +860,8 @@ private fun CountStepper(count: Int, unit: String, text: String, showError: Bool
             cursorBrush = SolidColor(Sunlit),
             interactionSource = interactions,
             modifier = Modifier
-                .padding(horizontal = 6.dp)
+                // Kept apart from the minus and the plus, so a thumb on the number doesn't hit them.
+                .padding(horizontal = 8.dp)
                 // A definite width: a text field without one takes room for ten letters. Wider with large text, so the
                 // number isn't cut, but only as wide as three digits need: the label beside it needs the room too.
                 .width((44.dp * LocalDensity.current.fontScale).coerceAtLeast(68.dp))
@@ -870,26 +905,26 @@ private fun StepButton(icon: ImageVector, description: String, enabled: Boolean,
 @Composable
 private fun ColumnScope.WorksheetProgress(state: WorksheetUiState, cardCount: Int, provider: TranslationProvider, onCancel: () -> Unit) {
     Text("Writing your practice sheet", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 16.dp)) {
-        CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = if (state.written == 0 && (ProviderCapacity.of(provider).thinksFirst || state.options.difficulty == WorksheetDifficulty.Hard)) {
-                "Asking ${provider.label} (planning longer ${if (state.options.kind == SheetKind.Custom) "exercises" else "sentences"} takes a moment)…"
-            } else {
-                "Asking ${provider.label}…"
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary
-        )
-    }
+    // The bar under the count shows the work going on; a spinner beside this line as well was one sign too many,
+    // and it kept turning when the user had asked for reduced motion.
+    Text(
+        text = if (state.written == 0 && (ProviderCapacity.of(provider).thinksFirst || state.options.difficulty == WorksheetDifficulty.Hard)) {
+            "Asking ${provider.label} (planning longer ${if (state.options.kind == SheetKind.Custom) "exercises" else "sentences"} takes a moment)…"
+        } else {
+            "Asking ${provider.label}…"
+        },
+        style = MaterialTheme.typography.bodyMedium,
+        color = TextSecondary,
+        modifier = Modifier.padding(top = 16.dp)
+    )
     val unit = if (state.options.kind == SheetKind.Custom) "exercise" else "sentence"
     Text(
         text = if (state.written > 0) "${state.written} of ${plural(state.options.count, unit)} written so far."
         else "${plural(state.options.count, unit)} from ${plural(cardCount, "card")}.",
         // Tabular figures, so the count doesn't jitter as it climbs.
         style = MaterialTheme.typography.bodyLarge.tabular,
-        modifier = Modifier.padding(top = 12.dp)
+        // The count climbs without a tap: a screen reader says how far along it is, without breaking off what it was reading.
+        modifier = Modifier.padding(top = 12.dp).semantics { liveRegion = LiveRegionMode.Polite }
     )
     if (state.written > 0) {
         LinearProgressIndicator(
@@ -985,7 +1020,12 @@ private fun ColumnScope.WorksheetReady(
         val buttonModifier = Modifier.fillMaxWidth().padding(top = 20.dp).heightIn(min = ButtonHeight)
         if (saved != null) {
             // In the button's place and as high as it, so nothing jumps.
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = buttonModifier) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                // It takes the button's place without a tap of its own: a screen reader says where the file went.
+                modifier = buttonModifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+            ) {
                 Icon(Icons.Default.Check, contentDescription = null, tint = Seafoam, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(saved.place?.let { "Saved to $it" } ?: "Saved", style = MaterialTheme.typography.labelLarge)
@@ -1002,7 +1042,16 @@ private fun ColumnScope.WorksheetReady(
                 enabled = !isSaving,
                 modifier = buttonModifier
             ) {
-                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                // While the file is being saved the icon turns into a small spinner, so the greyed-out button is seen to be busy.
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        color = LocalContentColor.current,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.padding(end = 8.dp).size(18.dp)
+                    )
+                } else {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                }
                 Text("Download PDF")
             }
         }
