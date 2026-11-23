@@ -243,6 +243,90 @@ class CustomSheetTest {
         assertEquals(listOf(WordHelp("groß", "big"), WordHelp("a", "1"), WordHelp("b", "2")), read.wordHelp)
     }
 
+    private fun gap(task: String, answer: String, instruction: String? = "Put it in the dative.") =
+        Exercise(ExerciseForm.GapFill, instruction, task, answer)
+
+    @Test
+    fun aGapFillLineIsReadWithItsGapWrittenTheSameWayWhateverTheModelTyped() {
+        val read = parseCustomSheetResponse(
+            "gap || Put it in the dative. || Ich gebe ___ (der Mann) das Buch. || dem Mann || Buch = book\n" +
+                "Gap fill || Put it in the dative. || Wir helfen _______ (die Frau). || der Frau\n" +
+                "gap-fill || Put it in the dative. || Sie dankt __ (das Kind). || dem Kind || -"
+        )
+        assertEquals(
+            listOf(
+                gap("Ich gebe ___ (der Mann) das Buch.", "dem Mann").copy(wordHelp = listOf(WordHelp("Buch", "book"))),
+                gap("Wir helfen ___ (die Frau).", "der Frau"),
+                gap("Sie dankt ___ (das Kind).", "dem Kind")
+            ),
+            read
+        )
+    }
+
+    @Test
+    fun aGapFillWithNoGapOrMoreThanOneIsDropped() {
+        val read = parseCustomSheetResponse(
+            """
+            gap || Put it in the dative. || Ich gebe dem Mann das Buch. || dem Mann
+            gap || Put it in the dative. || Ich gebe ___ (der Mann) ___ (das Buch). || dem Mann, das Buch
+            gap || Put it in the dative. || Ich helfe ___ (der Mann). || dem Mann
+            """.trimIndent()
+        )
+        assertEquals(listOf("Ich helfe ___ (der Mann)."), read.map { it.task })
+    }
+
+    @Test
+    fun aGapFillMayShowItsAnswerOnlyInTheBaseFormHint() {
+        val read = parseCustomSheetResponse(
+            """
+            gap || Fill the gap. || Ich sehe ___ (die Katze). || die Katze
+            gap || Fill the gap. || Die Katze schläft, ich sehe ___ (die Katze). || die Katze
+            gap || Fill the gap. || Ich gebe dem Mann ___ (der Mann). || dem Mann
+            short || Write the plural. || das Auto (die Autos) || die Autos
+            """.trimIndent()
+        )
+        // A feminine noun keeps its article in the accusative: the hint gives the answer away, and that is the drill.
+        assertEquals(listOf("Ich sehe ___ (die Katze)."), read.map { it.task })
+    }
+
+    @Test
+    fun aGapFillsWordHelpNeverNamesTheAnswerAndKeepsThreeWordsAtMost() {
+        val read = parseCustomSheetResponse(
+            "gap || Put it in the dative. || Ich gebe ___ (der alte Mann) heute das rote Buch. || dem alten Mann || " +
+                "Mann = man; alten = old; heute = today; rote = red; Buch = book"
+        ).single()
+        assertEquals(listOf(WordHelp("heute", "today"), WordHelp("rote", "red"), WordHelp("Buch", "book")), read.wordHelp)
+    }
+
+    @Test
+    fun aGapFillPrintsItsGapWideEnoughToWriteTheAnswerInAndTheKeyFillsItIn() {
+        val short = gap("Ich ___ (sein) müde.", "bin")
+        val long = gap("Ich gebe ___ (der alte Mann) das Buch.", "dem alten Mann")
+        // The gap is a writing line: wide enough for a short word, wider for a longer answer.
+        assertEquals("Ich ________ (sein) müde.", printedGapFill(short.task, short.answer))
+        assertEquals("Ich gebe ______________________ (der alte Mann) das Buch.", printedGapFill(long.task, long.answer))
+        // The answer key shows the whole sentence with the answer in the gap and no hint.
+        assertEquals("Ich bin müde.", filledGapFill(short.task, short.answer))
+        assertEquals("Ich gebe dem alten Mann das Buch.", filledGapFill(long.task, long.answer))
+        assertEquals("Wir helfen der Frau.", filledGapFill("Wir helfen ___ (die Frau).", "der Frau"))
+    }
+
+    @Test
+    fun aGapFillPromptSaysWhatAGapLooksLike() {
+        val prompt = buildCustomSheetPrompt(
+            brief = "Nominative → dative", forms = listOf(ExerciseForm.GapFill, ExerciseForm.ShortAnswer), cards = cards,
+            targetLanguage = "German", nativeLanguage = "English", count = 4, difficulty = WorksheetDifficulty.Medium
+        )
+        val rule = prompt.lines().single { it.startsWith("- A \"gap\" exercise") }
+        assertTrue("exactly one gap, written as ___" in rule)
+        assertTrue("base form" in rule && "round brackets right after the gap" in rule)
+        assertTrue("Its answer is exactly what goes in the gap" in rule)
+        assertTrue(prompt.endsWith("\n[form: gap, short] || [instruction in English] || [task in German] || [answer in German] || " +
+            "[the German words of the task that are not on the flashcards, each with its English meaning, as \"word = meaning; word = meaning\", or - if there are none]"))
+        // With nothing ticked, a sheet mixes every form there is.
+        assertEquals(listOf(ExerciseForm.GapFill, ExerciseForm.ShortAnswer), customSheetForms(emptySet()).filter { it != ExerciseForm.MultipleChoice })
+    }
+
     @Test
     fun thePickKeepsTheSheetsFormsInTheModelsOrderAndLetsNearRepeatsWait() {
         val candidates = listOf(
