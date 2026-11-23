@@ -197,13 +197,18 @@ private fun parseExerciseLine(line: String): Exercise? {
     val task = parts.getOrNull(2).orEmpty().let { if (gapped) it.replace(GAP_MARKER, GAP) else it }
     val written = parts.getOrNull(3).orEmpty()
     if (task.isEmpty() || written.isEmpty()) return null
-    if (FIELD_ECHO.containsMatchIn(task) || FIELD_ECHO.containsMatchIn(written) || instruction != null && FIELD_ECHO.containsMatchIn(instruction)) return null
+    if (isFieldEcho(task) || isFieldEcho(written) || instruction != null && isFieldEcho(instruction)) return null
     if (form == ExerciseForm.GapFill && GAP_MARKER.findAll(task).count() != 1) return null
     val rest = parts.drop(4)
     val options = if (form == ExerciseForm.MultipleChoice) choiceOptions(rest) ?: return null else emptyList()
     val answer = if (form == ExerciseForm.MultipleChoice) chosenOption(written, options) ?: return null else written
-    // A gap fill's base-form hint may name the answer ("Ich sehe ___ (die Katze)."): telling the learner the word to change is the point.
-    if (shows(if (form == ExerciseForm.GapFill) task.replace(HINT, " ") else task, answer)) return null
+    if (normalizedWords(answer).isEmpty()) return null
+    if (gapped) {
+        // The hint may name the answer ("Ich sehe ___ (die Katze)."): telling the learner the word to change is
+        // the point. And a one-word answer is often another word of the sentence too ("Mit dem Auto fahre ich zu
+        // ___ (der) Bahnhof." || dem) without giving anything away; a phrase that is there word for word does.
+        if (normalizedWords(answer).size > 1 && shows(task.replace(HINT, " "), answer)) return null
+    } else if (shows(task, answer)) return null
     // A multiple-choice exercise gets no word help: it would point at the right option.
     val help = if (form == ExerciseForm.MultipleChoice) emptyList() else {
         val answerWords = normalizedWords(answer).toSet()
@@ -220,8 +225,17 @@ private val OPTION_LETTER = Regex("^\\(?([a-cA-C])[).]\\s*")
 /** Where the next option starts in "a) den b) dem c) der", written with nothing between the options. */
 private val NEXT_OPTION = Regex("\\s+(?=\\(?[b-cB-C][).]\\s)")
 
-/** How the options of a multiple-choice field may be set apart: as asked, with slashes, or not at all. */
-private val OPTION_SEPARATORS = listOf(Regex(";"), Regex("/"), NEXT_OPTION)
+/**
+ * How the options of a multiple-choice field may be set apart: as asked, with slashes, not at all, or with
+ * commas. Commas come last, since an option may be a phrase with a comma in it ("Ja, gerne").
+ */
+private val OPTION_SEPARATORS = listOf(Regex(";"), Regex("/"), NEXT_OPTION, Regex(","))
+
+/** A note in brackets after a multiple-choice answer, as in "b) dem (dative)". */
+private val ANSWER_NOTE = Regex("\\s*\\([^)]*\\)\\s*$")
+
+/** A full stop or other mark after a multiple-choice answer, as in "dem." or "b.". */
+private val ANSWER_MARK = Regex("[\\s.,;:!]+$")
 
 /**
  * The three options of a multiple-choice line, from the fields after its answer: "a) den; b) dem; c) der" as
@@ -240,10 +254,13 @@ private fun choiceOptions(fields: List<String>): List<String>? {
 /**
  * The option a multiple-choice [answer] names, spelled as the option is: the answer may be the option itself,
  * its letter ("b") or both ("b) dem"). An answer that is one of the options word for word is that option
- * rather than a letter, since Italian "a" is a word too. Null when the answer is none of the [options].
+ * rather than a letter, since Italian "a" is a word too. A full stop or a note in brackets after it ("dem.",
+ * "b) dem (dative)") is read past. Null when the answer is none of the [options].
  */
-private fun chosenOption(answer: String, options: List<String>): String? {
-    options.firstOrNull { it.equals(answer.trim(), ignoreCase = true) }?.let { return it }
+private fun chosenOption(written: String, options: List<String>): String? {
+    options.firstOrNull { it.equals(written.trim(), ignoreCase = true) }?.let { return it }
+    val answer = written.replace(ANSWER_NOTE, "").replace(ANSWER_MARK, "").trim()
+    options.firstOrNull { it.equals(answer, ignoreCase = true) }?.let { return it }
     val letter = OPTION_LETTER.find(answer)
         ?: return answer.trim().lowercase().singleOrNull()?.let { options.getOrNull(it - 'a') }
     val named = options[letter.groupValues[1].lowercase()[0] - 'a']
@@ -402,5 +419,18 @@ private fun shows(task: String, answer: String): Boolean {
 /** "1. short", "4) short" or "[4] short" in the first field: a number before the form. */
 private val NUMBERED_FORM = Regex("^[\\[(#]?\\s*\\d{1,3}\\s*[\\])]?[.):]?\\s+(.+)$")
 
-/** The prompt's own placeholders sent back as fields: "task in German", "answer in German", "instruction in English". */
-private val FIELD_ECHO = Regex("^(?:instruction|task|answer|form) in\\b|^form:", RegexOption.IGNORE_CASE)
+/** The languages a placeholder of the prompt names: every language of the app, and Norwegian as the prompt writes it. */
+private val ECHOED_LANGUAGES = Languages.ALL.map { it.name } + listOf("Norwegian Bokmål", "Norwegian Nynorsk")
+
+/**
+ * The prompt's own placeholders sent back as fields: "task in German", "answer in German", "instruction in
+ * English", word for word with nothing after the language, and "form: gap, choice, short". An instruction
+ * such as "Answer in the past tense." only starts the same way, and is the learner's task.
+ */
+private val FIELD_ECHO = Regex(
+    "^(?:instruction|task|answer) in (?:${ECHOED_LANGUAGES.joinToString("|")})$|^form:",
+    RegexOption.IGNORE_CASE
+)
+
+/** Whether [field] is one of the prompt's placeholders sent back ([FIELD_ECHO]). */
+private fun isFieldEcho(field: String): Boolean = FIELD_ECHO.containsMatchIn(field.trim())
