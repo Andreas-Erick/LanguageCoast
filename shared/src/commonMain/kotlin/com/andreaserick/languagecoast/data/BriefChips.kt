@@ -71,8 +71,11 @@ private fun templateChips(profile: GrammarProfile): Map<ChipArea, List<String>> 
         ),
         ChipArea.Verbs to profile.verbs.map { it.chip },
         ChipArea.Tenses to profile.tenses,
-        ChipArea.Pronouns to listOf(if (hasCases) "Personal pronouns in every case" else "Personal pronouns", "Possessive pronouns"),
-        ChipArea.Prepositions to listOf(if (hasCases) "Prepositions and their case" else "Prepositions"),
+        ChipArea.Pronouns to listOfNotNull(
+            if (hasCases) "Personal pronouns in every case" else "Personal pronouns",
+            "Possessive pronouns".takeIf { profile.possessivePronouns }
+        ),
+        ChipArea.Prepositions to listOfNotNull((if (hasCases) "Prepositions and their case" else "Prepositions").takeIf { profile.prepositions }),
         ChipArea.WordOrder to listOfNotNull("Verb second (V2) and inversion".takeIf { profile.verbSecond }),
         ChipArea.Particles to listOfNotNull("Particles".takeIf { profile.particles }),
         ChipArea.Politeness to listOfNotNull("Polite and plain forms".takeIf { profile.politeness })
