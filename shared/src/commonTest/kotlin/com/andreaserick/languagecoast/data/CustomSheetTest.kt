@@ -366,6 +366,14 @@ class CustomSheetTest {
     }
 
     @Test
+    fun theKeyLeavesTheSpacingOfTheSentenceAsTheModelWroteIt() {
+        // French sets a space before "?" and "!": only a space left between the filled gap and a full stop or comma goes.
+        assertEquals("Tu vas à Paris ?", filledGapFill("Tu vas ___ (à) Paris ?", "à"))
+        assertEquals("Tu viens ?", filledGapFill("Tu ___ (venir) ?", "viens"))
+        assertEquals("Er wohnt in Berlin.", filledGapFill("Er wohnt in ___ (Berlin) .", "Berlin"))
+    }
+
+    @Test
     fun aGapFillPromptSaysWhatAGapLooksLike() {
         val prompt = buildCustomSheetPrompt(
             brief = "Nominative → dative", forms = listOf(ExerciseForm.GapFill, ExerciseForm.ShortAnswer), cards = cards,

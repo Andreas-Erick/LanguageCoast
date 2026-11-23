@@ -374,8 +374,12 @@ private val GAP_MARKER = Regex("_{2,}")
 /** A hint in round brackets, such as a gap fill's base form. */
 private val HINT = Regex("\\([^)]*\\)")
 
-/** The gap and the base-form hint that follows it, as the answer key fills them in. */
-private val GAP_AND_HINT = Regex("_{2,}(?:\\s*\\([^)]*\\))?")
+/**
+ * The gap and the base-form hint that follows it, as the answer key fills them in, with a space left
+ * before a full stop or a comma ("___ (Berlin) ."). No language sets a space there; French does before
+ * "?" and "!", so those spaces stay.
+ */
+private val GAP_AND_HINT = Regex("_{2,}(?:\\s*\\([^)]*\\))?(?: (?=[.,]))?")
 
 /** A gap is never printed shorter than this many underscores, room for a short word in handwriting. */
 private const val PRINTED_GAP_MIN = 8
@@ -392,10 +396,9 @@ fun printedGapFill(task: String, answer: String): String =
 
 /** A gap fill's [task] as the answer key shows it: the whole sentence, with [answer] in the gap and no hint. */
 fun filledGapFill(task: String, answer: String): String =
-    task.replace(GAP_AND_HINT) { answer }.replace(SPACES, " ").replace(SPACE_BEFORE_MARK, "$1").trim()
+    task.replace(GAP_AND_HINT) { answer }.replace(SPACES, " ").trim()
 
 private val SPACES = Regex(" {2,}")
-private val SPACE_BEFORE_MARK = Regex(" ([.,!?;:])")
 
 /** The form a reply's first field names: "short", "Short answer", "gap-fill", "multiple choice", "MC". */
 private fun formOf(field: String): ExerciseForm? {
