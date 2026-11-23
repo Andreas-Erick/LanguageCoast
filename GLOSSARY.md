@@ -23,3 +23,7 @@ _Avoid_: Question, item, sentence (unless it is a translation exercise)
 **Exercise form**:
 How a custom sheet's exercise is answered: *Gap fill* (a word missing from a sentence), *Multiple choice* (three options) or *Short answer* (a task with an empty box to write in).
 _Avoid_: Exercise type, question type
+
+**Grammar profile**:
+What a language's grammar has (cases, articles, genders, plurals, verb features, particles, politeness), from which the example chips under the brief are made, so a language is only offered drills for grammar it has. A language without one gets the general chips on purpose.
+_Avoid_: Language config, grammar settings
