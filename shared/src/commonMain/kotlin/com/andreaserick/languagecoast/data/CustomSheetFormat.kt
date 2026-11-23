@@ -16,7 +16,7 @@ package com.andreaserick.languagecoast.data
  */
 
 /** The exercise forms a custom sheet can have so far; the others come with their own checks. */
-internal val CUSTOM_SHEET_FORMS = listOf(ExerciseForm.ShortAnswer)
+internal val CUSTOM_SHEET_FORMS = listOf(ExerciseForm.MultipleChoice, ExerciseForm.ShortAnswer)
 
 /** The forms a custom sheet of [picked] forms uses: the ones picked, or every one when none was. */
 internal fun customSheetForms(picked: Set<ExerciseForm>): List<ExerciseForm> =
@@ -47,7 +47,13 @@ private fun formRule(form: ExerciseForm): String = when (form) {
     ExerciseForm.ShortAnswer ->
         "A \"${form.token}\" exercise is a task the learner answers in writing: a word or phrase to change into another form, " +
             "or a short sentence to rewrite. Its answer is exactly what the learner writes, and nothing more."
-    ExerciseForm.GapFill, ExerciseForm.MultipleChoice -> ""
+    // The options have a field of their own: in the task they would be printed twice, and a task that lists
+    // them shows its answer, so the check drops it.
+    ExerciseForm.MultipleChoice ->
+        "A \"${form.token}\" exercise is a sentence with a gap (___) or a short question, with three options: exactly one of them is right, " +
+            "and the other two are real forms a learner could mix up with it. The options go in their own field, not in the task. " +
+            "Its answer is the right option, written out."
+    ExerciseForm.GapFill -> ""
 }
 
 /**
@@ -154,11 +160,13 @@ private fun parseExerciseLine(line: String): Exercise? {
     val form = formOf(first) ?: return null
     val instruction = parts.getOrNull(1)?.takeUnless { it.isEmpty() || it == "-" || it.equals("none", ignoreCase = true) }
     val task = parts.getOrNull(2).orEmpty()
-    val answer = parts.getOrNull(3).orEmpty()
-    if (task.isEmpty() || answer.isEmpty()) return null
-    if (FIELD_ECHO.containsMatchIn(task) || FIELD_ECHO.containsMatchIn(answer) || instruction != null && FIELD_ECHO.containsMatchIn(instruction)) return null
-    if (shows(task, answer)) return null
+    val written = parts.getOrNull(3).orEmpty()
+    if (task.isEmpty() || written.isEmpty()) return null
+    if (FIELD_ECHO.containsMatchIn(task) || FIELD_ECHO.containsMatchIn(written) || instruction != null && FIELD_ECHO.containsMatchIn(instruction)) return null
     val rest = parts.drop(4)
+    val options = if (form == ExerciseForm.MultipleChoice) choiceOptions(rest) ?: return null else emptyList()
+    val answer = if (form == ExerciseForm.MultipleChoice) chosenOption(written, options) ?: return null else written
+    if (shows(task, answer)) return null
     // A multiple-choice exercise gets no word help: it would point at the right option.
     val help = if (form == ExerciseForm.MultipleChoice) emptyList() else {
         val answerWords = normalizedWords(answer).toSet()
@@ -166,7 +174,44 @@ private fun parseExerciseLine(line: String): Exercise? {
             .filter { entry -> normalizedWords(entry.word).none { it in answerWords } }
             .take(WORKSHEET_WORD_HELP)
     }
-    return Exercise(form, instruction, task, answer, wordHelp = help)
+    return Exercise(form, instruction, task, answer, options, help)
+}
+
+/** "a) ", "B. " or "(c) " before an option or an answer. */
+private val OPTION_LETTER = Regex("^\\(?([a-cA-C])[).]\\s*")
+
+/** Where the next option starts in "a) den b) dem c) der", written with nothing between the options. */
+private val NEXT_OPTION = Regex("\\s+(?=\\(?[b-cB-C][).]\\s)")
+
+/** How the options of a multiple-choice field may be set apart: as asked, with slashes, or not at all. */
+private val OPTION_SEPARATORS = listOf(Regex(";"), Regex("/"), NEXT_OPTION)
+
+/**
+ * The three options of a multiple-choice line, from the fields after its answer: "a) den; b) dem; c) der" as
+ * asked, or the same with slashes, with nothing between them, or with each option in a field of its own.
+ * Null unless there are exactly three, all different: with two the guess is too easy, and with four the
+ * sheet prints something the learner wasn't told to expect.
+ */
+private fun choiceOptions(fields: List<String>): List<String>? {
+    val separate = fields.take(3).takeIf { it.size == 3 && it.all(OPTION_LETTER::containsMatchIn) }
+    val field = fields.firstOrNull().orEmpty()
+    val pieces = separate ?: OPTION_SEPARATORS.map { field.split(it) }.firstOrNull { it.size > 1 } ?: return null
+    val options = pieces.map { unwrapped(it.trim().replace(OPTION_LETTER, "").trim()) }.filter { it.isNotEmpty() }
+    return options.takeIf { it.size == 3 && options.map { option -> option.lowercase() }.distinct().size == 3 }
+}
+
+/**
+ * The option a multiple-choice [answer] names, spelled as the option is: the answer may be the option itself,
+ * its letter ("b") or both ("b) dem"). An answer that is one of the options word for word is that option
+ * rather than a letter, since Italian "a" is a word too. Null when the answer is none of the [options].
+ */
+private fun chosenOption(answer: String, options: List<String>): String? {
+    options.firstOrNull { it.equals(answer.trim(), ignoreCase = true) }?.let { return it }
+    val letter = OPTION_LETTER.find(answer)
+        ?: return answer.trim().lowercase().singleOrNull()?.let { options.getOrNull(it - 'a') }
+    val named = options[letter.groupValues[1].lowercase()[0] - 'a']
+    val word = answer.substring(letter.range.last + 1).trim()
+    return named.takeIf { word.isEmpty() || it.equals(word, ignoreCase = true) }
 }
 
 /**
@@ -218,6 +263,25 @@ fun customSheetLayout(exercises: List<Exercise>): List<CustomSheetRow> {
         lastForm = exercise.form
         CustomSheetRow(index + 1, exercise, instruction)
     }
+}
+
+/** The letter of the option at [index]: a, b or c. */
+private fun optionLetter(index: Int): Char = 'a' + index
+
+/**
+ * A multiple-choice exercise's [options] as the sheet prints them, lettered on one line under the task:
+ * "a) den     b) dem     c) der". The wide gaps keep three short options apart on paper.
+ */
+fun choiceLine(options: List<String>): String =
+    options.mapIndexed { index, option -> "${optionLetter(index)}) $option" }.joinToString("     ")
+
+/**
+ * What the answer key says for [exercise]: the letter and the word of a multiple-choice answer ("b) dem"),
+ * quick to mark against what was circled, and the answer as it is for every other form.
+ */
+fun keyAnswer(exercise: Exercise): String {
+    val index = exercise.options.indexOf(exercise.answer)
+    return if (exercise.form == ExerciseForm.MultipleChoice && index >= 0) "${optionLetter(index)}) ${exercise.answer}" else exercise.answer
 }
 
 /** A handwritten answer takes about this many characters a line of a sheet's answer box. */

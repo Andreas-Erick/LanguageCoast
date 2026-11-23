@@ -23,7 +23,7 @@ class CustomSheetGeneratorTest {
     private val translator = FakeTranslator()
     private val generator = WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE, Random(1))
 
-    private val plural = WorksheetOptions(count = 3, kind = SheetKind.Custom, brief = "Plural from the singular")
+    private val plural = WorksheetOptions(count = 3, kind = SheetKind.Custom, brief = "Plural from the singular", forms = setOf(ExerciseForm.ShortAnswer))
 
     @Before
     fun setUp() {
@@ -79,6 +79,29 @@ class CustomSheetGeneratorTest {
             "[the German words of the task that are not on the flashcards, each with its English meaning, as \"word = meaning; word = meaning\", or - if there are none]"))
         // A custom sheet's tasks stay out of the translation sheets' history: they aren't sentences to avoid there.
         assertTrue(settings.storedWorksheetHistory.value.isEmpty())
+    }
+
+    @Test
+    fun aMixedSheetHasMultipleChoiceWithThreeOptionsAndDropsTheOnesWithout() = runTest {
+        translator.completion = Completion(
+            """
+            choice || Pick the right article. || Ich fahre mit ___ Zug. || b || a) den; b) dem; c) der
+            choice || Pick the right article. || Ich esse ___ Apfel. || den || a) den; b) dem
+            choice || Pick the right article. || Ich gehe zu ___ Bahnhof. || zum || a) zum; b) zur; c) zu
+            short || Write the plural. || das Brot || die Brote || -
+            choice || Pick the right article. || Wir sitzen an ___ Strand. || das || a) dem; b) den; c) der
+            """.trimIndent()
+        )
+
+        val sheet = (generator.generate(1, plural.copy(brief = "Articles after prepositions", forms = emptySet())) as WorksheetResult.Ready).worksheet
+
+        // Two options, or an answer that isn't one of them, and the exercise is gone; the letter is read as its option.
+        assertEquals(listOf("Ich fahre mit ___ Zug.", "Ich gehe zu ___ Bahnhof.", "das Brot"), sheet.exercises.map { it.task })
+        assertEquals(Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Ich fahre mit ___ Zug.", "dem", listOf("den", "dem", "der")), sheet.exercises.first())
+        // Left to the model, the prompt offers multiple choice and asks for its options.
+        val prompt = translator.prompts.single()
+        assertTrue("- A \"choice\" exercise" in prompt)
+        assertTrue("[the three options, as \"a) option; b) option; c) option\", or - if it is not multiple choice]" in prompt)
     }
 
     @Test
