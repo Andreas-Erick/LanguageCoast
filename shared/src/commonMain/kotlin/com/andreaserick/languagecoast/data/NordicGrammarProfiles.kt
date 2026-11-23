@@ -114,6 +114,10 @@ object NordicGrammarProfiles {
         plurals = true,
         verbs = listOf(VerbFeature.Conjugation),
         tenses = listOf("Past tense", "Perfect tense", "Negative past tense: en puhunut", "Conditional: puhuisin"),
+        // Postpositions do the work of prepositions (talon edessä).
+        prepositions = false,
+        // "My house" is minun taloni: the pronoun's genitive and a possessive suffix.
+        possessivePronouns = false,
         extraChips = mapOf(
             ChipArea.Cases to listOf("Partitive or accusative object: luen kirjaa, luen kirjan"),
             ChipArea.Nouns to listOf("Consonant gradation: katu → kadulla, pöytä → pöydän"),
