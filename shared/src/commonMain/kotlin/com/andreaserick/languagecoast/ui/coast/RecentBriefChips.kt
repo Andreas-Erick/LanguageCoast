@@ -19,6 +19,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
@@ -56,7 +58,8 @@ internal fun RecentBriefChips(briefs: List<String>, current: String, onPick: (St
                 ),
                 border = BorderStroke(1.dp, SurfaceSelected),
                 shape = MaterialTheme.shapes.small,
-                modifier = Modifier.widthIn(max = 260.dp)
+                // The brief in the box is said to be picked, as its fill shows.
+                modifier = Modifier.widthIn(max = 260.dp).semantics { selected = inBox }
             )
         }
     }
