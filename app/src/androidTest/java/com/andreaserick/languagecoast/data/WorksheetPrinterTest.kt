@@ -189,7 +189,7 @@ class WorksheetPrinterTest {
             listOf(ExerciseForm.GapFill, ExerciseForm.GapFill, ExerciseForm.MultipleChoice, ExerciseForm.MultipleChoice, ExerciseForm.MultipleChoice, ExerciseForm.ShortAnswer),
             rows.take(6).map { it.exercise.form }
         )
-        assertEquals("a) den     b) dem     c) der", choiceLine(rows[2].exercise.options))
+        assertEquals("a) den     b) dem     c) der", choiceLine(rows[2].exercise.options))
         assertEquals(listOf("dem Zug", "dem alten Mann", "b) dem", "a) der", "c) dem", "die Hunde"), rows.take(6).map { keyAnswer(it.exercise) })
 
         // Eight exercises fit the first page; the key starts the second.
@@ -210,7 +210,38 @@ class WorksheetPrinterTest {
         assertEquals(2 to 2, pdf.pageCount to pages)
     }
 
+    @Test
+    fun aRunOfExercisesThatGoesOnOverAPageSaysItsInstructionAgainAtTheTopOfTheNext() {
+        // Forty plurals share one instruction, printed above the first; the run carries on past the first page.
+        val plurals = (1..40).map { SHORT_ANSWERS[it % 6].copy(task = "${SHORT_ANSWERS[it % 6].task} ($it)", wordHelp = emptyList()) }
+        val sheet = customSheet(plurals, brief = "Plural from the singular").copy(date = LocalDate(2026, 11, 13))
+        assertEquals(listOf("Write the plural.") + List(39) { null }, customSheetLayout(sheet.exercises).map { it.instruction })
+        val (pdf, pages) = print(sheet)
+        assertTrue("Forty exercises take more than one page, got ${pdf.pageCount}", pdf.pageCount >= 3)
+        assertEquals(pdf.pageCount, pages)
+
+        // The second page opens with the instruction in grey text, so the first exercise's sunlit number badge sits below
+        // it: none of the badge's fill is in the page's first ten points, where a page without the instruction has it.
+        val top = ParcelFileDescriptor.open(File(pdf.path), ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+            PdfRenderer(descriptor).use { reader ->
+                reader.openPage(1).use { page ->
+                    val picture = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+                    page.render(picture, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                    IntArray(picture.width * 10).also { picture.getPixels(it, 0, picture.width, 0, PAGE_MARGIN, picture.width, 10) }
+                }
+            }
+        }
+        assertTrue("The second page starts with something", top.any { it != Color.WHITE })
+        assertTrue("The second page starts with a number badge, not the instruction", top.none { it == BADGE_FILL })
+    }
+
     private companion object {
+        /** The printer's page margin, in points; a page drawn one pixel a point puts its first line there. */
+        const val PAGE_MARGIN = 52
+
+        /** The pale sun fill of an exercise's number badge. */
+        val BADGE_FILL = 0xFFFDE9DA.toInt()
+
         val CHOICES = listOf(
             Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Ich fahre mit ___ Zug nach Wien.", "dem", listOf("den", "dem", "der")),
             Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Sie wohnt in ___ Schweiz.", "der", listOf("der", "die", "das")),

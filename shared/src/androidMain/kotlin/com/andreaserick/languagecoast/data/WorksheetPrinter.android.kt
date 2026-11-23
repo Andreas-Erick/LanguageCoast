@@ -241,9 +241,11 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
             cursor = margin
         }
 
+        /** Whether [block] goes on a new page. A block taller than a page still gets one, rather than being pushed on forever. */
+        fun opensPage(block: Block) = cursor + block.height > bottom && pages.last().isNotEmpty()
+
         fun place(block: Block, gapAfter: Float) {
-            // A block taller than a page still gets one, rather than being pushed on forever.
-            if (cursor + block.height > bottom && pages.last().isNotEmpty()) newPage()
+            if (opensPage(block)) newPage()
             pages.last() += block to cursor
             cursor += block.height + gapAfter
         }
@@ -252,12 +254,14 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         place(sheetHeader(), gapAfter = 20f)
         if (sheet.isCustom) {
             val rows = customSheetLayout(sheet.exercises)
+            fun block(row: CustomSheetRow) = when (row.exercise.form) {
+                ExerciseForm.MultipleChoice -> multipleChoice(row)
+                else -> customExercise(row)
+            }
             rows.forEach { row ->
-                val block = when (row.exercise.form) {
-                    ExerciseForm.MultipleChoice -> multipleChoice(row)
-                    else -> customExercise(row)
-                }
-                place(block, gapAfter = 13f)
+                val block = block(row)
+                // An exercise at the top of a page brings its run's instruction along: the one above the run is a page back.
+                place(if (opensPage(block)) block(row.openingAPage()) else block, gapAfter = 13f)
             }
             newPage()
             place(answerHeader(), gapAfter = 18f)
@@ -481,7 +485,7 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         val exercise = row.exercise
         val instructionText = row.instruction?.let { wrap(it, instruction, contentWidth, lineSpacing = 1.2f) }
         val instructionHeight = instructionText?.let { it.height + INSTRUCTION_GAP } ?: 0f
-        val text = wrap(exercise.task, sentenceText, contentWidth - numberColumn)
+        val text = wrap(printedChoiceTask(exercise.task), sentenceText, contentWidth - numberColumn)
         // Wrapped all the same, so that three long options still fit the page.
         val options = wrap(choiceLine(exercise.options), optionText, contentWidth - numberColumn)
         val optionsTop = instructionHeight + text.height + OPTIONS_GAP
