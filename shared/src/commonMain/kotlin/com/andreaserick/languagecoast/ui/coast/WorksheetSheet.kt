@@ -1,6 +1,23 @@
 package com.andreaserick.languagecoast.ui.coast
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.stateDescription
+import com.andreaserick.languagecoast.data.BRIEF_COUNTER_FROM
+import com.andreaserick.languagecoast.data.briefCounter
+import com.andreaserick.languagecoast.data.chipsPerArea
+import com.andreaserick.languagecoast.data.formsLine
+import com.andreaserick.languagecoast.data.openChipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -97,7 +114,6 @@ import com.andreaserick.languagecoast.data.chipsInBrief
 import com.andreaserick.languagecoast.data.toggleChip
 import com.andreaserick.languagecoast.data.ExerciseForm
 import com.andreaserick.languagecoast.data.CUSTOM_SHEET_FORMS
-import com.andreaserick.languagecoast.data.isMixed
 import com.andreaserick.languagecoast.data.tickForm
 import com.andreaserick.languagecoast.data.tickedForms
 import com.andreaserick.languagecoast.data.IslandSummary
@@ -176,6 +192,7 @@ internal fun WorksheetSheet(
                     askedFor = state.options.count,
                     toLanguage = toLanguage,
                     custom = state.options.kind == SheetKind.Custom,
+                    brief = state.options.brief,
                     provider = provider,
                     files = files,
                     onStartNew = onStartNew
@@ -244,8 +261,8 @@ private fun ColumnScope.WorksheetOptionsForm(
     )
     Text(
         text = if (custom) {
-            "Exercises on the grammar you name, written with words from $theCards, as a PDF to print or fill in. " +
-                "The answers come on a page of their own."
+            "Grammar exercises on what you name below, using words from $theCards. " +
+                "A PDF to print or fill in, with the answers on the last page."
         } else {
             "New sentences to translate, each built from one of $theCards, as a PDF to print or fill in. A sentence may bring a new word or two where it needs them; " +
                 "with a cloud AI provider they are explained under it. The answers come on a page of their own."
@@ -269,7 +286,7 @@ private fun ColumnScope.WorksheetOptionsForm(
                 modifier = Modifier.padding(top = 6.dp)
             )
         }
-        FormTicks(picked = options.forms, onChange = { onOptionsChange(options.copy(forms = it)) })
+        FormChips(picked = options.forms, onChange = { onOptionsChange(options.copy(forms = it)) })
     }
 
     if (islands.size > 1) {
@@ -471,51 +488,76 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
 }
 
 /**
- * The ticks for which exercise forms a custom sheet may have. "Mixed: let the AI choose" is the default and
- * shows every form ticked, since every one may appear; unticking one narrows the sheet to the others, and
- * ticking Mixed allows them all again. The last form ticked can't be unticked: a sheet needs a form.
+ * Which exercise forms a custom sheet may have, as three toggle chips in one row, with a line under them
+ * saying what that makes. All three on is the default, the mix; turning one off narrows the sheet to the
+ * others. The last chip that's on can't be turned off: a sheet needs a form, so it stays lit but rests.
  * A chip tapped into the brief never changes these, so the learner's choice of forms stays theirs.
  */
 @Composable
-private fun FormTicks(picked: Set<ExerciseForm>, onChange: (Set<ExerciseForm>) -> Unit) {
+private fun FormChips(picked: Set<ExerciseForm>, onChange: (Set<ExerciseForm>) -> Unit) {
     FieldLabel("Exercise forms")
-    val mixed = isMixed(picked)
-    val ticked = tickedForms(picked)
-    FormTick(label = "Mixed: let the AI choose", ticked = mixed, enabled = !mixed) { onChange(emptySet()) }
-    CUSTOM_SHEET_FORMS.forEach { form ->
-        val on = form in ticked
-        FormTick(label = form.label, ticked = on, enabled = !(on && ticked.size == 1), indent = true) { onChange(tickForm(picked, form)) }
+    val on = tickedForms(picked)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        CUSTOM_SHEET_FORMS.forEach { form ->
+            val isOn = form in on
+            FormChip(
+                form = form,
+                on = isOn,
+                enabled = !(isOn && on.size == 1),
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            ) { onChange(tickForm(picked, form)) }
+        }
+    }
+    Text(
+        text = formsLine(picked),
+        style = MaterialTheme.typography.bodySmall,
+        color = TextSecondary,
+        modifier = Modifier.padding(top = 6.dp)
+    )
+}
+
+/**
+ * One of [FormChips]: a tiny picture of the form over its name, lit in the picked-chip fill while on.
+ * A chip that can't be turned off right now still reads as on, not as greyed out.
+ */
+@Composable
+private fun FormChip(form: ExerciseForm, on: Boolean, enabled: Boolean, modifier: Modifier, onToggle: () -> Unit) {
+    val content = if (on) OnSunlit else TextPrimary
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier
+            .heightIn(min = 56.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(if (on) Sunlit else ChipContainer)
+            .toggleable(value = on, enabled = enabled, role = Role.Checkbox) { onToggle() }
+            .padding(horizontal = 6.dp, vertical = 8.dp)
+    ) {
+        FormGlyph(form, color = if (on) OnSunlit else TextSecondary)
+        Text(
+            text = form.label,
+            style = MaterialTheme.typography.labelMedium,
+            color = content,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
 
-/** One row of [FormTicks]: a tick box and its label, a full 48dp touch target by itself. */
+/**
+ * A tiny drawn picture of an exercise form, so the chips are told apart at a glance: a short gap line for a
+ * gap fill, "a b c" for multiple choice, a small empty box for a short answer. Decoration only: the chip's
+ * name says the same to a screen reader.
+ */
 @Composable
-private fun FormTick(label: String, ticked: Boolean, enabled: Boolean, indent: Boolean = false, onToggle: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .toggleable(value = ticked, enabled = enabled, role = Role.Checkbox) { onToggle() }
-            .padding(start = if (indent) 28.dp else 4.dp, end = 12.dp, top = 12.dp, bottom = 12.dp)
-    ) {
-        Checkbox(
-            checked = ticked,
-            onCheckedChange = null,
-            enabled = enabled,
-            // A tick that can't be taken off right now still reads as ticked, not as greyed-out "off".
-            colors = CheckboxDefaults.colors(
-                checkedColor = Sunlit,
-                checkmarkColor = OnSunlit,
-                uncheckedColor = TextSecondary,
-                disabledCheckedColor = Sunlit
-            )
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(start = 12.dp)
-        )
+private fun FormGlyph(form: ExerciseForm, color: androidx.compose.ui.graphics.Color) {
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.height(16.dp)) {
+        when (form) {
+            ExerciseForm.GapFill -> Box(Modifier.padding(top = 8.dp).width(22.dp).height(2.dp).background(color, RoundedCornerShape(1.dp)))
+            ExerciseForm.MultipleChoice -> Text("a b c", style = MaterialTheme.typography.labelSmall, color = color, maxLines = 1)
+            ExerciseForm.ShortAnswer -> Box(Modifier.width(20.dp).height(12.dp).border(1.5.dp, color, RoundedCornerShape(2.dp)))
+        }
     }
 }
 
@@ -524,6 +566,10 @@ private fun FormTick(label: String, ticked: Boolean, enabled: Boolean, indent: B
  * keystroke never waits on the round trip through the screen's state (the "About you" fields lost letters
  * that way). Once something was typed the box no longer follows [brief], so chips under it change the brief
  * through [below]: it gets the text in the box and a way to replace it.
+ *
+ * A clear button sits in the box once it holds something, and past [BRIEF_COUNTER_FROM] characters a
+ * counter under it shows how much room is left, in the error colour once the box is full: the example chips
+ * rest then, and the counter says why.
  */
 @Composable
 private fun BriefField(
@@ -543,94 +589,130 @@ private fun BriefField(
         value = draft,
         onValueChange = change,
         placeholder = { Text("For example: the plural of nouns, or the dative after mit") },
+        trailingIcon = if (draft.isEmpty()) null else {
+            { IconButton(onClick = { change("") }) { Icon(Icons.Default.Close, contentDescription = "Clear the brief", tint = TextSecondary) } }
+        },
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         minLines = 2,
         modifier = Modifier.fillMaxWidth()
     )
+    briefCounter(draft)?.let { counter ->
+        Text(
+            text = counter,
+            style = MaterialTheme.typography.bodySmall.tabular,
+            color = if (draft.length >= BRIEF_MAX_LENGTH) CoralText else TextSecondary,
+            textAlign = TextAlign.End,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp, end = 4.dp)
+        )
+    }
     below(draft, change)
 }
 
 /**
- * The example chips for the coast's language, one row per area, under the brief box and after the recent
- * briefs. Tapping one adds it to the brief or takes it out again, up to [BRIEF_CHIPS_MAX] at once; what the
- * learner typed stays.
+ * The example chips for the coast's language, under the brief box and the recent briefs: a row of area
+ * tabs (Cases, Articles...) with the open area's chips under them, so the whole catalogue takes a few lines
+ * instead of a screen of folded rows. An area holding chips of the brief shows how many. It opens on the
+ * area of the brief's first chip, or the first area. Tapping a chip adds it to the brief or takes it out
+ * again, up to [BRIEF_CHIPS_MAX] at once; what the learner typed stays.
  *
  * @param current The text in the brief box now.
  * @param onChange Replaces the text in the brief box.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ExampleBriefChips(coastLanguage: String, current: String, onChange: (String) -> Unit) {
     val groups = remember(coastLanguage) { briefChips(coastLanguage) }
+    if (groups.isEmpty()) return
     val offered = remember(groups) { groups.flatMap { it.chips } }
     val tapped = chipsInBrief(current, offered)
+    val counts = chipsPerArea(groups, current)
+    // Chosen once, when the picker first shows; after that the learner's tab stays put while they tap chips.
+    var openName by rememberSaveable(coastLanguage) { mutableStateOf(openChipArea(groups, current)?.name) }
+    val open = groups.firstOrNull { it.area.name == openName } ?: groups.first()
     Text(
         text = chipsHint(current, offered),
         style = MaterialTheme.typography.bodySmall,
         color = TextSecondary,
-        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
     )
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+    // The tabs look like the sheet's other switches: a lighter tile on a quiet strip, without the accent.
+    // The strip has the field tone, since the sheet itself has the switch's card tone.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ChipContainer, MaterialTheme.shapes.small)
+            .padding(horizontal = 4.dp)
+            .selectableGroup()
+    ) {
         groups.forEach { group ->
-            BriefChipRow(
+            AreaTab(
                 title = group.area.label,
-                chips = group.chips,
-                tapped = tapped,
-                fits = { toggleChip(current, it, offered) != current },
-                onTap = { onChange(toggleChip(current, it, offered)) }
+                inBrief = counts[group.area] ?: 0,
+                selected = group.area == open.area,
+                onSelect = { openName = group.area.name }
             )
+        }
+    }
+    val enter = expandEnter()
+    val exit = collapseExit()
+    AnimatedContent(targetState = open, transitionSpec = { enter togetherWith exit }, label = "brief chips") { group ->
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+        ) {
+            group.chips.forEach { chip ->
+                val picked = chip in tapped
+                val fits = picked || toggleChip(current, chip, offered) != current
+                FilterChip(
+                    selected = picked,
+                    onClick = { onChange(toggleChip(current, chip, offered)) },
+                    enabled = fits,
+                    label = { Text(chip, style = MaterialTheme.typography.labelMedium) },
+                    colors = coastChipColors(),
+                    border = coastChipBorder(enabled = fits, selected = picked),
+                    shape = MaterialTheme.shapes.small
+                )
+            }
         }
     }
 }
 
 /**
- * One area of example chips, folded to its name and how many of its chips are in the brief; unfolded, the
- * chips themselves. A tapped chip shows as picked; once the brief holds [BRIEF_CHIPS_MAX], or has no room
- * left for a chip ([BRIEF_MAX_LENGTH]), the others rest.
- *
- * @param tapped The chips the brief holds now, from every area.
- * @param fits Whether a chip not in the brief can go in: not when the brief holds as many chips as it takes, or has no room left for it.
+ * One area tab of [ExampleBriefChips]: compact to look at, a full 48dp to touch. A small sunlit count says
+ * how many of the area's chips are in the brief, the same fill as the picked chips it counts.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BriefChipRow(title: String, chips: List<String>, tapped: List<String>, fits: (String) -> Boolean, onTap: (String) -> Unit) {
-    var open by rememberSaveable(title) { mutableStateOf(false) }
-    val inBrief = chips.count { it in tapped }
-    Column(modifier = Modifier.fillMaxWidth().background(ChipContainer, MaterialTheme.shapes.medium)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.medium)
-                .clickable(onClickLabel = if (open) "Hide the $title examples" else "Show the $title examples", role = Role.Button) { open = !open }
-                .heightIn(min = 48.dp)
-                .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
-        ) {
-            Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            Text(
-                text = if (inBrief > 0) "$inBrief in your brief" else plural(chips.size, "example"),
-                style = MaterialTheme.typography.bodySmall,
-                color = if (inBrief > 0) SunlitText else TextSecondary,
-                modifier = Modifier.padding(end = 8.dp)
-            )
-            Icon(imageVector = if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, tint = TextSecondary)
-        }
-        AnimatedVisibility(visible = open, enter = expandEnter(), exit = collapseExit()) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
+private fun AreaTab(title: String, inBrief: Int, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .clip(RoundedCornerShape(9.dp))
+            .background(if (selected) SurfaceSelected else androidx.compose.ui.graphics.Color.Transparent)
+            .selectable(selected = selected, role = Role.Tab, onClick = onSelect)
+            .semantics(mergeDescendants = true) {
+                if (inBrief > 0) stateDescription = "$inBrief in your brief"
+            }
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 12.dp)
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) TextPrimary else TextSecondary,
+            maxLines = 1
+        )
+        if (inBrief > 0) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .clearAndSetSemantics { }
+                    .size(18.dp)
+                    .background(Sunlit, CircleShape)
             ) {
-                chips.forEach { chip ->
-                    val picked = chip in tapped
-                    FilterChip(
-                        selected = picked,
-                        onClick = { onTap(chip) },
-                        enabled = picked || fits(chip),
-                        label = { Text(chip, style = MaterialTheme.typography.labelMedium) },
-                        colors = coastChipColors(),
-                        border = coastChipBorder(enabled = picked || fits(chip), selected = picked),
-                        shape = MaterialTheme.shapes.small
-                    )
-                }
+                Text("$inBrief", style = MaterialTheme.typography.labelSmall.tabular, color = OnSunlit)
             }
         }
     }
@@ -846,6 +928,7 @@ private fun ColumnScope.WorksheetReady(
     askedFor: Int,
     toLanguage: String,
     custom: Boolean,
+    brief: String,
     provider: TranslationProvider,
     files: WorksheetFiles?,
     onStartNew: () -> Unit
@@ -868,6 +951,16 @@ private fun ColumnScope.WorksheetReady(
                 }
             )
             Text(pdf.fileName, style = MaterialTheme.typography.bodySmall, color = TextSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+            // Which custom sheet this is: two custom sheets of the same day have nearly the same file name.
+            if (custom && brief.isNotBlank()) {
+                Text(
+                    text = "“${brief.trim().replace('\n', ' ')}”",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
     Text(
