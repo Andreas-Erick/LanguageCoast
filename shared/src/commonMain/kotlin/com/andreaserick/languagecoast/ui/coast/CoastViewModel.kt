@@ -68,7 +68,7 @@ import kotlin.time.Clock
  *
  * @property written Sentences the AI provider has written so far, while [isCreating].
  * @property pdf The finished sheet, until the user starts another.
- * @property sentenceCount How many sentences [pdf] has, which can be fewer than were asked for.
+ * @property sentenceCount How many sentences or exercises [pdf] has, which can be fewer than were asked for.
  * @property error Why the last attempt gave no sheet.
  */
 data class WorksheetUiState(
@@ -411,7 +411,7 @@ class CoastViewModel(
                 is WorksheetResult.Ready -> {
                     val pdf = printer.print(result.worksheet)
                     if (pdf == null) worksheet.value.copy(error = "The PDF couldn't be made. Check that your device has storage left.")
-                    else worksheet.value.copy(pdf = pdf, sentenceCount = result.worksheet.sentences.size)
+                    else worksheet.value.copy(pdf = pdf, sentenceCount = result.worksheet.exerciseCount)
                 }
             }
             worksheet.value = finished.copy(isCreating = false)

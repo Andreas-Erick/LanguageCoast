@@ -18,6 +18,7 @@ import com.andreaserick.languagecoast.data.StarterImporter
 import com.andreaserick.languagecoast.data.StarterTranslator
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.SheetKind
 import com.andreaserick.languagecoast.data.WorksheetDifficulty
 import com.andreaserick.languagecoast.data.WorksheetDirection
 import com.andreaserick.languagecoast.data.WorksheetGenerator
@@ -655,6 +656,23 @@ class SettingsAndMyCoastViewModelTest {
         assertEquals(null, viewModel.uiState.value.worksheet.pdf)
         // What was picked stays for the next sheet.
         assertEquals(WorksheetDifficulty.Hard, viewModel.uiState.value.worksheet.options.difficulty)
+    }
+
+    @Test
+    fun coastMakesACustomSheetFromABriefAndCountsItsExercises() = runTest {
+        coastForWorksheets()
+        translator.completion = Completion("short || Write the plural. || der Hund || die Hunde\nshort || Write the plural. || die Maus || die Mäuse")
+        val viewModel = coastViewModel(coastId = 1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.setWorksheetOptions(WorksheetOptions(count = 3, kind = SheetKind.Custom, brief = "Plural from the singular"))
+        viewModel.createWorksheet()
+
+        val worksheet = viewModel.uiState.value.worksheet
+        assertEquals("german-coast-custom-practice-2026-10-09.pdf", worksheet.pdf?.fileName)
+        // Two of the three asked for came back: the ready sheet says so.
+        assertEquals(2, worksheet.sentenceCount)
+        assertEquals(listOf("der Hund", "die Maus"), printer.printed.single().exercises.map { it.task })
     }
 
     @Test

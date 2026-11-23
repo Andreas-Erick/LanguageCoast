@@ -137,7 +137,63 @@ class WorksheetPrinterTest {
         assertEquals(2 to 2, one.pageCount to onePages)
     }
 
+    /** A custom sheet of [exercises], as the generator hands it over. */
+    private fun customSheet(exercises: List<Exercise>, brief: String = "Plural from the singular, and the dative after mit") = Worksheet(
+        coastName = "German Coast",
+        targetLanguage = "German",
+        nativeLanguage = "English",
+        options = WorksheetOptions(count = exercises.size, kind = SheetKind.Custom, brief = brief),
+        sentences = emptyList(),
+        date = LocalDate(2026, 11, 8),
+        providerLabel = "Claude",
+        cardCount = 70,
+        islandCount = 7,
+        exercises = exercises
+    )
+
+    @Test
+    fun aShortCustomSheetIsOnePageOfExercisesAndOneOfAnswers() {
+        val sheet = customSheet(SHORT_ANSWERS.take(3))
+        val (pdf, pages) = print(sheet)
+
+        assertEquals("german-coast-custom-practice-2026-11-08.pdf", pdf.fileName)
+        // Three exercises fit one page with room to spare: the second page is there because the answers start one of their own.
+        assertEquals(2 to 2, pdf.pageCount to pages)
+    }
+
+    @Test
+    fun aCustomSheetPrintsAnswerBoxesAsTallAsItsAnswersOverAsManyPagesAsTheyTake() {
+        // Ten exercises, two instructions, one a conjugation table: grouped and numbered as customSheetLayout says.
+        val ten = customSheet(SHORT_ANSWERS).copy(date = LocalDate(2026, 11, 9))
+        assertEquals(listOf("Write the plural.", null, null, null, null, null, "Put it in the dative.", null, null, "Conjugate in the present tense."),
+            customSheetLayout(ten.exercises).map { it.instruction })
+        val (pdf, pages) = print(ten)
+        assertTrue("A sheet and its answer key are two pages at least, got ${pdf.pageCount}", pdf.pageCount >= 2)
+        assertEquals(pdf.pageCount, pages)
+
+        // The longest sheet, with a long brief that is shortened on the first page.
+        val most = WORKSHEET_COUNT_RANGE.last
+        val long = customSheet((1..most).map { SHORT_ANSWERS[it % SHORT_ANSWERS.size].let { e -> e.copy(task = "${e.task} ($it)") } }, brief = "Plural ".repeat(60))
+            .copy(date = LocalDate(2026, 11, 10))
+        val (longPdf, longPages) = print(long)
+        assertTrue("$most exercises need dozens of pages, got ${longPdf.pageCount}", longPdf.pageCount > 20)
+        assertEquals(longPdf.pageCount, longPages)
+    }
+
     private companion object {
+        val SHORT_ANSWERS = listOf(
+            Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "der Hund", "die Hunde"),
+            Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "die Maus", "die Mäuse", wordHelp = listOf(WordHelp("Maus", "mouse"))),
+            Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "das Haus", "die Häuser"),
+            Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "der Apfel", "die Äpfel"),
+            Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "das Kind", "die Kinder"),
+            Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "die Stadt", "die Städte"),
+            Exercise(ExerciseForm.ShortAnswer, "Put it in the dative.", "Ich fahre mit (der Zug) nach Wien.", "Ich fahre mit dem Zug nach Wien."),
+            Exercise(ExerciseForm.ShortAnswer, "Put it in the dative.", "Sie spricht mit (die Kinder) über den Ausflug, der morgen früh beginnt.", "Sie spricht mit den Kindern über den Ausflug, der morgen früh beginnt."),
+            Exercise(ExerciseForm.ShortAnswer, "Put it in the dative.", "mit (das Auto)", "mit dem Auto"),
+            Exercise(ExerciseForm.ShortAnswer, "Conjugate in the present tense.", "sein", "ich bin\ndu bist\ner ist\nwir sind\nihr seid\nsie sind")
+        )
+
         val EVERYDAY = listOf(
             WorksheetSentence("Wo ist der nächste Bahnhof?", "Where is the nearest train station?"),
             WorksheetSentence("Ich möchte einen Kaffee, bitte.", "I would like a coffee, please."),

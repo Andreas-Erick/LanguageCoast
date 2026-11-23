@@ -1,5 +1,6 @@
 package com.andreaserick.languagecoast.ui.coast
 
+import com.andreaserick.languagecoast.data.SheetKind
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.WorksheetBatch
 import com.andreaserick.languagecoast.data.WorksheetDifficulty
@@ -26,6 +27,15 @@ class WorksheetEstimateTest {
         assertTrue(worksheetRequests(35, WorksheetBatch.HardCloud) > worksheetRequests(35, WorksheetBatch.Cloud))
         assertTrue(worksheetRequests(35, WorksheetBatch.HardThinking) > worksheetRequests(35, WorksheetBatch.Thinking))
         assertTrue("requests" in worksheetEstimate(35, TranslationProvider.Gemini, WorksheetDifficulty.Hard))
+    }
+
+    @Test
+    fun aCustomSheetSaysItsProviderWritesExercises() {
+        assertEquals("Gemini writes the exercises. It takes less than a minute.", worksheetEstimate(10, TranslationProvider.Gemini, kind = SheetKind.Custom))
+        assertEquals(
+            "Local AI writes the exercises a few at a time, in 2 requests. It takes about a minute.",
+            worksheetEstimate(10, TranslationProvider.LocalAi, kind = SheetKind.Custom)
+        )
     }
 
     @Test

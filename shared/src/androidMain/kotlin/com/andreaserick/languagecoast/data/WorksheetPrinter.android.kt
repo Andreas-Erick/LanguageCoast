@@ -139,7 +139,9 @@ private class Block(val height: Float, val draw: (canvas: Canvas, top: Float) ->
 
 /**
  * Lays a [Worksheet] out on [paper]: the sentences from the first page on, each with lines to write its
- * translation on and never split over two pages, then the answer key starting on a new page.
+ * translation on and never split over two pages, then the answer key starting on a new page. A custom
+ * sheet has its exercises in their place, grouped by form as [customSheetLayout] says, each with a box to
+ * write the answer in.
  */
 private class SheetLayout(private val sheet: Worksheet, private val paper: Paper, private val fonts: Fonts) {
     private val margin = 52f
@@ -178,7 +180,7 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
     private val footer = paint(fonts.semiBold, 7.5f, INK_SOFT)
 
     /** How far an answer is indented past its number: room for the sheet's largest one. */
-    private val answerIndent = maxOf(26f, answerNumber.measureText("${sheet.sentences.size}") + 12f)
+    private val answerIndent = maxOf(26f, answerNumber.measureText("${sheet.exerciseCount}") + 12f)
 
     private fun stroke(color: Int, width: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -232,14 +234,22 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
 
         newPage()
         place(sheetHeader(), gapAfter = 20f)
-        // Ten one-line sentences without word help, the usual sheet, fit on the first page of either paper size with
-        // these gaps, and their answers, each with its card, on the next.
-        sheet.sentences.forEachIndexed { index, sentence -> place(exercise(index + 1, sheet.question(sentence), sheet.wordHelp(sentence)), gapAfter = 13f) }
+        if (sheet.isCustom) {
+            val rows = customSheetLayout(sheet.exercises)
+            rows.forEach { place(customExercise(it), gapAfter = 13f) }
+            newPage()
+            place(answerHeader(), gapAfter = 18f)
+            rows.forEach { place(answer(it.number, it.exercise.answer, it.exercise.task, card = null), gapAfter = 9f) }
+        } else {
+            // Ten one-line sentences without word help, the usual sheet, fit on the first page of either paper size with
+            // these gaps, and their answers, each with its card, on the next.
+            sheet.sentences.forEachIndexed { index, sentence -> place(exercise(index + 1, sheet.question(sentence), sheet.wordHelp(sentence)), gapAfter = 13f) }
 
-        newPage()
-        place(answerHeader(), gapAfter = 18f)
-        sheet.sentences.forEachIndexed { index, sentence ->
-            place(answer(index + 1, sheet.answer(sentence), sheet.question(sentence), sheet.cardLine(sentence)), gapAfter = 9f)
+            newPage()
+            place(answerHeader(), gapAfter = 18f)
+            sheet.sentences.forEachIndexed { index, sentence ->
+                place(answer(index + 1, sheet.answer(sentence), sheet.question(sentence), sheet.cardLine(sentence)), gapAfter = 9f)
+            }
         }
 
         return pages.mapIndexed { index, blocks ->
@@ -252,28 +262,37 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
 
     /** The top of the first page: the mark, the coast and the date, then what to do and the sheet's settings. */
     private fun sheetHeader(): Block {
-        val titleText = "Translate into ${sheet.toLanguage}"
+        val custom = sheet.isCustom
+        val titleText = if (custom) "Custom practice" else "Translate into ${sheet.toLanguage}"
         val title = wrap(titleText, heading, contentWidth)
-        val chips = listOf(
-            "From ${sheet.fromLanguage}",
-            sheet.options.difficulty.label,
-            if (sheet.sentences.size == 1) "1 sentence" else "${sheet.sentences.size} sentences"
-        )
+        val count = sheet.exerciseCount
+        val chips = if (custom) {
+            listOf(sheet.options.difficulty.label, if (count == 1) "1 exercise" else "$count exercises")
+        } else {
+            listOf(
+                "From ${sheet.fromLanguage}",
+                sheet.options.difficulty.label,
+                if (count == 1) "1 sentence" else "$count sentences"
+            )
+        }
         val chipWidths = chips.map { chipText.measureText(it) + 2 * CHIP_PADDING }
         val chipsWidth = chipWidths.sum() + CHIP_GAP * (chips.size - 1)
-        // What to do, then what the sheet practises: the islands whose cards need it most.
-        val help = wrap(
+        // What to do, then what the sheet practises: the islands whose cards need it most, or the learner's brief.
+        val helpText = if (custom) {
+            "Practising: “${shortened(WorksheetCardDealer.oneLine(sheet.options.brief), BRIEF_ON_SHEET)}”. " +
+                "Write each answer in the box under its exercise. The answers are at the end."
+        } else {
             listOfNotNull("Write each sentence in ${sheet.toLanguage} on the lines under it. The answers are at the end.", sheet.focusLine)
-                .joinToString(" "),
-            instruction, contentWidth, lineSpacing = 1.25f
-        )
+                .joinToString(" ")
+        }
+        val help = wrap(helpText, instruction, contentWidth, lineSpacing = 1.25f)
         // The settings sit at the end of the title's line; with long language names they go under it instead.
         val beside = heading.measureText(titleText) + 16f + chipsWidth <= contentWidth
         val titleTop = BANNER_HEIGHT + 18f
         val chipsTop = if (beside) titleTop + (title.height - CHIP_HEIGHT) / 2f else titleTop + title.height + 8f
         val helpTop = if (beside) titleTop + title.height + 7f else chipsTop + CHIP_HEIGHT + 9f
         return Block(helpTop + help.height) { canvas, top ->
-            drawBanner(canvas, top, "PRACTICE SHEET")
+            drawBanner(canvas, top, if (custom) "CUSTOM SHEET" else "PRACTICE SHEET")
             canvas.drawLayout(title, left, top + titleTop)
             var x = if (beside) right - chipsWidth else left
             chips.forEachIndexed { index, chip ->
@@ -293,11 +312,14 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         val islands = if (sheet.islandCount == 1) "1 island" else "${sheet.islandCount} islands"
         // A model that leaves out a line's number leaves that answer without its card.
         val check = if (sheet.sentences.all { it.card != null }) "check your card, shown under each answer." else "check your cards."
-        val note = wrap(
+        val noteText = if (sheet.isCustom) {
+            "Written by ${sheet.providerLabel} from your brief, with words from the $cards on the $islands of your ${sheet.coastName}. " +
+                "Another answer can be right too, and AI can make mistakes: when in doubt, check a grammar book or a dictionary."
+        } else {
             "Written by ${sheet.providerLabel} from the $cards on the $islands of your ${sheet.coastName}. " +
-                "Another wording can be right too, and AI can make mistakes: when in doubt, $check",
-            instruction, contentWidth, lineSpacing = 1.25f
-        )
+                "Another wording can be right too, and AI can make mistakes: when in doubt, $check"
+        }
+        val note = wrap(noteText, instruction, contentWidth, lineSpacing = 1.25f)
         val titleTop = BANNER_HEIGHT + 18f
         val noteTop = titleTop + title.height + 6f
         return Block(noteTop + note.height) { canvas, top ->
@@ -359,6 +381,47 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
             repeat(lineCount) { i ->
                 val y = top + firstLine + i * WRITING_LINE_GAP
                 canvas.drawLine(textLeft, y, textLeft + contentWidth - numberColumn, y, line)
+            }
+        }
+    }
+
+    /**
+     * A custom sheet's exercise: its instruction when it is the first of a run that shares one, the numbered
+     * task, word help in small print, and an empty box to write the answer in, with a line for each line the
+     * key answer takes ([answerBoxLines]). The instruction is part of the block, so it never sits alone at
+     * the bottom of a page.
+     */
+    private fun customExercise(row: CustomSheetRow): Block {
+        val exercise = row.exercise
+        val instructionText = row.instruction?.let { wrap(it, instruction, contentWidth, lineSpacing = 1.2f) }
+        val instructionHeight = instructionText?.let { it.height + INSTRUCTION_GAP } ?: 0f
+        val text = wrap(exercise.task, sentenceText, contentWidth - numberColumn)
+        val help = exercise.wordHelp.takeIf { it.isNotEmpty() }?.joinToString(" · ") { "${it.word} = ${it.meaning}" }
+        val helpText = help?.let { wrap("Word help: $it", answerQuestion, contentWidth - numberColumn) }
+        val helpHeight = helpText?.let { it.height + HELP_GAP } ?: 0f
+        val lines = answerBoxLines(exercise.answer)
+        val boxTop = instructionHeight + text.height + helpHeight + 8f
+        val boxHeight = lines * WRITING_LINE_GAP + 6f
+        val mirrored = text.isRightToLeft
+        val box = stroke(WRITING_LINE, 0.8f)
+        val line = stroke(HAIRLINE, 0.6f)
+        return Block(boxTop + boxHeight) { canvas, top ->
+            instructionText?.let { canvas.drawLayout(it, left, top) }
+            val taskTop = top + instructionHeight
+            val middle = taskTop + text.getLineBottom(0) / 2f
+            val badge = if (mirrored) right - BADGE_RADIUS else left + BADGE_RADIUS
+            val textLeft = if (mirrored) left else left + numberColumn
+            canvas.drawCircle(badge, middle, BADGE_RADIUS, fill(SUN_PALE))
+            val digits = if (row.number < 100) number else smallNumber
+            canvas.drawText("${row.number}", badge, middle - (digits.ascent() + digits.descent()) / 2, digits)
+            canvas.drawLayout(text, textLeft, taskTop)
+            helpText?.let { canvas.drawLayout(it, textLeft, taskTop + text.height + HELP_GAP) }
+            val boxRect = RectF(textLeft, top + boxTop, textLeft + contentWidth - numberColumn, top + boxTop + boxHeight)
+            canvas.drawRoundRect(boxRect, ANSWER_BOX_RADIUS, ANSWER_BOX_RADIUS, box)
+            // A taller box gets faint lines to keep the handwriting straight.
+            for (i in 1 until lines) {
+                val y = boxRect.top + 3f + i * WRITING_LINE_GAP
+                canvas.drawLine(boxRect.left + 8f, y, boxRect.right - 8f, y, line)
             }
         }
     }
@@ -438,5 +501,14 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         const val CHIP_GAP = 6f
         const val BADGE_RADIUS = 9.5f
         const val WRITING_LINE_GAP = 24f
+
+        /** Between an instruction and the first exercise it is for. */
+        const val INSTRUCTION_GAP = 6f
+
+        /** The rounded corners of a custom sheet's answer box. */
+        const val ANSWER_BOX_RADIUS = 6f
+
+        /** The first page quotes this much of a custom sheet's brief; the whole of it was the learner's own to type. */
+        const val BRIEF_ON_SHEET = 120
     }
 }

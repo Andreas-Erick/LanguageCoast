@@ -68,7 +68,8 @@ private val GUIDE = listOf(
             "\"Rehearse as a talk\" in an island's ⋮ menu joins the island's sentences into about a minute of speech to read aloud, listen to, and then say without looking.",
             ("The PDF icon at the top of a coast makes a practice sheet: your AI provider writes new sentences to translate, each built from one of that coast's cards. " +
                 "Islands whose cards you are forgetting get more of them, and an online AI provider explains words your cards don't have under the sentence. " +
-                "Pick the islands, the direction, the difficulty and how many sentences; the answers come on a page of their own, each with the card it was built from.")
+                "Pick the islands, the direction, the difficulty and how many sentences; the answers come on a page of their own, each with the card it was built from. " +
+                "Switch to Custom to say in your own words what to practise, such as \"the plural of nouns\", and get exercises on just that.")
                 .takeIf { fileTransferAvailable }
         )
     ),
