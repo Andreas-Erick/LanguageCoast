@@ -60,9 +60,14 @@ class WorksheetGenerator(
         val cards = flashcards.getWorksheetCards(coastId).filter { options.includes(it.islandId) }
         val cardCount = cards.size
         if (cardCount < WORKSHEET_MIN_CARDS) {
+            val custom = options.kind == SheetKind.Custom
             return WorksheetResult.Failed(
-                if (options.islandIds == null) "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards on the coast to make new sentences from."
-                else "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards to make new sentences from. Pick more islands."
+                when {
+                    custom && options.islandIds == null -> "A custom sheet needs at least $WORKSHEET_MIN_CARDS cards on the coast to take its words from."
+                    custom -> "A custom sheet needs at least $WORKSHEET_MIN_CARDS cards to take its words from. Pick more islands."
+                    options.islandIds == null -> "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards on the coast to make new sentences from."
+                    else -> "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards to make new sentences from. Pick more islands."
+                }
             )
         }
         val ai = when (val connection = AskAi(translator, settings).connect()) {
@@ -114,6 +119,9 @@ class WorksheetGenerator(
             )
         }
         val batch = capacity.sheetBatch(options.difficulty)
+        if (options.kind == SheetKind.Custom) {
+            return writeCustomSheet(coast, options, count, nativeLanguage, wording, level, limits, batch, vocabulary, dealer, cardCount, provider, ai, onProgress)
+        }
         val wanted = worksheetSentencesWanted(count, batch)
         // Fewer after a request that was too much for the model (see below).
         var perRequest = batch.sentences
@@ -236,6 +244,61 @@ class WorksheetGenerator(
                 providerLabel = provider.label,
                 cardCount = cardCount,
                 islandCount = dealer.islandCount
+            )
+        )
+    }
+
+    /**
+     * A custom sheet, from the point on where it parts from a translation sheet: everything before (the cards,
+     * the provider, the level, the prompt's limits) is the same for both. The dealer only picks which cards a
+     * prompt shows as the words to reach for; its anchors are for translation sentences.
+     */
+    private suspend fun writeCustomSheet(
+        coast: Coast,
+        options: WorksheetOptions,
+        count: Int,
+        nativeLanguage: String,
+        wording: Wording,
+        level: Level?,
+        limits: SheetPromptLimits,
+        batch: WorksheetBatch,
+        vocabulary: CoastVocabulary,
+        dealer: WorksheetCardDealer,
+        cardCount: Int,
+        provider: TranslationProvider,
+        ai: AiConnection.Ready,
+        onProgress: (Int) -> Unit
+    ): WorksheetResult {
+        val request = CustomSheetRequest(
+            brief = options.brief,
+            forms = customSheetForms(options.forms),
+            count = count,
+            difficulty = options.difficulty,
+            targetLanguage = coast.language,
+            nativeLanguage = nativeLanguage,
+            region = coast.region,
+            level = level,
+            wording = wording,
+            goal = coast.goal,
+            limits = limits,
+            batch = batch,
+            vocabulary = vocabulary,
+            cardsFor = { dealer.next(it).cards }
+        )
+        val written = CustomSheetWriter(ai, background).write(request, onProgress)
+        if (written.exercises.isEmpty()) return WorksheetResult.Failed(written.error ?: CUSTOM_SHEET_UNUSABLE)
+        return WorksheetResult.Ready(
+            Worksheet(
+                coastName = coast.displayName,
+                targetLanguage = coast.language,
+                nativeLanguage = nativeLanguage,
+                options = options.copy(count = count),
+                sentences = emptyList(),
+                date = clock.todayIn(timeZone),
+                providerLabel = provider.label,
+                cardCount = cardCount,
+                islandCount = dealer.islandCount,
+                exercises = written.exercises
             )
         )
     }
