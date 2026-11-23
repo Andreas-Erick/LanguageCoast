@@ -181,6 +181,23 @@ class WorksheetPrinterTest {
     }
 
     @Test
+    fun multipleChoicePrintsBetweenGapFillsAndShortAnswersWithItsOptionsOnOneLineAndItsLetterInTheKey() {
+        val mixed = customSheet(SHORT_ANSWERS.take(3) + CHOICES + GAP_FILLS.take(2), brief = "Articles after prepositions, and plurals")
+            .copy(date = LocalDate(2026, 11, 12))
+        val rows = customSheetLayout(mixed.exercises)
+        assertEquals(
+            listOf(ExerciseForm.GapFill, ExerciseForm.GapFill, ExerciseForm.MultipleChoice, ExerciseForm.MultipleChoice, ExerciseForm.MultipleChoice, ExerciseForm.ShortAnswer),
+            rows.take(6).map { it.exercise.form }
+        )
+        assertEquals("a) den     b) dem     c) der", choiceLine(rows[2].exercise.options))
+        assertEquals(listOf("dem Zug", "dem alten Mann", "b) dem", "a) der", "c) dem", "die Hunde"), rows.take(6).map { keyAnswer(it.exercise) })
+
+        // Eight exercises fit the first page; the key starts the second.
+        val (pdf, pages) = print(mixed)
+        assertEquals(2 to 2, pdf.pageCount to pages)
+    }
+
+    @Test
     fun gapFillsAreWrittenInTheirGapSoAMixedSheetOfTwelveFitsOnePageBeforeItsAnswers() {
         // Gap fills given last still print first, each answered in its gap rather than in a box of its own.
         val mixed = customSheet(SHORT_ANSWERS.take(2) + GAP_FILLS, brief = "Nominative → dative").copy(date = LocalDate(2026, 11, 11))
@@ -194,6 +211,12 @@ class WorksheetPrinterTest {
     }
 
     private companion object {
+        val CHOICES = listOf(
+            Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Ich fahre mit ___ Zug nach Wien.", "dem", listOf("den", "dem", "der")),
+            Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Sie wohnt in ___ Schweiz.", "der", listOf("der", "die", "das")),
+            Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Wir helfen ___ Kind bei den Hausaufgaben.", "dem", listOf("das", "den", "dem"))
+        )
+
         val GAP_FILLS = listOf(
             Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Ich fahre mit ___ (der Zug) nach Wien.", "dem Zug", wordHelp = listOf(WordHelp("Wien", "Vienna"))),
             Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Ich gebe ___ (der alte Mann) das Buch.", "dem alten Mann"),
