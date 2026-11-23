@@ -2,6 +2,7 @@ package com.andreaserick.languagecoast.data
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import kotlin.random.Random
 
 /** Said when replies came back but none of their exercises could go on the sheet. */
 const val CUSTOM_SHEET_UNUSABLE = "Couldn't make exercises from that brief. Try saying which grammar to practise."
@@ -33,9 +34,14 @@ internal class CustomSheetRequest(
  * request with a few to spare, each request told what is on the sheet already, a request that was too
  * much made again with half as many, a busy provider waited for, and a model that keeps sending nothing
  * new given up on. What differs is the prompt, the reply and the pick ([pickExercises]); there are no
- * anchor cards, so nothing is recorded for the next sheet.
+ * anchor cards, so nothing is recorded for the next sheet. A multiple-choice exercise's options are put in
+ * an order drawn from [random] ([shuffledOptions]), so a fixed seed gives a fixed sheet.
  */
-internal class CustomSheetWriter(private val ai: AiConnection.Ready, private val background: CoroutineDispatcher) {
+internal class CustomSheetWriter(
+    private val ai: AiConnection.Ready,
+    private val background: CoroutineDispatcher,
+    private val random: Random
+) {
 
     /** The sheet's exercises, or none and why. */
     class Written(val exercises: List<Exercise>, val error: String?)
@@ -103,7 +109,7 @@ internal class CustomSheetWriter(private val ai: AiConnection.Ready, private val
             val fresh = withContext(background) {
                 parseCustomSheetResponse(text)
                     .filter { it.form in request.forms && seen.add(normalizedWords(it.task)) }
-                    .map { it.copy(wordHelp = request.vocabulary.wordHelp(it.task, it.wordHelp)) }
+                    .map { shuffledOptions(it.copy(wordHelp = request.vocabulary.wordHelp(it.task, it.wordHelp)), random) }
             }
             barren = if (fresh.isEmpty()) barren + 1 else 0
             written += fresh

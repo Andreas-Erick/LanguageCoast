@@ -350,6 +350,24 @@ class CustomSheetTest {
     }
 
     @Test
+    fun formTicksStartMixedNarrowToWhatIsTickedAndNeverLeaveNone() {
+        val gap = ExerciseForm.GapFill
+        val choice = ExerciseForm.MultipleChoice
+        val short = ExerciseForm.ShortAnswer
+        // Nothing stored is "Mixed: let the AI choose", with every form allowed.
+        assertTrue(isMixed(emptySet()))
+        assertEquals(setOf(gap, choice, short), tickedForms(emptySet()))
+        // Unticking a form of a mixed sheet keeps the other two.
+        assertEquals(setOf(gap, short), tickForm(emptySet(), choice))
+        assertFalse(isMixed(setOf(gap, short)))
+        // The last ticked form can't be unticked: a sheet needs a form.
+        assertEquals(setOf(short), tickForm(setOf(short), short))
+        // Ticking the third form again is mixed, stored as nothing, the default.
+        assertEquals(emptySet(), tickForm(setOf(gap, short), choice))
+        assertTrue(isMixed(setOf(gap, choice, short)))
+    }
+
+    @Test
     fun theSheetPrintsExercisesGroupedByFormNumberedThroughWithAnInstructionWhereItChanges() {
         val plural1 = short("der Hund", "die Hunde")
         val dative = short("mit (der Mann)", "mit dem Mann", instruction = "Put it in the dative.")
