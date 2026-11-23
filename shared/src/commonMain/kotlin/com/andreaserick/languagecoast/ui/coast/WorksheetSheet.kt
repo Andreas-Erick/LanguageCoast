@@ -1,6 +1,9 @@
 package com.andreaserick.languagecoast.ui.coast
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.ui.unit.sp
+import com.andreaserick.languagecoast.ui.theme.SurfaceCard
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -278,14 +281,6 @@ private fun ColumnScope.WorksheetOptionsForm(
             RecentBriefChips(briefs = state.recentBriefs, current = current, onPick = replace)
             ExampleBriefChips(coastLanguage = coastLanguage, current = current, onChange = replace)
         }
-        if (provider == TranslationProvider.LocalAi) {
-            Text(
-                text = "Small models write these less well.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-        }
         FormChips(picked = options.forms, onChange = { onOptionsChange(options.copy(forms = it)) })
     }
 
@@ -390,7 +385,10 @@ private fun ColumnScope.WorksheetOptionsForm(
         }
         if (blocker == null) {
             Text(
-                text = worksheetEstimate(options.count, provider, options.difficulty, options.kind),
+                // What the provider means for the sheet goes with what it means for the wait, under the button:
+                // under the brief it read as a remark on the example chips.
+                text = worksheetEstimate(options.count, provider, options.difficulty, options.kind) +
+                    if (custom && provider == TranslationProvider.LocalAi) " Small models write these less well." else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
@@ -488,23 +486,32 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
 }
 
 /**
- * Which exercise forms a custom sheet may have, as three toggle chips in one row, with a line under them
- * saying what that makes. All three on is the default, the mix; turning one off narrows the sheet to the
- * others. The last chip that's on can't be turned off: a sheet needs a form, so it stays lit but rests.
+ * Which exercise forms a custom sheet may have, as a row that looks like the difficulty switch under it,
+ * with a line under it saying what that makes. Unlike the switch, more than one can be on: an "on" form
+ * gets the switch's lighter tile and a small check. All three on is the default, the mix; turning one off
+ * narrows the sheet to the others. The last form that's on can't be turned off: a sheet needs a form.
  * A chip tapped into the brief never changes these, so the learner's choice of forms stays theirs.
  */
 @Composable
 private fun FormChips(picked: Set<ExerciseForm>, onChange: (Set<ExerciseForm>) -> Unit) {
     FieldLabel("Exercise forms")
     val on = tickedForms(picked)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SurfaceCard, MaterialTheme.shapes.small)
+            .padding(3.dp)
+            .height(IntrinsicSize.Min)
+    ) {
         CUSTOM_SHEET_FORMS.forEach { form ->
             val isOn = form in on
             FormChip(
-                form = form,
+                label = form.label,
                 on = isOn,
                 enabled = !(isOn && on.size == 1),
-                modifier = Modifier.weight(1f).fillMaxHeight()
+                // Shared by the length of the labels, so "Multiple choice" fits on one line without shrinking the others.
+                modifier = Modifier.weight(form.label.length + 4f).fillMaxHeight()
             ) { onChange(tickForm(picked, form)) }
         }
     }
@@ -517,47 +524,36 @@ private fun FormChips(picked: Set<ExerciseForm>, onChange: (Set<ExerciseForm>) -
 }
 
 /**
- * One of [FormChips]: a tiny picture of the form over its name, lit in the picked-chip fill while on.
- * A chip that can't be turned off right now still reads as on, not as greyed out.
+ * One form of [FormChips], drawn as a tile of [SegmentedSwitch]: the lighter tile, a brighter label and a
+ * small check while on; plain quieter text while off. A label that doesn't fit shrinks a little, as the
+ * switch's do, and stays on one line. A form that can't be turned off right now still reads as on.
  */
 @Composable
-private fun FormChip(form: ExerciseForm, on: Boolean, enabled: Boolean, modifier: Modifier, onToggle: () -> Unit) {
-    val content = if (on) OnSunlit else TextPrimary
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+private fun FormChip(label: String, on: Boolean, enabled: Boolean, modifier: Modifier, onToggle: () -> Unit) {
+    val labelStyle = MaterialTheme.typography.labelMedium
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
         modifier = modifier
-            .heightIn(min = 56.dp)
-            .clip(MaterialTheme.shapes.small)
-            .background(if (on) Sunlit else ChipContainer)
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(if (on) SurfaceSelected else androidx.compose.ui.graphics.Color.Transparent)
             .toggleable(value = on, enabled = enabled, role = Role.Checkbox) { onToggle() }
             .padding(horizontal = 6.dp, vertical = 8.dp)
     ) {
-        FormGlyph(form, color = if (on) OnSunlit else TextSecondary)
-        Text(
-            text = form.label,
-            style = MaterialTheme.typography.labelMedium,
-            color = content,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            modifier = Modifier.padding(top = 4.dp)
-        )
-    }
-}
-
-/**
- * A tiny drawn picture of an exercise form, so the chips are told apart at a glance: a short gap line for a
- * gap fill, "a b c" for multiple choice, a small empty box for a short answer. Decoration only: the chip's
- * name says the same to a screen reader.
- */
-@Composable
-private fun FormGlyph(form: ExerciseForm, color: androidx.compose.ui.graphics.Color) {
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.height(16.dp)) {
-        when (form) {
-            ExerciseForm.GapFill -> Box(Modifier.padding(top = 8.dp).width(22.dp).height(2.dp).background(color, RoundedCornerShape(1.dp)))
-            ExerciseForm.MultipleChoice -> Text("a b c", style = MaterialTheme.typography.labelSmall, color = color, maxLines = 1)
-            ExerciseForm.ShortAnswer -> Box(Modifier.width(20.dp).height(12.dp).border(1.5.dp, color, RoundedCornerShape(2.dp)))
+        if (on) {
+            Icon(Icons.Default.Check, contentDescription = null, tint = TextPrimary, modifier = Modifier.padding(end = 4.dp).size(16.dp))
         }
+        Text(
+            text = label,
+            style = labelStyle,
+            color = if (on) TextPrimary else TextSecondary,
+            maxLines = 1,
+            softWrap = false,
+            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = labelStyle.fontSize),
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+        )
     }
 }
 
