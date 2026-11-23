@@ -96,16 +96,14 @@ object GrammarProfiles {
     /** The hand-written profiles, by [Language.name]. */
     val BY_LANGUAGE: Map<String, GrammarProfile> = mapOf(
         "German" to GERMAN
-    ) + WESTERN_PROFILES + SLAVIC_PROFILES + OTHER_PROFILES
+    ) + WESTERN_PROFILES + SLAVIC_PROFILES + OTHER_PROFILES + NordicGrammarProfiles.BY_LANGUAGE
 
     /**
      * The languages of [Languages.ALL] that get the general chips on purpose, because no profile has been
-     * written for them yet. A test checks that every language is either here or in [BY_LANGUAGE], so a
-     * language added to the app has to be placed in one of the two.
+     * written for them yet: none today. A test checks that every language is either here or in
+     * [BY_LANGUAGE], so a language added to the app has to be placed in one of the two.
      */
-    val GENERAL_ON_PURPOSE: Set<String> = setOf(
-        "Danish", "Finnish", "Icelandic", "Norwegian", "Swedish"
-    )
+    val GENERAL_ON_PURPOSE: Set<String> = emptySet()
 
     /** The profile of a language by its English name, or null when it gets the general chips. */
     fun of(language: String): GrammarProfile? = BY_LANGUAGE[language]
