@@ -49,7 +49,7 @@ private const val ANCHOR_LINE = 160
 
 /** Maximum length for an anchor's usage/register note or a learner's goal in the prompt. */
 private const val ANCHOR_NOTE_LINE = 80
-private const val GOAL_LINE = 120
+internal const val GOAL_LINE = 120
 
 /** How long and how built a sentence of [difficulty] is, as the prompt says it after "It is". */
 private fun lengthRule(difficulty: WorksheetDifficulty): String {
@@ -228,7 +228,7 @@ fun parseWorksheetResponse(text: String, anchors: List<WorksheetAnchor> = emptyL
  * Rejoins long hard-sheet lines that a model wrapped across a line break: a continuation line starting
  * with `||`, or a standalone line number (`12.` / `[12]`) followed on the next line by its sentence pair.
  */
-private fun coalesceWrappedWorksheetLines(rawLines: List<String>): List<String> {
+internal fun coalesceWrappedWorksheetLines(rawLines: List<String>): List<String> {
     val result = ArrayList<String>(rawLines.size)
     var pendingNumber: String? = null
     for (raw in rawLines) {
@@ -310,7 +310,7 @@ private fun isBroken(target: String, native: String): Boolean {
 }
 
 /** "besuchen = to visit; bar = in cash" as word help; "-", "none" or anything without "=" is none. */
-private fun parseWordHelp(text: String): List<WordHelp> =
+internal fun parseWordHelp(text: String): List<WordHelp> =
     text.split(';').mapNotNull { entry ->
         val word = entry.substringBefore('=', "").trim().trim('"', '“', '”', '„')
         val meaning = entry.substringAfter('=', "").trim().trim('"', '“', '”', '„')
@@ -318,13 +318,13 @@ private fun parseWordHelp(text: String): List<WordHelp> =
     }
 
 /** "12", "[12]", "(12)", "#12", "12." or "12:" alone in the first field. */
-private val NUMBER_ALONE = Regex("^[\\[(#]?\\s*(\\d{1,3})\\s*[\\])]?[.):]?$")
+internal val NUMBER_ALONE = Regex("^[\\[(#]?\\s*(\\d{1,3})\\s*[\\])]?[.):]?$")
 
 /** "12. Sentence" or "12) Sentence" in the first field. */
-private val NUMBER_LEADING = Regex("^\\[?(\\d{1,3})\\]?[.)]\\s+(.+)$")
+internal val NUMBER_LEADING = Regex("^\\[?(\\d{1,3})\\]?[.)]\\s+(.+)$")
 
 /** "-" or "*" at the start of a line. */
-private val BULLET = Regex("^[-*•]\\s*")
+internal val BULLET = Regex("^[-*•]\\s*")
 
 /** A sentence followed by a short note in round brackets, or in the wide ones Chinese and Japanese are written with. */
 private val HINT = Regex("^(.*\\S)\\s*[(（]([^()（）]{2,40})[)）]$")
@@ -339,7 +339,7 @@ private const val SAME_SIDES_WORDS = 3
 private const val WORD_HELP_LENGTH = 40
 
 /** `[Hello]` or `"Hello"` -> `Hello`, in case the model copied the prompt's brackets or quoted the sentence. */
-private fun unwrapped(value: String): String = when {
+internal fun unwrapped(value: String): String = when {
     value.length >= 2 && value.startsWith("[") && value.endsWith("]") && !value.substring(1, value.length - 1).contains("[") ->
         value.substring(1, value.length - 1).trim()
     value.length > 2 && value.first() in "\"“„«" && value.last() in "\"”“»" -> value.substring(1, value.length - 1).trim()

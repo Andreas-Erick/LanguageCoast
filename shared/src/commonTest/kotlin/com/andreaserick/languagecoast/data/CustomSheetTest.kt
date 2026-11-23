@@ -3,9 +3,81 @@ package com.andreaserick.languagecoast.data
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CustomSheetTest {
+
+    private val cards = listOf(
+        WorksheetCard("Animals", "der Hund", "the dog"),
+        WorksheetCard("Animals", "die Katze", "the cat"),
+        WorksheetCard("Food", "Ich kaufe einen Apfel.", "I am buying an apple.")
+    )
+
+    private fun prompt(
+        brief: String = "Plural from the singular",
+        targetLanguage: String = "German",
+        region: String? = null,
+        level: Level? = null,
+        wording: Wording = Wording.Unspecified,
+        wordHelp: Boolean = true,
+        avoid: List<String> = emptyList()
+    ) = buildCustomSheetPrompt(
+        brief = brief, forms = listOf(ExerciseForm.ShortAnswer), cards = cards, targetLanguage = targetLanguage,
+        nativeLanguage = "English", count = 4, difficulty = WorksheetDifficulty.Medium, region = region, avoid = avoid,
+        level = level, wording = wording, wordHelp = wordHelp
+    )
+
+    @Test
+    fun theCustomPromptCarriesTheBriefTheCardsAndWhichLanguageGoesWhere() {
+        val prompt = prompt(region = "Austria", level = Level.A2, wording = Wording.Feminine, avoid = listOf("die Maus"))
+        assertTrue("\"Plural from the singular\"" in prompt)
+        assertTrue("der Hund = the dog\ndie Katze = the cat\nIch kaufe einen Apfel. = I am buying an apple." in prompt)
+        assertTrue("Write 4 exercises" in prompt)
+        // Instructions in the learner's language, everything they work on in the coast's.
+        assertTrue("The instruction is in English" in prompt)
+        assertTrue("The task, its hints and the answer are in German" in prompt)
+        assertTrue("from Austria" in prompt)
+        assertTrue("level A2" in prompt)
+        assertTrue(speakerRule(Wording.Feminine, "German") in prompt)
+        assertTrue("die Maus" in prompt.substringAfter("Do not repeat"))
+        // Words to drill come from the cards first.
+        assertTrue("take it from the flashcards first" in prompt)
+    }
+
+    @Test
+    fun correctnessAndASingleRightAnswerComeBeforeTheLearnersWords() {
+        val prompt = prompt()
+        val rules = prompt.substringAfter("What matters, most important first:\n").lines()
+        assertTrue(rules[0].startsWith("1. ") && "correct" in rules[0])
+        assertTrue(rules[1].startsWith("2. ") && "single right answer" in rules[1] && "never visible in the task" in rules[1])
+        assertTrue(rules[3].startsWith("4. ") && "flashcards" in rules[3])
+    }
+
+    @Test
+    fun norwegianIsWrittenInBokmalUnlessTheCoastsRegionSaysNynorsk() {
+        assertTrue("native Norwegian Bokmål speaker" in prompt(targetLanguage = "Norwegian"))
+        assertTrue("are in Norwegian Bokmål" in prompt(targetLanguage = "Norwegian", region = "Oslo"))
+        val nynorsk = prompt(targetLanguage = "Norwegian", region = "Vestland, nynorsk")
+        assertTrue("native Norwegian Nynorsk speaker" in nynorsk)
+        assertFalse("Bokmål" in nynorsk)
+        assertFalse("Bokmål" in prompt(targetLanguage = "Swedish"))
+    }
+
+    @Test
+    fun aShortAnswerSheetAsksForOneLinePerExerciseWithWordHelpOnlyWhereItIsPrinted() {
+        val format = prompt().substringAfter("in this format:\n")
+        assertEquals("short || [instruction in English] || [task in German] || [answer in German] || " +
+            "[the German words of the task that are not on the flashcards, each with its English meaning, as \"word = meaning; word = meaning\", or - if there are none]", format)
+        assertEquals("short || [instruction in English] || [task in German] || [answer in German]", prompt(wordHelp = false).substringAfter("in this format:\n"))
+    }
+
+    @Test
+    fun aBriefIsQuotedOnOneLine() {
+        val prompt = prompt(brief = "  Nominative →\ndative  ")
+        assertTrue("\"Nominative → dative\"" in prompt)
+    }
 
     private fun customSheet(exercises: List<Exercise>, brief: String = "Plural from the singular") = Worksheet(
         coastName = "German Coast",
@@ -38,5 +110,113 @@ class CustomSheetTest {
         assertEquals(1, sheet.exerciseCount)
         // Exercises come without cards, so the first page names no islands.
         assertNull(sheet.focusLine)
+    }
+
+    @Test
+    fun aShortAnswerLineIsReadAsItsInstructionTaskAnswerAndWordHelp() {
+        val read = parseCustomSheetResponse(
+            "short || Write the plural. || der Hund || die Hunde || -\n" +
+                "short || Write the plural. || die Maus || die Mäuse || Maus = mouse\n" +
+                "short || - || das Haus || die Häuser"
+        )
+        assertEquals(
+            listOf(
+                short("der Hund", "die Hunde"),
+                short("die Maus", "die Mäuse").copy(wordHelp = listOf(WordHelp("Maus", "mouse"))),
+                short("das Haus", "die Häuser", instruction = null)
+            ),
+            read
+        )
+    }
+
+    @Test
+    fun aReplyIsReadWhateverItsNumberingBulletsAndMarkdown() {
+        val reply = """
+            Here are your exercises:
+            ```
+            1. short || Write the plural. || der Hund || die Hunde
+            2 || short || Write the plural. || die Katze || die Katzen
+            - **short** || Write the plural. || [der Apfel] || [die Äpfel]
+            [4] Short answer || "Write the plural." || das Kind || die Kinder
+            5.
+            short || Write the plural. || der Baum || die Bäume
+            short || Write the plural. || das Buch
+            || die Bücher
+            ```
+        """.trimIndent()
+        assertEquals(
+            listOf("der Hund" to "die Hunde", "die Katze" to "die Katzen", "der Apfel" to "die Äpfel", "das Kind" to "die Kinder", "der Baum" to "die Bäume", "das Buch" to "die Bücher"),
+            parseCustomSheetResponse(reply).map { it.task to it.answer }
+        )
+        assertTrue(parseCustomSheetResponse(reply).all { it.form == ExerciseForm.ShortAnswer && it.instruction == "Write the plural." })
+    }
+
+    @Test
+    fun exercisesThatGiveTheirAnswerAwayOrAreEmptyRepeatedOrTheFormatLineAreDropped() {
+        val read = parseCustomSheetResponse(
+            """
+            short || [instruction in English] || [task in German] || [answer in German] || [the German words of the task]
+            short || Write the plural. || der Hund || die Hunde
+            short || Write the plural. || Der Hund! || die Hunde
+            short || Put it in the dative. || mit (die Kinder) || den Kindern
+            short || Write the plural. || das Auto (die Autos) || die Autos
+            short || Write the plural. || die Katze ||
+            short || Write the plural. ||  || die Katzen
+            the plural || der Tisch || die Tische
+            """.trimIndent()
+        )
+        assertEquals(listOf("der Hund", "mit (die Kinder)"), read.map { it.task })
+    }
+
+    @Test
+    fun wordHelpThatNamesTheAnswerIsDroppedAndAtMostThreeAreKept() {
+        val read = parseCustomSheetResponse(
+            "short || Write the plural. || der große Hund || die großen Hunde || Hunde = dogs; groß = big; a = 1; b = 2; c = 3"
+        ).single()
+        assertEquals(listOf(WordHelp("groß", "big"), WordHelp("a", "1"), WordHelp("b", "2")), read.wordHelp)
+    }
+
+    @Test
+    fun thePickKeepsTheSheetsFormsInTheModelsOrderAndLetsNearRepeatsWait() {
+        val candidates = listOf(
+            short("Ich sehe den großen Hund im Park.", "a"),
+            Exercise(ExerciseForm.GapFill, null, "Ich ___ müde.", "bin"),
+            short("Ich sehe den großen Hund im Garten.", "b"),
+            short("die Katze", "die Katzen"),
+            short("das Kind", "die Kinder")
+        )
+        // A gap fill on a short-answer sheet is left out; the near-repeat only comes in when the sheet needs it.
+        assertEquals(listOf(candidates[0], candidates[3], candidates[4]), pickExercises(candidates, listOf(ExerciseForm.ShortAnswer), count = 3))
+        assertEquals(listOf(candidates[0], candidates[2], candidates[3], candidates[4]), pickExercises(candidates, listOf(ExerciseForm.ShortAnswer), count = 10))
+    }
+
+    @Test
+    fun thePickSharesASheetFairlyBetweenItsForms() {
+        val gaps = (1..4).map { Exercise(ExerciseForm.GapFill, null, "Satz $it ___.", "x$it") }
+        val shorts = (1..4).map { short("Wort $it", "y$it") }
+        val picked = pickExercises(gaps + shorts, listOf(ExerciseForm.GapFill, ExerciseForm.ShortAnswer), count = 4)
+        assertEquals(listOf(gaps[0], gaps[1], shorts[0], shorts[1]), picked)
+    }
+
+    @Test
+    fun theSheetPrintsExercisesGroupedByFormNumberedThroughWithAnInstructionWhereItChanges() {
+        val plural1 = short("der Hund", "die Hunde")
+        val dative = short("mit (der Mann)", "mit dem Mann", instruction = "Put it in the dative.")
+        val plural2 = short("die Katze", "die Katzen")
+        val gap = Exercise(ExerciseForm.GapFill, "Fill the gap.", "Ich ___ müde. (sein)", "bin")
+        val rows = customSheetLayout(listOf(plural1, plural2, dative, gap, short("das Kind", "die Kinder", instruction = "Put it in the dative.")))
+        assertEquals(listOf(1, 2, 3, 4, 5), rows.map { it.number })
+        assertEquals(listOf(gap, plural1, plural2, dative), rows.take(4).map { it.exercise })
+        assertEquals(listOf("Fill the gap.", "Write the plural.", null, "Put it in the dative.", null), rows.map { it.instruction })
+    }
+
+    @Test
+    fun anAnswerBoxIsAsTallAsTheKeyAnswerIsLong() {
+        assertEquals(1, answerBoxLines("die Hunde"))
+        assertEquals(1, answerBoxLines("a".repeat(25)))
+        assertEquals(2, answerBoxLines("Ich habe gestern den Hund gesehen."))
+        // A conjugation table on lines of its own gets a line for each.
+        assertEquals(3, answerBoxLines("ich bin\ndu bist\ner ist"))
+        assertEquals(ANSWER_BOX_MAX_LINES, answerBoxLines("lang ".repeat(200)))
     }
 }
