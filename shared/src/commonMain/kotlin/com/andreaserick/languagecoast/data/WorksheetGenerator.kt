@@ -287,6 +287,8 @@ class WorksheetGenerator(
         )
         val written = CustomSheetWriter(ai, background).write(request, onProgress)
         if (written.exercises.isEmpty()) return WorksheetResult.Failed(written.error ?: CUSTOM_SHEET_UNUSABLE)
+        // Only a brief that gave exercises is worth offering again; one that failed would only be tapped to fail.
+        settings.recordWorksheetBrief(coast.coastId, options.brief)
         return WorksheetResult.Ready(
             Worksheet(
                 coastName = coast.displayName,

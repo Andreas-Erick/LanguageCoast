@@ -225,7 +225,31 @@ interface SettingsRepository {
 
     /** Appends [anchoredCards] and [targetSentences] to coast [coastId]'s bounded practice-sheet history. */
     suspend fun recordWorksheet(coastId: Int, anchoredCards: List<String>, targetSentences: List<String>)
+
+    /** The last briefs of coast [coastId]'s custom practice sheets, newest first, at most [WORKSHEET_BRIEFS_KEPT]. */
+    fun worksheetBriefs(coastId: Int): Flow<List<String>>
+
+    /** Puts [brief] at the front of coast [coastId]'s remembered briefs, as [rememberBrief] describes. */
+    suspend fun recordWorksheetBrief(coastId: Int, brief: String)
 }
+
+/** How many briefs each coast remembers: enough to repeat a recent drill with one tap, few enough for one row. */
+const val WORKSHEET_BRIEFS_KEPT = 5
+
+/**
+ * The remembered [briefs] (newest first) once [brief] has been used. The brief is put on one line, trimmed, at the
+ * front. An earlier copy that differs only in case or spacing is dropped, so the spelling used last wins. A blank
+ * brief changes nothing, and only the newest [WORKSHEET_BRIEFS_KEPT] stay.
+ */
+fun rememberBrief(briefs: List<String>, brief: String): List<String> {
+    val clean = brief.trim().replace(WHITESPACE, " ")
+    if (clean.isEmpty()) return briefs
+    val sameDrill = clean.lowercase()
+    return (listOf(clean) + briefs.filterNot { it.trim().replace(WHITESPACE, " ").lowercase() == sameDrill })
+        .take(WORKSHEET_BRIEFS_KEPT)
+}
+
+private val WHITESPACE = Regex("\\s+")
 
 /** [SettingsRepository] backed by Preferences DataStore and hardware-backed [SecretStore]; days are counted in [timeZone]. */
 class DataStoreSettingsRepository(
@@ -453,6 +477,20 @@ class DataStoreSettingsRepository(
             }
         }
     }
+
+    override fun worksheetBriefs(coastId: Int): Flow<List<String>> =
+        dataStore.data.map { preferences -> preferences.readBriefs(coastId) }
+
+    override suspend fun recordWorksheetBrief(coastId: Int, brief: String) {
+        if (brief.isBlank()) return
+        dataStore.edit { preferences ->
+            preferences[SettingKeys.worksheetBriefs(coastId)] =
+                rememberBrief(preferences.readBriefs(coastId), brief).joinToString("\n")
+        }
+    }
+
+    private fun Preferences.readBriefs(coastId: Int): List<String> =
+        this[SettingKeys.worksheetBriefs(coastId)]?.lines()?.filter { it.isNotBlank() }.orEmpty()
 
     private fun worksheetAnchorsKey(coastId: Int) = SettingKeys.worksheetAnchors(coastId)
     private fun worksheetSentencesKey(coastId: Int) = SettingKeys.worksheetSentences(coastId)
