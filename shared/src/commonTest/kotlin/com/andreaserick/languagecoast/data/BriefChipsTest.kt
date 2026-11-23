@@ -81,6 +81,19 @@ class BriefChipsTest {
     }
 
     @Test
+    fun theLineAboveTheChipsSaysWhyNoMoreCanBeAdded() {
+        val offered = briefChips("German").flatMap { it.chips }
+        assertEquals("Or tap up to 3 examples to add them.", chipsHint("", offered))
+        // Three chips in: the limit is the reason.
+        val three = "Plural from the singular; Modal verbs; Simple past"
+        assertEquals("That's 3 examples: tap one to take it out.", chipsHint(three, offered))
+        // No room left for any chip: the length is the reason, and the line says so.
+        assertEquals("Your brief is too long to add more examples.", chipsHint("x".repeat(BRIEF_MAX_LENGTH - 5), offered))
+        // Room for a short chip still: the usual line.
+        assertEquals("Or tap up to 3 examples to add them.", chipsHint("x".repeat(BRIEF_MAX_LENGTH - "; Modal verbs".length), offered))
+    }
+
+    @Test
     fun aLanguageOnlyGetsChipsForGrammarItHas() {
         // Like Japanese: no cases, no articles, no plurals, but particles and politeness.
         val japaneseLike = briefChips(

@@ -211,6 +211,9 @@ private fun parseExerciseLine(line: String): Exercise? {
         }
         ExerciseForm.ShortAnswer -> written
     }
+    // A small model may write a multiple choice as another form, its options where the answer goes ("a) In
+    // Berlin. b) In Berlin. c) In Berlin."): there is no one answer for the key, so the exercise is dropped.
+    if (form != ExerciseForm.MultipleChoice && LETTERED_LIST.containsMatchIn(answer)) return null
     if (normalizedWords(answer).isEmpty()) return null
     if (gapped) {
         // The hint may name the answer ("Ich sehe ___ (die Katze)."): telling the learner the word to change is
@@ -228,6 +231,9 @@ private fun parseExerciseLine(line: String): Exercise? {
     }
     return Exercise(form, instruction, task, answer, options, help)
 }
+
+/** An answer that is a list of lettered options: "a) " at its start and "b) " further on. */
+private val LETTERED_LIST = Regex("^\\(?[aA][).]\\s.*\\s\\(?[bB][).]\\s")
 
 /** "a) ", "B. " or "(c) " before an option or an answer. */
 private val OPTION_LETTER = Regex("^\\(?([a-cA-C])[).]\\s*")

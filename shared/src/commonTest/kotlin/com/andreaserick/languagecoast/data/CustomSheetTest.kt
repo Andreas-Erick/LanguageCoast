@@ -145,6 +145,22 @@ class CustomSheetTest {
         )
     }
 
+    @Test
+    fun aShortAnswerOrGapFillWhoseAnswerIsALetteredOptionListIsDropped() {
+        // Seen on the emulator with a small model: a multiple choice written as a short answer, its options
+        // where the answer goes. There is no one answer to print in the key, so the line is dropped.
+        val read = parseCustomSheetResponse(
+            """
+            short || Answer the question. || Wo wohnst du? || a) In Berlin. b) In Berlin. c) In Berlin.
+            gap || Fill in the article. || Ich sehe ___ Hund. || a) den; b) dem; c) der
+            short || Answer the question. || Wo wohnt sie? || (a) In Wien (b) In Graz
+            short || Write the plural. || das Haus || die Häuser
+            gap || Fill in the article. || Ich fahre mit ___ Zug. || dem
+            """.trimIndent()
+        )
+        assertEquals(listOf("die Häuser", "dem"), read.map { it.answer })
+    }
+
     private fun choice(task: String, answer: String, vararg options: String) =
         Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", task, answer, options = options.toList())
 

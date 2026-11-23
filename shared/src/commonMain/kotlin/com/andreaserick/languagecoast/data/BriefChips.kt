@@ -114,3 +114,17 @@ fun toggleChip(brief: String, chip: String, offered: Collection<String>): String
     if (chipsInBrief(brief, offered).size >= BRIEF_CHIPS_MAX) return brief
     return (parts + chip).joinToString(CHIP_SEPARATOR).takeIf { it.length <= BRIEF_MAX_LENGTH } ?: brief
 }
+
+/**
+ * The line above the example chips: how many can go in, and, once none can, why not. A brief holding
+ * [BRIEF_CHIPS_MAX] chips is full; one with no room left for any chip is too long, which the learner can't
+ * see from the greyed-out chips alone.
+ */
+fun chipsHint(brief: String, offered: Collection<String>): String {
+    val tapped = chipsInBrief(brief, offered)
+    return when {
+        tapped.size >= BRIEF_CHIPS_MAX -> "That's $BRIEF_CHIPS_MAX examples: tap one to take it out."
+        offered.none { it !in tapped && toggleChip(brief, it, offered) != brief } -> "Your brief is too long to add more examples."
+        else -> "Or tap up to $BRIEF_CHIPS_MAX examples to add them."
+    }
+}

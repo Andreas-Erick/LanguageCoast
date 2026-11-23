@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -59,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,6 +92,7 @@ import com.andreaserick.languagecoast.data.SheetKind
 import com.andreaserick.languagecoast.data.BRIEF_CHIPS_MAX
 import com.andreaserick.languagecoast.data.BRIEF_MAX_LENGTH
 import com.andreaserick.languagecoast.data.briefChips
+import com.andreaserick.languagecoast.data.chipsHint
 import com.andreaserick.languagecoast.data.chipsInBrief
 import com.andreaserick.languagecoast.data.toggleChip
 import com.andreaserick.languagecoast.data.ExerciseForm
@@ -340,32 +344,42 @@ private fun ColumnScope.WorksheetOptionsForm(
         )
     }
 
-    val message = blocker ?: state.error
-    if (message != null) {
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (blocker != null) TextSecondary else CoralText,
-            // Why there is no sheet arrives after the wait, without a tap: a screen reader reads it out.
-            modifier = Modifier.padding(top = 14.dp).semantics { liveRegion = LiveRegionMode.Polite }
-        )
+    // After a failed try the form comes back in place of the progress, scrolled to its top, with the reason and
+    // "Try again" at the bottom, often off screen: scroll them in once they are laid out.
+    val failureRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(state.error) {
+        if (state.error == null) return@LaunchedEffect
+        withFrameNanos { }
+        failureRequester.bringIntoView()
     }
-    CoastButton(
-        onClick = onCreate,
-        // A custom sheet is nothing without its brief.
-        enabled = blocker == null && countIsValid && !(custom && options.brief.isBlank()),
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = ButtonHeight)
-    ) {
-        Text(if (state.error != null && blocker == null) "Try again" else "Create PDF")
-    }
-    if (blocker == null) {
-        Text(
-            text = worksheetEstimate(options.count, provider, options.difficulty, options.kind),
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-        )
+    Column(Modifier.fillMaxWidth().bringIntoViewRequester(failureRequester)) {
+        val message = blocker ?: state.error
+        if (message != null) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (blocker != null) TextSecondary else CoralText,
+                // Why there is no sheet arrives after the wait, without a tap: a screen reader reads it out.
+                modifier = Modifier.padding(top = 14.dp).semantics { liveRegion = LiveRegionMode.Polite }
+            )
+        }
+        CoastButton(
+            onClick = onCreate,
+            // A custom sheet is nothing without its brief.
+            enabled = blocker == null && countIsValid && !(custom && options.brief.isBlank()),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = ButtonHeight)
+        ) {
+            Text(if (state.error != null && blocker == null) "Try again" else "Create PDF")
+        }
+        if (blocker == null) {
+            Text(
+                text = worksheetEstimate(options.count, provider, options.difficulty, options.kind),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            )
+        }
     }
 }
 
@@ -550,7 +564,7 @@ private fun ExampleBriefChips(coastLanguage: String, current: String, onChange: 
     val offered = remember(groups) { groups.flatMap { it.chips } }
     val tapped = chipsInBrief(current, offered)
     Text(
-        text = if (tapped.size < BRIEF_CHIPS_MAX) "Or tap up to $BRIEF_CHIPS_MAX examples to add them." else "That's $BRIEF_CHIPS_MAX examples: tap one to take it out.",
+        text = chipsHint(current, offered),
         style = MaterialTheme.typography.bodySmall,
         color = TextSecondary,
         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
