@@ -45,6 +45,22 @@ internal fun tickForm(picked: Set<ExerciseForm>, form: ExerciseForm): Set<Exerci
     }
 }
 
+/**
+ * The line under the form chips, saying in words what the sheet will have: the mix of all three, or only
+ * the forms that are on, named in the order the chips show them.
+ */
+internal fun formsLine(picked: Set<ExerciseForm>): String {
+    if (isMixed(picked)) return "The AI mixes all three."
+    val names = customSheetForms(picked).map {
+        when (it) {
+            ExerciseForm.GapFill -> "gap fills"
+            ExerciseForm.MultipleChoice -> "multiple choice"
+            ExerciseForm.ShortAnswer -> "short answers"
+        }
+    }
+    return if (names.size == 1) "Only ${names[0]}." else names.joinToString(" and ").replaceFirstChar { it.uppercaseChar() } + "."
+}
+
 /** A brief longer than this is cut short in the prompt; the box takes a sentence or two, not an essay. */
 internal const val BRIEF_LINE = 300
 

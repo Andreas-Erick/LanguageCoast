@@ -161,4 +161,35 @@ class BriefChipsTest {
         // The rows come in the fixed area order, whatever order the profile lists them in.
         assertEquals(ChipArea.entries.filter { it in chipsOf("German") }, briefChips("German").map { it.area })
     }
+
+    @Test
+    fun thePickerOpensOnTheAreaOfTheBriefsFirstChipElseOnTheFirstArea() {
+        val german = briefChips("German")
+        // An empty brief, or one in the learner's own words, opens the first area.
+        assertEquals(ChipArea.Cases, openChipArea(german, ""))
+        assertEquals(ChipArea.Cases, openChipArea(german, "The dative after mit"))
+        // A brief that holds chips opens on the area of the first of them, so the picked chip is in sight.
+        assertEquals(ChipArea.Tenses, openChipArea(german, "Perfect tense; Nominative → dative"))
+        assertEquals(ChipArea.Verbs, openChipArea(german, "My own words; separable verbs"))
+        // A language with no chips has no area to open.
+        assertEquals(null, openChipArea(emptyList(), "Perfect tense"))
+    }
+
+    @Test
+    fun eachAreaCountsTheChipsOfItsOwnThatTheBriefHolds() {
+        val german = briefChips("German")
+        assertEquals(emptyMap(), chipsPerArea(german, "Something of my own"))
+        assertEquals(
+            mapOf(ChipArea.Tenses to 2, ChipArea.Cases to 1),
+            chipsPerArea(german, "Perfect tense; Nominative → dative; simple past")
+        )
+    }
+
+    @Test
+    fun theBriefCounterShowsPast300CharactersAndSaysWhenTheBriefIsFull() {
+        // Below the line nothing is counted: most briefs are a few words.
+        assertEquals(null, briefCounter("a".repeat(300)))
+        assertEquals("312 / 400", briefCounter("a".repeat(312)))
+        assertEquals("400 / 400", briefCounter("a".repeat(400)))
+    }
 }

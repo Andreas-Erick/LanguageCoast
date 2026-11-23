@@ -464,6 +464,23 @@ class CustomSheetTest {
     }
 
     @Test
+    fun theLineUnderTheFormChipsSaysWhatTheSheetWillHave() {
+        val gap = ExerciseForm.GapFill
+        val choice = ExerciseForm.MultipleChoice
+        val short = ExerciseForm.ShortAnswer
+        // All three on, stored as nothing or as all of them, is the default mix.
+        assertEquals("The AI mixes all three.", formsLine(emptySet()))
+        assertEquals("The AI mixes all three.", formsLine(setOf(gap, choice, short)))
+        // One on says "only"; two on name both, in the order the chips show them.
+        assertEquals("Only gap fills.", formsLine(setOf(gap)))
+        assertEquals("Only multiple choice.", formsLine(setOf(choice)))
+        assertEquals("Only short answers.", formsLine(setOf(short)))
+        assertEquals("Gap fills and multiple choice.", formsLine(setOf(choice, gap)))
+        assertEquals("Gap fills and short answers.", formsLine(setOf(short, gap)))
+        assertEquals("Multiple choice and short answers.", formsLine(setOf(choice, short)))
+    }
+
+    @Test
     fun theSheetPrintsExercisesGroupedByFormNumberedThroughWithAnInstructionWhereItChanges() {
         val plural1 = short("der Hund", "die Hunde")
         val dative = short("mit (der Mann)", "mit dem Mann", instruction = "Put it in the dative.")

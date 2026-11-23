@@ -128,3 +128,25 @@ fun chipsHint(brief: String, offered: Collection<String>): String {
         else -> "Or tap up to $BRIEF_CHIPS_MAX examples to add them."
     }
 }
+
+/**
+ * The area the chip picker shows first: the one holding the brief's first chip, so a chip picked before
+ * is in sight when the sheet is opened again, else the first area. Null when the language has no chips.
+ */
+fun openChipArea(groups: List<BriefChipGroup>, brief: String): ChipArea? {
+    val first = chipsInBrief(brief, groups.flatMap { it.chips }).firstOrNull()
+    return groups.firstOrNull { first != null && first in it.chips }?.area ?: groups.firstOrNull()?.area
+}
+
+/** How many of each area's chips the brief holds, for the small count on the area's pill; areas with none are left out. */
+fun chipsPerArea(groups: List<BriefChipGroup>, brief: String): Map<ChipArea, Int> {
+    val tapped = chipsInBrief(brief, groups.flatMap { it.chips })
+    return groups.associate { group -> group.area to group.chips.count { it in tapped } }.filterValues { it > 0 }
+}
+
+/** A brief longer than this shows how much room it has left under the box. */
+const val BRIEF_COUNTER_FROM = 300
+
+/** The counter under the brief box, as "312 / 400", once the brief is past [BRIEF_COUNTER_FROM]; null before. */
+fun briefCounter(brief: String): String? =
+    if (brief.length > BRIEF_COUNTER_FROM) "${brief.length} / $BRIEF_MAX_LENGTH" else null
