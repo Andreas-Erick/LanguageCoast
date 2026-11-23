@@ -410,7 +410,7 @@ private fun questionFault(sentence: WorksheetSentence): Double {
 }
 
 /** Whether two sentences, as their sets of words, say nearly the same: most of the shorter one's words are in the other. */
-private fun isNearRepeat(a: Set<String>, b: Set<String>): Boolean {
+internal fun isNearRepeat(a: Set<String>, b: Set<String>): Boolean {
     val shorter = minOf(a.size, b.size)
     if (shorter < NEAR_REPEAT_WORDS) return false
     val shared = if (a.size <= b.size) a.count { it in b } else b.count { it in a }

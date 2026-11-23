@@ -1,0 +1,265 @@
+package com.andreaserick.languagecoast.data
+
+/*
+ * The prompt that asks a model for a custom sheet's exercises, and reading its answer.
+ *
+ * A custom sheet practises what the learner's brief asks for ("Plural from the singular"), not the cards
+ * themselves: the cards are only the words the model should reach for first. What an exercise must be comes
+ * in the order it matters, as on a translation sheet: correct first, then a single right answer that the
+ * task doesn't give away, then the length, and the learner's own words last. The 2026-11-15 sheet redesign
+ * showed that a model told to reuse words above all bends its sentences to fit them.
+ *
+ * The reply is one line per exercise, `form || instruction || task || answer || options || word help`, split
+ * on `||` as a translation sheet's reply is. The options field is only asked for when multiple choice may
+ * appear, and word help only where the sheet prints it, so the parser reads the fields after the answer by
+ * the exercise's form rather than by position.
+ */
+
+/** The exercise forms a custom sheet can have so far; the others come with their own checks. */
+internal val CUSTOM_SHEET_FORMS = listOf(ExerciseForm.ShortAnswer)
+
+/** The forms a custom sheet of [picked] forms uses: the ones picked, or every one when none was. */
+internal fun customSheetForms(picked: Set<ExerciseForm>): List<ExerciseForm> =
+    CUSTOM_SHEET_FORMS.filter { it in picked }.ifEmpty { CUSTOM_SHEET_FORMS }
+
+/** A brief longer than this is cut short in the prompt; the box takes a sentence or two, not an essay. */
+internal const val BRIEF_LINE = 300
+
+/**
+ * The name the prompt gives [language]: Norwegian is written in Bokmål unless the coast's [region] says
+ * Nynorsk, since the app has one Norwegian and most learners mean Bokmål.
+ */
+internal fun customSheetLanguage(language: String, region: String?): String = when {
+    language != "Norwegian" -> language
+    region?.contains("nynorsk", ignoreCase = true) == true -> "Norwegian Nynorsk"
+    else -> "Norwegian Bokmål"
+}
+
+/** How long and how built an exercise of [difficulty] is, as the prompt says it after "It is". */
+private fun customLengthRule(difficulty: WorksheetDifficulty): String = when (difficulty) {
+    WorksheetDifficulty.Easy -> "short: a word, a phrase or one short clause, with one thing to change"
+    WorksheetDifficulty.Medium -> "an everyday sentence or phrase, with one thing to get right"
+    WorksheetDifficulty.Hard -> "longer: a sentence in two parts, or one with two things to get right at once (such as the case and the ending)"
+}
+
+/** What the prompt says an exercise of [form] is. */
+private fun formRule(form: ExerciseForm): String = when (form) {
+    ExerciseForm.ShortAnswer ->
+        "A \"${form.token}\" exercise is a task the learner answers in writing: a word or phrase to change into another form, " +
+            "or a short sentence to rewrite. Its answer is exactly what the learner writes, and nothing more."
+    ExerciseForm.GapFill, ExerciseForm.MultipleChoice -> ""
+}
+
+/**
+ * The prompt that asks a model for [count] exercises in [targetLanguage] that practise what the learner's
+ * [brief] asks for, using the words of [cards] where it can.
+ *
+ * @param forms The exercise forms the exercises may take; see [customSheetForms].
+ * @param region Where the language will be used; for Norwegian it also says Bokmål or Nynorsk.
+ * @param avoid Tasks already on this sheet, when asking for more.
+ * @param level The level the learner has reached on the coast's route, or null when the route says nothing about them.
+ * @param wording How the learner speaks of themselves, so an exercise about "I" comes out in the right gender.
+ * @param wordHelp Whether to ask for the task's words that are on no card, to print under it.
+ */
+fun buildCustomSheetPrompt(
+    brief: String,
+    forms: List<ExerciseForm>,
+    cards: List<WorksheetCard>,
+    targetLanguage: String,
+    nativeLanguage: String,
+    count: Int,
+    difficulty: WorksheetDifficulty,
+    region: String? = null,
+    avoid: List<String> = emptyList(),
+    level: Level? = null,
+    wording: Wording = Wording.Unspecified,
+    wordHelp: Boolean = true,
+    goal: String? = null
+): String {
+    val language = customSheetLanguage(targetLanguage, region)
+    val where = region?.trim()?.takeIf { it.isNotEmpty() }?.let { " from $it" } ?: ""
+    val levelClause = level?.let { " and their level is about ${it.label}" } ?: ""
+    val goalClause = goal?.let(WorksheetCardDealer::oneLine)?.takeIf { it.isNotEmpty() }
+        ?.let { " Why they are learning $language: \"${shortened(it, GOAL_LINE)}\"." } ?: ""
+    val asked = shortened(WorksheetCardDealer.oneLine(brief), BRIEF_LINE)
+    val flashcards = cards.joinToString("\n") { "${it.targetText} = ${it.nativeText}" }
+    val exercises = if (count == 1) "1 exercise" else "$count exercises"
+    val formNames = forms.map { "\"${it.token}\"" }
+    val formsSentence = if (forms.size == 1) "Every exercise is a ${formNames.single()} exercise." else
+        "Each exercise is one of these forms: ${formNames.joinToString(", ")}; pick the form that suits each exercise best and vary them."
+    val intro = """
+        You are a native $language speaker$where who teaches $language to adults. You are writing a grammar exercise for one learner. Their native language is $nativeLanguage$levelClause.$goalClause
+
+        What the learner wants to practise, in their own words: "$asked"
+
+        These are the learner's flashcards, one per line, as "$language = $nativeLanguage":
+    """.trimIndent()
+    val task = "Write $exercises that practise exactly that. $formsSentence"
+
+    val suits = if (level != null) "Its words and grammar suit level ${level.label}." else "Its words and grammar suit the learner, whose level the flashcards show."
+    val newWords = if (wordHelp) "; list the ones that are not on the flashcards in the last field" else ""
+    val notes = buildList {
+        forms.map(::formRule).filter { it.isNotEmpty() }.forEach { add("- $it") }
+        add(
+            "- The instruction is in $nativeLanguage and says in a few words what to do, such as \"Write the plural.\" " +
+                "Exercises that are done the same way have the same instruction, word for word."
+        )
+        add("- The task, its hints and the answer are in $language.")
+        speakerRule(wording, language).takeIf { it.isNotEmpty() }?.let { add(it) }
+        if (avoid.isNotEmpty()) add("- Do not repeat any of these, which are already in the exercise: " + avoid.joinToString(" | "))
+    }
+    val rules = """
+        What matters, most important first:
+        1. Every exercise practises what the learner asked for, and is correct, natural $language: what a native speaker$where would really say, with every ending, article, case, preposition and the word order right.
+        2. It has a single right answer, and the answer is never visible in the task. Where more than one answer would fit, add a short hint in round brackets to the task, such as the base form of the word to change, so that only one does.
+        3. It is ${customLengthRule(difficulty)}. $suits
+        4. It leans on what the learner knows. When an exercise needs a noun, verb or adjective to work on, take it from the flashcards first. Other common, everyday words are welcome where they are needed$newWords.
+        5. No two exercises are the same or differ by a single word.
+    """.trimIndent() + notes.joinToString("") { "\n$it" }
+
+    val options = if (ExerciseForm.MultipleChoice in forms) " || [the three options, as \"a) option; b) option; c) option\", or - if it is not multiple choice]" else ""
+    val words = if (wordHelp) {
+        " || [the $language words of the task that are not on the flashcards, each with its $nativeLanguage meaning, " +
+            "as \"word = meaning; word = meaning\", or - if there are none]"
+    } else ""
+    val form = if (forms.size == 1) forms.single().token else "[form: ${forms.joinToString(", ") { it.token }}]"
+    val format = "Answer with exactly one line per exercise and nothing else, in this format:\n" +
+        "$form || [instruction in $nativeLanguage] || [task in $language] || [answer in $language]$options$words"
+
+    return "$intro\n\n$flashcards\n\n$task\n\n$rules\n\n$format"
+}
+
+/**
+ * Parses a model's reply to [buildCustomSheetPrompt]: one exercise per line, as `form || instruction || task
+ * || answer`, then the options of a multiple-choice exercise, then word help. It is as forgiving as
+ * [parseWorksheetResponse]: numbering, bullets, markdown, brackets, quotes and lines wrapped at `||` are all
+ * read. Dropped are the lines whose form isn't one of [ExerciseForm], the format line sent back, exercises
+ * with no task or no answer, ones whose task shows the answer, and repeats of a task.
+ */
+fun parseCustomSheetResponse(text: String): List<Exercise> =
+    coalesceWrappedWorksheetLines(text.replace("```", "").replace("**", "").lines())
+        .filter { it.contains("||") }
+        .mapNotNull(::parseExerciseLine)
+        .distinctBy { normalizedWords(it.task) }
+
+private fun parseExerciseLine(line: String): Exercise? {
+    var parts = line.split("||").map { unwrapped(it.trim()) }
+    var first = unwrapped(parts[0].replace(BULLET, "").trim())
+    // "2 || short || ..." puts the number in a field of its own; "1. short || ..." and "[4] short || ..." before the form.
+    if (NUMBER_ALONE.matches(first)) {
+        parts = parts.drop(1)
+        first = unwrapped(parts.firstOrNull().orEmpty().replace(BULLET, "").trim())
+    }
+    NUMBERED_FORM.matchEntire(first)?.let { first = unwrapped(it.groupValues[1].trim()) }
+    val form = formOf(first) ?: return null
+    val instruction = parts.getOrNull(1)?.takeUnless { it.isEmpty() || it == "-" || it.equals("none", ignoreCase = true) }
+    val task = parts.getOrNull(2).orEmpty()
+    val answer = parts.getOrNull(3).orEmpty()
+    if (task.isEmpty() || answer.isEmpty()) return null
+    if (FIELD_ECHO.containsMatchIn(task) || FIELD_ECHO.containsMatchIn(answer) || instruction != null && FIELD_ECHO.containsMatchIn(instruction)) return null
+    if (shows(task, answer)) return null
+    val rest = parts.drop(4)
+    // A multiple-choice exercise gets no word help: it would point at the right option.
+    val help = if (form == ExerciseForm.MultipleChoice) emptyList() else {
+        val answerWords = normalizedWords(answer).toSet()
+        parseWordHelp(rest.lastOrNull().orEmpty())
+            .filter { entry -> normalizedWords(entry.word).none { it in answerWords } }
+            .take(WORKSHEET_WORD_HELP)
+    }
+    return Exercise(form, instruction, task, answer, wordHelp = help)
+}
+
+/**
+ * The [count] exercises of [candidates] a custom sheet keeps, in the order the model wrote them. Only the
+ * sheet's [forms] are kept, shared out between them as evenly as the candidates allow (the first of each
+ * form first), and an exercise that nearly repeats one already taken waits until the others are in. There
+ * is no ranking beyond that: a model asked for grammar is not measured by how close it stays to the cards.
+ */
+internal fun pickExercises(candidates: List<Exercise>, forms: List<ExerciseForm>, count: Int): List<Exercise> {
+    val wordSets = HashMap<Exercise, Set<String>>()
+    fun words(exercise: Exercise) = wordSets.getOrPut(exercise) { normalizedWords(exercise.task).toHashSet() }
+    val fresh = ArrayList<Exercise>()
+    val waiting = ArrayList<Exercise>()
+    for (exercise in candidates.filter { it.form in forms }) {
+        if (fresh.any { isNearRepeat(words(it), words(exercise)) }) waiting += exercise else fresh += exercise
+    }
+    // Round by round, one of each form, until the sheet is full.
+    val queues = forms.map { form -> ArrayDeque(fresh.filter { it.form == form }) }
+    val taken = HashSet<Exercise>()
+    while (taken.size < count && queues.any { it.isNotEmpty() }) {
+        for (queue in queues) if (taken.size < count) queue.removeFirstOrNull()?.let { taken += it }
+    }
+    waiting.take(count - taken.size).forEach { taken += it }
+    return candidates.filter { it in taken }
+}
+
+/**
+ * One exercise as a custom sheet prints it.
+ *
+ * @property number Its number on the sheet and in the answer key.
+ * @property instruction The instruction to print above it, or null when it is the same as the one before.
+ */
+data class CustomSheetRow(val number: Int, val exercise: Exercise, val instruction: String?)
+
+/** The order forms are printed in: the quick ones first, the ones to write out last. */
+private val PRINTED_FORM_ORDER = listOf(ExerciseForm.GapFill, ExerciseForm.MultipleChoice, ExerciseForm.ShortAnswer)
+
+/**
+ * How a custom sheet prints [exercises]: grouped by form (gap fills, then multiple choice, then short
+ * answers), numbered straight through, and each instruction printed once, above the first exercise of a run
+ * that shares it. A run of "Write the plural." reads as one task, not ten.
+ */
+fun customSheetLayout(exercises: List<Exercise>): List<CustomSheetRow> {
+    var last: String? = null
+    var lastForm: ExerciseForm? = null
+    return PRINTED_FORM_ORDER.flatMap { form -> exercises.filter { it.form == form } }.mapIndexed { index, exercise ->
+        val instruction = exercise.instruction?.takeIf { it != last || exercise.form != lastForm }
+        last = exercise.instruction
+        lastForm = exercise.form
+        CustomSheetRow(index + 1, exercise, instruction)
+    }
+}
+
+/** A handwritten answer takes about this many characters a line of a sheet's answer box. */
+private const val ANSWER_BOX_LINE = 30
+
+/** An answer of up to this many characters fits a box of one line. */
+private const val ANSWER_BOX_ONE_LINE = 25
+
+/** An answer box is never more lines than this, however long the key answer. */
+const val ANSWER_BOX_MAX_LINES = 6
+
+/**
+ * How many writing lines the answer box of an exercise whose key answer is [answer] has: one for a word or
+ * a phrase, more for a sentence, and a line for each line of a table such as a conjugation.
+ */
+fun answerBoxLines(answer: String): Int {
+    val lines = answer.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    if (lines.size <= 1 && answer.trim().length <= ANSWER_BOX_ONE_LINE) return 1
+    return lines.sumOf { (it.length + ANSWER_BOX_LINE - 1) / ANSWER_BOX_LINE }.coerceIn(1, ANSWER_BOX_MAX_LINES)
+}
+
+/** The form a reply's first field names: "short", "Short answer", "gap-fill", "multiple choice", "MC". */
+private fun formOf(field: String): ExerciseForm? {
+    val word = field.lowercase().filter { it.isLetter() }
+    return when {
+        word.startsWith("short") -> ExerciseForm.ShortAnswer
+        word.startsWith("gap") -> ExerciseForm.GapFill
+        word == "mc" || word.endsWith("choice") -> ExerciseForm.MultipleChoice
+        else -> null
+    }
+}
+
+/** Whether [task] shows [answer]: the answer's words, one after the other, are among the task's. */
+private fun shows(task: String, answer: String): Boolean {
+    val taskWords = normalizedWords(task)
+    val answerWords = normalizedWords(answer)
+    if (answerWords.isEmpty()) return true
+    return (0..taskWords.size - answerWords.size).any { start -> answerWords.indices.all { taskWords[start + it] == answerWords[it] } }
+}
+
+/** "1. short", "4) short" or "[4] short" in the first field: a number before the form. */
+private val NUMBERED_FORM = Regex("^[\\[(#]?\\s*\\d{1,3}\\s*[\\])]?[.):]?\\s+(.+)$")
+
+/** The prompt's own placeholders sent back as fields: "task in German", "answer in German", "instruction in English". */
+private val FIELD_ECHO = Regex("^(?:instruction|task|answer|form) in\\b|^form:", RegexOption.IGNORE_CASE)

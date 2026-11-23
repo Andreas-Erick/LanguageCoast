@@ -55,6 +55,14 @@ enum class WorksheetDifficulty(
         HARD_WORD_HELP
     );
 
+    /** What the difficulty means on a custom sheet, shown under the switch where [hint] is for a translation sheet. */
+    val customHint: String
+        get() = when (this) {
+            Easy -> "Short exercises with one change in each."
+            Medium -> "Exercises in everyday sentences."
+            Hard -> "Longer exercises, or two things to get right at once."
+        }
+
     /**
      * Allowed unknown words per sentence for [direction]: reading comprehension ([WorksheetDirection.ToNative])
      * tolerates one additional contextual `i+1` word compared to active recall ([WorksheetDirection.ToTarget]).
