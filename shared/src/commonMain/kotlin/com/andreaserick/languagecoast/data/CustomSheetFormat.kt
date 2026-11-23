@@ -330,7 +330,13 @@ internal fun pickExercises(candidates: List<Exercise>, forms: List<ExerciseForm>
  * @property number Its number on the sheet and in the answer key.
  * @property instruction The instruction to print above it, or null when it is the same as the one before.
  */
-data class CustomSheetRow(val number: Int, val exercise: Exercise, val instruction: String?)
+data class CustomSheetRow(val number: Int, val exercise: Exercise, val instruction: String?) {
+    /**
+     * This row as it prints at the top of a page: with its run's instruction, which was printed above the
+     * run's first exercise on the page before and can't be seen from here.
+     */
+    fun openingAPage(): CustomSheetRow = if (instruction == null && exercise.instruction != null) copy(instruction = exercise.instruction) else this
+}
 
 /** The order forms are printed in: the quick ones first, the ones to write out last. */
 private val PRINTED_FORM_ORDER = listOf(ExerciseForm.GapFill, ExerciseForm.MultipleChoice, ExerciseForm.ShortAnswer)
@@ -362,12 +368,28 @@ internal fun shuffledOptions(exercise: Exercise, random: Random): Exercise =
 /** The letter of the option at [index]: a, b or c. */
 private fun optionLetter(index: Int): Char = 'a' + index
 
+/** A space a line is never broken at. */
+private const val NO_BREAK_SPACE = ' '
+
+/** An option shorter than this many characters is kept on one line of the sheet; a longer one may wrap. */
+private const val OPTION_KEPT_WHOLE = 25
+
 /**
  * A multiple-choice exercise's [options] as the sheet prints them, lettered on one line under the task:
- * "a) den     b) dem     c) der". The wide gaps keep three short options apart on paper.
+ * "a) den     b) dem     c) der". The wide gaps keep three short options apart on paper. When the line
+ * wraps, it wraps between options: each letter is held to its option, and a short option is held together.
  */
 fun choiceLine(options: List<String>): String =
-    options.mapIndexed { index, option -> "${optionLetter(index)}) $option" }.joinToString("     ")
+    options.mapIndexed { index, option ->
+        val kept = if (option.length < OPTION_KEPT_WHOLE) option.replace(' ', NO_BREAK_SPACE) else option
+        "${optionLetter(index)})$NO_BREAK_SPACE$kept"
+    }.joinToString("     ")
+
+/**
+ * A multiple-choice [task] as it is printed: its gap as long as a gap fill's shortest, whichever option
+ * goes in it. A gap sized by the answer, as a gap fill's is, would tell which option is right.
+ */
+fun printedChoiceTask(task: String): String = task.replace(GAP_MARKER, "_".repeat(PRINTED_GAP_MIN))
 
 /**
  * What the answer key says for [exercise]: the letter and the word of a multiple-choice answer ("b) dem"),

@@ -495,10 +495,42 @@ class CustomSheetTest {
     @Test
     fun multipleChoiceOptionsAreLetteredOnOneLineAndTheKeyGivesTheLetterAndTheWord() {
         val exercise = choice("Ich fahre mit ___ Zug.", "dem", "den", "dem", "der")
-        assertEquals("a) den     b) dem     c) der", choiceLine(exercise.options))
+        // A no-break space ties each letter to its option, so a wrapped line never leaves "b)" alone at its end.
+        assertEquals("a) den     b) dem     c) der", choiceLine(exercise.options))
         assertEquals("b) dem", keyAnswer(exercise))
         // Every other form's key is its answer as it is.
         assertEquals("die Hunde", keyAnswer(short("der Hund", "die Hunde")))
+    }
+
+    @Test
+    fun aShortOptionIsKeptOnOneLineAndALongOneMayStillWrap() {
+        val short = choice("Ich ___ gestern gekommen.", "bin", "bin gestern", "habe gestern", "war")
+        assertEquals("a) bin gestern     b) habe gestern     c) war", choiceLine(short.options))
+        // An option of 25 characters or more can't be held on one line on a narrow column, so it keeps its spaces.
+        val long = "weil er gestern nicht gekommen ist"
+        assertEquals("a) $long", choiceLine(listOf(long)))
+    }
+
+    @Test
+    fun aMultipleChoiceGapIsPrintedAsLongAsAGapFillsShortestWhateverTheAnswer() {
+        // As long as the shortest gap fill's gap, and never sized by the answer, which would give it away.
+        assertEquals("Ich fahre mit ________ Zug.", printedChoiceTask("Ich fahre mit ___ Zug."))
+        assertEquals("Wo ________ du?", printedChoiceTask("Wo ___ du?"))
+        // A question without a gap is printed as it is.
+        assertEquals("Welcher Artikel passt zu Zug?", printedChoiceTask("Welcher Artikel passt zu Zug?"))
+    }
+
+    @Test
+    fun anExerciseThatOpensAPageRepeatsTheInstructionOfItsRun() {
+        val rows = customSheetLayout(listOf(short("der Hund", "die Hunde"), short("die Katze", "die Katzen")))
+        // The second plural shares the first one's instruction, so it has none of its own...
+        assertNull(rows[1].instruction)
+        // ...until it is the first exercise on a new page, where the learner can't see the one above.
+        assertEquals("Write the plural.", rows[1].openingAPage().instruction)
+        // One that prints its instruction anyway, or has none at all, is left as it is.
+        assertEquals(rows[0], rows[0].openingAPage())
+        val bare = CustomSheetRow(3, Exercise(ExerciseForm.ShortAnswer, null, "das Kind", "die Kinder"), null)
+        assertEquals(bare, bare.openingAPage())
     }
 
     @Test
