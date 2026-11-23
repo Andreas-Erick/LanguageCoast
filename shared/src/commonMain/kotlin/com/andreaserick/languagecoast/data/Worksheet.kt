@@ -75,16 +75,58 @@ enum class WorksheetDirection {
     ToNative
 }
 
+/** What a practice sheet trains: sentences to translate, or whatever the learner's brief asks for. */
+enum class SheetKind(val label: String) {
+    Translation("Translation"),
+    Custom("Custom")
+}
+
+/**
+ * How a custom sheet's exercise is answered.
+ *
+ * @property token The word that opens an exercise's line in the model's reply ("short || ..."): one plain
+ *     word, which even a small model copies faithfully.
+ */
+enum class ExerciseForm(val label: String, internal val token: String) {
+    GapFill("Gap fill", "gap"),
+    MultipleChoice("Multiple choice", "choice"),
+    ShortAnswer("Short answer", "short")
+}
+
+/**
+ * One exercise of a custom sheet: a task for the learner and its answer.
+ *
+ * @property instruction What to do, in the learner's own language ("Write the plural."); printed once above a
+ *     run of exercises that share it. Null when the model gave none.
+ * @property task What the learner sees, in the coast's language; it never shows the [answer].
+ * @property options The three choices of a multiple-choice exercise, one of them the [answer]; empty otherwise.
+ * @property wordHelp Words of the task that are on none of the learner's cards, printed under it.
+ */
+data class Exercise(
+    val form: ExerciseForm,
+    val instruction: String?,
+    val task: String,
+    val answer: String,
+    val options: List<String> = emptyList(),
+    val wordHelp: List<WordHelp> = emptyList()
+)
+
 /**
  * What the user picks for a practice sheet.
  *
  * @property islandIds The islands whose cards the sheet is made from, or null for every island of the coast.
+ * @property direction Which way a translation sheet goes; a custom sheet has none.
+ * @property brief For a [SheetKind.Custom] sheet, the learner's own words for what to practise.
+ * @property forms The exercise forms a custom sheet may use; none (or all of them) leaves the mix to the model.
  */
 data class WorksheetOptions(
     val count: Int = WORKSHEET_DEFAULT_COUNT,
     val difficulty: WorksheetDifficulty = WorksheetDifficulty.Medium,
     val direction: WorksheetDirection = WorksheetDirection.ToTarget,
-    val islandIds: Set<Int>? = null
+    val islandIds: Set<Int>? = null,
+    val kind: SheetKind = SheetKind.Translation,
+    val brief: String = "",
+    val forms: Set<ExerciseForm> = emptySet()
 ) {
     /** Whether the sheet may use the island with [islandId]. */
     fun includes(islandId: Int): Boolean = islandIds == null || islandId in islandIds
@@ -180,6 +222,7 @@ data class WorksheetSentence(
  * @property coastName The coast it was made from, e.g. "German Coast".
  * @property providerLabel The AI provider that wrote the sentences, named on the sheet.
  * @property cardCount How many cards the coast had, and on how many islands ([islandCount]).
+ * @property exercises A custom sheet's exercises; a translation sheet has [sentences] instead.
  */
 data class Worksheet(
     val coastName: String,
@@ -190,8 +233,15 @@ data class Worksheet(
     val date: LocalDate,
     val providerLabel: String,
     val cardCount: Int,
-    val islandCount: Int
+    val islandCount: Int,
+    val exercises: List<Exercise> = emptyList()
 ) {
+    /** Whether this is a custom sheet, made from a brief. */
+    val isCustom: Boolean get() = options.kind == SheetKind.Custom
+
+    /** How many numbered exercises the sheet has, of either kind. */
+    val exerciseCount: Int get() = if (isCustom) exercises.size else sentences.size
+
     /** The language the sentences are printed in, and the one they are to be written in. */
     val fromLanguage: String get() = if (options.direction == WorksheetDirection.ToTarget) nativeLanguage else targetLanguage
     val toLanguage: String get() = if (options.direction == WorksheetDirection.ToTarget) targetLanguage else nativeLanguage
@@ -238,11 +288,11 @@ data class Worksheet(
             return "Built from your cards on $listed."
         }
 
-    /** A file name such as "german-coast-practice-2026-11-05.pdf". */
+    /** A file name such as "german-coast-practice-2026-11-05.pdf", or "german-coast-custom-practice-2026-11-05.pdf". */
     val fileName: String
         get() {
             val coast = coastName.lowercase().map { if (it.isLetterOrDigit()) it else '-' }.joinToString("").replace(Regex("-+"), "-").trim('-')
-            return "${coast.ifEmpty { "coast" }}-practice-$date.pdf"
+            return "${coast.ifEmpty { "coast" }}-${if (isCustom) "custom-" else ""}practice-$date.pdf"
         }
 
     private companion object {
