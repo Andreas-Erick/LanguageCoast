@@ -90,6 +90,11 @@ import com.andreaserick.languagecoast.data.BRIEF_CHIPS_MAX
 import com.andreaserick.languagecoast.data.briefChips
 import com.andreaserick.languagecoast.data.chipsInBrief
 import com.andreaserick.languagecoast.data.toggleChip
+import com.andreaserick.languagecoast.data.ExerciseForm
+import com.andreaserick.languagecoast.data.CUSTOM_SHEET_FORMS
+import com.andreaserick.languagecoast.data.isMixed
+import com.andreaserick.languagecoast.data.tickForm
+import com.andreaserick.languagecoast.data.tickedForms
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.islandEmoji
@@ -259,6 +264,7 @@ private fun ColumnScope.WorksheetOptionsForm(
                 modifier = Modifier.padding(top = 6.dp)
             )
         }
+        FormTicks(picked = options.forms, onChange = { onOptionsChange(options.copy(forms = it)) })
     }
 
     if (islands.size > 1) {
@@ -446,6 +452,55 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
                 }
             }
         }
+    }
+}
+
+/**
+ * The ticks for which exercise forms a custom sheet may have. "Mixed: let the AI choose" is the default and
+ * shows every form ticked, since every one may appear; unticking one narrows the sheet to the others, and
+ * ticking Mixed allows them all again. The last form ticked can't be unticked: a sheet needs a form.
+ * A chip tapped into the brief never changes these, so the learner's choice of forms stays theirs.
+ */
+@Composable
+private fun FormTicks(picked: Set<ExerciseForm>, onChange: (Set<ExerciseForm>) -> Unit) {
+    FieldLabel("Exercise forms")
+    val mixed = isMixed(picked)
+    val ticked = tickedForms(picked)
+    FormTick(label = "Mixed: let the AI choose", ticked = mixed, enabled = !mixed) { onChange(emptySet()) }
+    CUSTOM_SHEET_FORMS.forEach { form ->
+        val on = form in ticked
+        FormTick(label = form.label, ticked = on, enabled = !(on && ticked.size == 1), indent = true) { onChange(tickForm(picked, form)) }
+    }
+}
+
+/** One row of [FormTicks]: a tick box and its label, a full 48dp touch target by itself. */
+@Composable
+private fun FormTick(label: String, ticked: Boolean, enabled: Boolean, indent: Boolean = false, onToggle: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .toggleable(value = ticked, enabled = enabled, role = Role.Checkbox) { onToggle() }
+            .padding(start = if (indent) 28.dp else 4.dp, end = 12.dp, top = 12.dp, bottom = 12.dp)
+    ) {
+        Checkbox(
+            checked = ticked,
+            onCheckedChange = null,
+            enabled = enabled,
+            // A tick that can't be taken off right now still reads as ticked, not as greyed-out "off".
+            colors = CheckboxDefaults.colors(
+                checkedColor = Sunlit,
+                checkmarkColor = OnSunlit,
+                uncheckedColor = TextSecondary,
+                disabledCheckedColor = Sunlit.copy(alpha = 0.6f)
+            )
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(start = 12.dp)
+        )
     }
 }
 

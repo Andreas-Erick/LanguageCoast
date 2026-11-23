@@ -1,5 +1,7 @@
 package com.andreaserick.languagecoast.data
 
+import kotlin.random.Random
+
 /*
  * The prompt that asks a model for a custom sheet's exercises, and reading its answer.
  *
@@ -21,6 +23,27 @@ internal val CUSTOM_SHEET_FORMS = listOf(ExerciseForm.GapFill, ExerciseForm.Mult
 /** The forms a custom sheet of [picked] forms uses: the ones picked, or every one when none was. */
 internal fun customSheetForms(picked: Set<ExerciseForm>): List<ExerciseForm> =
     CUSTOM_SHEET_FORMS.filter { it in picked }.ifEmpty { CUSTOM_SHEET_FORMS }
+
+/** Whether a sheet of [picked] forms is "Mixed: let the AI choose": none picked, or every one. */
+internal fun isMixed(picked: Set<ExerciseForm>): Boolean = customSheetForms(picked).size == CUSTOM_SHEET_FORMS.size
+
+/** The forms whose ticks show as ticked for [picked]: on a mixed sheet, all of them, since all may appear. */
+internal fun tickedForms(picked: Set<ExerciseForm>): Set<ExerciseForm> = customSheetForms(picked).toSet()
+
+/**
+ * The forms picked once the learner taps [form]'s tick: it comes off or goes on. The last ticked form stays,
+ * since a sheet with no form could have no exercise, and ticking every form is mixed again, stored as none
+ * picked so the sheet is back on the default.
+ */
+internal fun tickForm(picked: Set<ExerciseForm>, form: ExerciseForm): Set<ExerciseForm> {
+    val ticked = tickedForms(picked)
+    val after = if (form in ticked) ticked - form else ticked + form
+    return when {
+        after.isEmpty() -> picked
+        isMixed(after) -> emptySet()
+        else -> after
+    }
+}
 
 /** A brief longer than this is cut short in the prompt; the box takes a sentence or two, not an essay. */
 internal const val BRIEF_LINE = 300
@@ -271,6 +294,14 @@ fun customSheetLayout(exercises: List<Exercise>): List<CustomSheetRow> {
         CustomSheetRow(index + 1, exercise, instruction)
     }
 }
+
+/**
+ * [exercise] with its options in an order drawn from [random], when it is multiple choice. Models tend to
+ * put the right option in the same slot every time (often first), and a learner soon circles that letter
+ * without reading. The answer is the option's own spelling, so [keyAnswer]'s letter follows the new order.
+ */
+internal fun shuffledOptions(exercise: Exercise, random: Random): Exercise =
+    if (exercise.form == ExerciseForm.MultipleChoice) exercise.copy(options = exercise.options.shuffled(random)) else exercise
 
 /** The letter of the option at [index]: a, b or c. */
 private fun optionLetter(index: Int): Char = 'a' + index

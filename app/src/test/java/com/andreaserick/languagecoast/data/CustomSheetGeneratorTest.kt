@@ -97,7 +97,9 @@ class CustomSheetGeneratorTest {
 
         // Two options, or an answer that isn't one of them, and the exercise is gone; the letter is read as its option.
         assertEquals(listOf("Ich fahre mit ___ Zug.", "Ich gehe zu ___ Bahnhof.", "das Brot"), sheet.exercises.map { it.task })
-        assertEquals(Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Ich fahre mit ___ Zug.", "dem", listOf("den", "dem", "der")), sheet.exercises.first())
+        val first = sheet.exercises.first()
+        assertEquals(Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Ich fahre mit ___ Zug.", "dem", first.options), first)
+        assertEquals(setOf("den", "dem", "der"), first.options.toSet())
         // Left to the model, the prompt offers multiple choice and asks for its options.
         val prompt = translator.prompts.single()
         assertTrue("- A \"choice\" exercise" in prompt)
@@ -235,5 +237,65 @@ class CustomSheetGeneratorTest {
         // A model that writes no multiple choice still fills the sheet, shared between the forms it did write.
         assertEquals(listOf(ExerciseForm.GapFill, ExerciseForm.GapFill, ExerciseForm.ShortAnswer, ExerciseForm.ShortAnswer), sheet.exercises.map { it.form })
         assertTrue(translator.prompts.single().substringAfter("in this format:\n").startsWith("[form: gap, choice, short] || "))
+    }
+
+    @Test
+    fun onlyTheTickedFormsAreAskedForAndKeptAndTheSparesAreTrimmedWithTheFormsInBalance() = runTest {
+        translator.completion = Completion(
+            """
+            gap || Put it in the dative. || Ich fahre mit ___ (der Zug). || dem Zug
+            gap || Put it in the dative. || Ich gehe zu ___ (der Strand). || dem Strand
+            gap || Put it in the dative. || Er hilft ___ (die Frau). || der Frau
+            short || Write the plural. || der Apfel || die Äpfel
+            gap || Put it in the dative. || Wir danken ___ (der Lehrer). || dem Lehrer
+            choice || Pick the right article. || Ich sitze in ___ Zug. || dem || a) dem; b) den; c) der
+            choice || Pick the right article. || Ich esse mit ___ Kind. || dem || a) dem; b) das; c) der
+            """.trimIndent()
+        )
+
+        val options = plural.copy(count = 4, brief = "Dative after prepositions", forms = setOf(ExerciseForm.GapFill, ExerciseForm.MultipleChoice))
+        val sheet = (generator.generate(1, options) as WorksheetResult.Ready).worksheet
+
+        // The short answer wasn't ticked, so it's gone; of the spares, two gap fills wait so both forms get two.
+        assertEquals(
+            listOf("Ich fahre mit ___ (der Zug).", "Ich gehe zu ___ (der Strand).", "Ich sitze in ___ Zug.", "Ich esse mit ___ Kind."),
+            sheet.exercises.map { it.task }
+        )
+        // The prompt names the two ticked forms and nothing about the third.
+        val prompt = translator.prompts.single()
+        assertEquals(6, asked(prompt))
+        assertTrue(prompt.substringAfter("in this format:\n").startsWith("[form: gap, choice] || "))
+        assertTrue("- A \"gap\" exercise" in prompt && "- A \"choice\" exercise" in prompt)
+        assertFalse("\"short\"" in prompt)
+    }
+
+    @Test
+    fun theThreeOptionsOfEachMultipleChoiceAreShuffledSoTheRightOneIsntAlwaysInTheSameSlot() = runTest {
+        val written = listOf(
+            Triple("Ich fahre mit ___ Zug.", "dem", listOf("dem", "den", "der")),
+            Triple("Ich esse ___ Apfel.", "den", listOf("den", "dem", "der")),
+            Triple("Ich gehe in ___ Bahnhof.", "den", listOf("den", "dem", "des")),
+            Triple("Er hilft ___ Frau.", "der", listOf("der", "die", "den")),
+            Triple("Ich kaufe ___ Brot.", "das", listOf("das", "der", "die")),
+            Triple("Wir sitzen an ___ Strand.", "dem", listOf("dem", "den", "der"))
+        )
+        // A model that puts the right option first every time, as models tend to.
+        translator.completion = Completion(written.joinToString("\n") { (task, answer, options) ->
+            "choice || Pick the right article. || $task || a) $answer || a) ${options[0]}; b) ${options[1]}; c) ${options[2]}"
+        })
+        val options = plural.copy(count = 6, brief = "Articles", forms = setOf(ExerciseForm.MultipleChoice))
+
+        val sheet = (generator.generate(1, options) as WorksheetResult.Ready).worksheet
+
+        sheet.exercises.zip(written).forEach { (exercise, model) ->
+            // The same three options and the same right one, in an order of the sheet's own; the key's letter follows it.
+            assertEquals(model.third.toSet(), exercise.options.toSet())
+            assertEquals(model.second, exercise.answer)
+            assertEquals("${'a' + exercise.options.indexOf(exercise.answer)}) ${exercise.answer}", keyAnswer(exercise))
+        }
+        assertTrue(sheet.exercises.map { it.options.indexOf(it.answer) }.distinct().size > 1)
+        // The order comes from the generator's random, so the same seed prints the same sheet.
+        val again = WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE, Random(1))
+        assertEquals(sheet.exercises, (again.generate(1, options) as WorksheetResult.Ready).worksheet.exercises)
     }
 }
