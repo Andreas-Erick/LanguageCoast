@@ -9,6 +9,8 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -39,6 +41,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -83,6 +86,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.ProviderCapacity
 import com.andreaserick.languagecoast.data.SheetKind
+import com.andreaserick.languagecoast.data.BRIEF_CHIPS_MAX
+import com.andreaserick.languagecoast.data.briefChips
+import com.andreaserick.languagecoast.data.chipsInBrief
+import com.andreaserick.languagecoast.data.toggleChip
 import com.andreaserick.languagecoast.data.IslandSummary
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.islandEmoji
@@ -101,6 +108,8 @@ import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
+import com.andreaserick.languagecoast.ui.components.coastChipBorder
+import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.collapseExit
 import com.andreaserick.languagecoast.ui.components.expandEnter
 import com.andreaserick.languagecoast.ui.components.plural
@@ -240,6 +249,7 @@ private fun ColumnScope.WorksheetOptionsForm(
         FieldLabel("What to practise")
         BriefField(brief = options.brief, onChange = { onOptionsChange(options.copy(brief = it)) }) { current, replace ->
             RecentBriefChips(briefs = state.recentBriefs, current = current, onPick = replace)
+            ExampleBriefChips(coastLanguage = coastLanguage, current = current, onChange = replace)
         }
         if (provider == TranslationProvider.LocalAi) {
             Text(
@@ -468,6 +478,91 @@ private fun BriefField(
         modifier = Modifier.fillMaxWidth()
     )
     below(draft, change)
+}
+
+/**
+ * The example chips for the coast's language, one row per area, under the brief box and after the recent
+ * briefs. Tapping one adds it to the brief or takes it out again, up to [BRIEF_CHIPS_MAX] at once; what the
+ * learner typed stays.
+ *
+ * @param current The text in the brief box now.
+ * @param onChange Replaces the text in the brief box.
+ */
+@Composable
+private fun ExampleBriefChips(coastLanguage: String, current: String, onChange: (String) -> Unit) {
+    val groups = remember(coastLanguage) { briefChips(coastLanguage) }
+    val offered = remember(groups) { groups.flatMap { it.chips } }
+    val tapped = chipsInBrief(current, offered)
+    Text(
+        text = if (tapped.size < BRIEF_CHIPS_MAX) "Or tap up to $BRIEF_CHIPS_MAX examples to add them." else "That's $BRIEF_CHIPS_MAX examples: tap one to take it out.",
+        style = MaterialTheme.typography.bodySmall,
+        color = TextSecondary,
+        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+        groups.forEach { group ->
+            BriefChipRow(
+                title = group.area.label,
+                chips = group.chips,
+                tapped = tapped,
+                full = tapped.size >= BRIEF_CHIPS_MAX,
+                onTap = { onChange(toggleChip(current, it, offered)) }
+            )
+        }
+    }
+}
+
+/**
+ * One area of example chips, folded to its name and how many of its chips are in the brief; unfolded, the
+ * chips themselves. A tapped chip shows as picked; once the brief holds [BRIEF_CHIPS_MAX], the others rest.
+ *
+ * @param tapped The chips the brief holds now, from every area.
+ * @param full Whether the brief holds as many chips as it takes.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BriefChipRow(title: String, chips: List<String>, tapped: List<String>, full: Boolean, onTap: (String) -> Unit) {
+    var open by rememberSaveable(title) { mutableStateOf(false) }
+    val inBrief = chips.count { it in tapped }
+    Column(modifier = Modifier.fillMaxWidth().background(ChipContainer, MaterialTheme.shapes.medium)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .clickable(onClickLabel = if (open) "Hide the $title examples" else "Show the $title examples", role = Role.Button) { open = !open }
+                .heightIn(min = 48.dp)
+                .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            Text(
+                text = if (inBrief > 0) "$inBrief in your brief" else plural(chips.size, "example"),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (inBrief > 0) SunlitText else TextSecondary,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Icon(imageVector = if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, tint = TextSecondary)
+        }
+        AnimatedVisibility(visible = open, enter = expandEnter(), exit = collapseExit()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
+            ) {
+                chips.forEach { chip ->
+                    val picked = chip in tapped
+                    FilterChip(
+                        selected = picked,
+                        onClick = { onTap(chip) },
+                        enabled = picked || !full,
+                        label = { Text(chip, style = MaterialTheme.typography.labelMedium) },
+                        colors = coastChipColors(),
+                        border = coastChipBorder(enabled = picked || !full, selected = picked),
+                        shape = MaterialTheme.shapes.small
+                    )
+                }
+            }
+        }
+    }
 }
 
 /** A brief can be this long: a sentence or two. The prompt quotes its first 300 characters. */
