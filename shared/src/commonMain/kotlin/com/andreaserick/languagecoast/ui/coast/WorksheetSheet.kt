@@ -493,7 +493,7 @@ private fun FormTick(label: String, ticked: Boolean, enabled: Boolean, indent: B
                 checkedColor = Sunlit,
                 checkmarkColor = OnSunlit,
                 uncheckedColor = TextSecondary,
-                disabledCheckedColor = Sunlit.copy(alpha = 0.6f)
+                disabledCheckedColor = Sunlit
             )
         )
         Text(
