@@ -366,6 +366,24 @@ class CustomSheetTest {
     }
 
     @Test
+    fun aSeparableVerbIsOneGapFillWithTwoGapsAndTheKeyFillsBoth() {
+        val read = parseCustomSheetResponse(
+            """
+            gap || Put the verb in. || Ich ___ um 7 Uhr ___ (aufstehen). || stehe … auf
+            gap || Put the verb in. || Er ___ seine Mutter ___ (anrufen). || ruft an
+            gap || Put the verb in. || Wir ___ den Tisch ___ (abräumen). || räumen / ab
+            gap || Put the verb in. || Sie ___ das Fenster ___ (aufmachen). || macht es auf
+            """.trimIndent()
+        )
+        // Two gaps with one base form are one verb in two places, and the answer gives its two parts.
+        // Two gaps with a hint each are two exercises in one ([aGapFillWithNoGapOrMoreThanOneIsDropped]).
+        assertEquals(listOf("stehe … auf", "ruft … an", "räumen … ab"), read.map { it.answer })
+        val verb = read.first()
+        assertEquals("Ich ________ um 7 Uhr ________ (aufstehen).", printedGapFill(verb.task, verb.answer))
+        assertEquals("Ich stehe um 7 Uhr auf.", filledGapFill(verb.task, verb.answer))
+    }
+
+    @Test
     fun theKeyLeavesTheSpacingOfTheSentenceAsTheModelWroteIt() {
         // French sets a space before "?" and "!": only a space left between the filled gap and a full stop or comma goes.
         assertEquals("Tu vas à Paris ?", filledGapFill("Tu vas ___ (à) Paris ?", "à"))

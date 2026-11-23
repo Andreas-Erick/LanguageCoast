@@ -198,16 +198,26 @@ private fun parseExerciseLine(line: String): Exercise? {
     val written = parts.getOrNull(3).orEmpty()
     if (task.isEmpty() || written.isEmpty()) return null
     if (isFieldEcho(task) || isFieldEcho(written) || instruction != null && isFieldEcho(instruction)) return null
-    if (form == ExerciseForm.GapFill && GAP_MARKER.findAll(task).count() != 1) return null
     val rest = parts.drop(4)
     val options = if (form == ExerciseForm.MultipleChoice) choiceOptions(rest) ?: return null else emptyList()
-    val answer = if (form == ExerciseForm.MultipleChoice) chosenOption(written, options) ?: return null else written
+    val answer = when (form) {
+        ExerciseForm.MultipleChoice -> chosenOption(written, options) ?: return null
+        ExerciseForm.GapFill -> when (GAP_MARKER.findAll(task).count()) {
+            1 -> written
+            // A German or Dutch separable verb is split in two ("Ich ___ um 7 Uhr ___ (aufstehen)."): one verb, so
+            // one base form. Two gaps with a hint each are two exercises in one, and dropped.
+            2 -> separableAnswer(written).takeIf { HINT.findAll(task).count() <= 1 } ?: return null
+            else -> return null
+        }
+        ExerciseForm.ShortAnswer -> written
+    }
     if (normalizedWords(answer).isEmpty()) return null
     if (gapped) {
         // The hint may name the answer ("Ich sehe ___ (die Katze)."): telling the learner the word to change is
         // the point. And a one-word answer is often another word of the sentence too ("Mit dem Auto fahre ich zu
         // ___ (der) Bahnhof." || dem) without giving anything away; a phrase that is there word for word does.
-        if (normalizedWords(answer).size > 1 && shows(task.replace(HINT, " "), answer)) return null
+        val sentence = task.replace(HINT, " ")
+        if (gapAnswers(task, answer).any { normalizedWords(it).size > 1 && shows(sentence, it) }) return null
     } else if (shows(task, answer)) return null
     // A multiple-choice exercise gets no word help: it would point at the right option.
     val help = if (form == ExerciseForm.MultipleChoice) emptyList() else {
@@ -387,16 +397,44 @@ private const val PRINTED_GAP_MIN = 8
 /** Nor longer than this many, so that a long answer doesn't push the sentence onto a line of its own. */
 private const val PRINTED_GAP_MAX = 30
 
+/** How the two parts of a gap fill's answer for two gaps are written: "stehe … auf". */
+private const val GAP_ANSWER_PARTS = " … "
+
+/** What the model may set the two parts of a separable verb apart with: an ellipsis, three dots, a slash, a comma or a semicolon. */
+private val PART_SEPARATOR = Regex("\\s*(?:…|\\.{3}|/|,|;)\\s*")
+
 /**
- * A gap fill's [task] as it is printed: the gap a writing line long enough for [answer] in handwriting,
+ * The answer of a gap fill with two gaps, as "stehe … auf": the two parts the model set apart, or the two
+ * words of an answer such as "ruft an". Null when it doesn't come in two parts, since then which part goes
+ * in which gap is a guess.
+ */
+private fun separableAnswer(written: String): String? {
+    val marked = written.split(PART_SEPARATOR).map { it.trim() }.filter { it.isNotEmpty() }
+    val parts = if (marked.size > 1) marked else written.trim().split(Regex("\\s+"))
+    return parts.takeIf { it.size == 2 }?.joinToString(GAP_ANSWER_PARTS)
+}
+
+/** What goes in each gap of [task]: the parts of a two-gap [answer] ("stehe … auf"), or the whole answer in every gap. */
+private fun gapAnswers(task: String, answer: String): List<String> {
+    val gaps = GAP_MARKER.findAll(task).count()
+    val parts = answer.split(GAP_ANSWER_PARTS)
+    return if (gaps > 1 && parts.size == gaps) parts else List(maxOf(gaps, 1)) { answer }
+}
+
+/**
+ * A gap fill's [task] as it is printed: each gap a writing line long enough for its [answer] in handwriting,
  * which takes more room than print, and the base-form hint left as it is.
  */
-fun printedGapFill(task: String, answer: String): String =
-    task.replace(GAP_MARKER, "_".repeat((answer.length * 8 / 5).coerceIn(PRINTED_GAP_MIN, PRINTED_GAP_MAX)))
+fun printedGapFill(task: String, answer: String): String {
+    val parts = gapAnswers(task, answer).iterator()
+    return task.replace(GAP_MARKER) { "_".repeat((parts.next().length * 8 / 5).coerceIn(PRINTED_GAP_MIN, PRINTED_GAP_MAX)) }
+}
 
-/** A gap fill's [task] as the answer key shows it: the whole sentence, with [answer] in the gap and no hint. */
-fun filledGapFill(task: String, answer: String): String =
-    task.replace(GAP_AND_HINT) { answer }.replace(SPACES, " ").trim()
+/** A gap fill's [task] as the answer key shows it: the whole sentence, with [answer] in its gaps and no hint. */
+fun filledGapFill(task: String, answer: String): String {
+    val parts = gapAnswers(task, answer).iterator()
+    return task.replace(GAP_AND_HINT) { if (parts.hasNext()) parts.next() else answer }.replace(SPACES, " ").trim()
+}
 
 private val SPACES = Regex(" {2,}")
 
