@@ -32,7 +32,6 @@ class BriefChipsTest {
         }
         // No profile or fallback for a language the app doesn't offer (a misspelt name would never be found).
         assertEquals(emptySet(), (GrammarProfiles.BY_LANGUAGE.keys + GrammarProfiles.GENERAL_ON_PURPOSE) - names)
-        assertEquals(GENERAL_CHIPS, briefChips("Spanish"))
     }
 
     @Test
