@@ -29,6 +29,7 @@ import com.andreaserick.languagecoast.data.TranslationEngine
 import com.andreaserick.languagecoast.data.Translator
 import com.andreaserick.languagecoast.data.Worksheet
 import com.andreaserick.languagecoast.data.WorksheetHistory
+import com.andreaserick.languagecoast.data.rememberBrief
 import com.andreaserick.languagecoast.data.WorksheetPdf
 import com.andreaserick.languagecoast.data.WorksheetPrinter
 import com.andreaserick.languagecoast.data.WorksheetSourceCard
@@ -422,6 +423,12 @@ class FakeSettingsRepository : SettingsRepository {
         storedModelOptions.map { it[provider] ?: SettingsDefaults.models(provider) }
     override suspend fun setModelOptions(provider: TranslationProvider, models: List<String>) {
         storedModelOptions.update { it + (provider to models) }
+    }
+
+    val storedWorksheetBriefs = MutableStateFlow<Map<Int, List<String>>>(emptyMap())
+    override fun worksheetBriefs(coastId: Int): Flow<List<String>> = storedWorksheetBriefs.map { it[coastId].orEmpty() }
+    override suspend fun recordWorksheetBrief(coastId: Int, brief: String) {
+        storedWorksheetBriefs.update { all -> all + (coastId to rememberBrief(all[coastId].orEmpty(), brief)) }
     }
 
     val storedWorksheetHistory = MutableStateFlow<Map<Int, WorksheetHistory>>(emptyMap())

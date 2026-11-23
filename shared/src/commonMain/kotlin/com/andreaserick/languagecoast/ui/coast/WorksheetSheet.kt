@@ -238,7 +238,9 @@ private fun ColumnScope.WorksheetOptionsForm(
 
     if (custom) {
         FieldLabel("What to practise")
-        BriefField(brief = options.brief, onChange = { onOptionsChange(options.copy(brief = it)) })
+        BriefField(brief = options.brief, onChange = { onOptionsChange(options.copy(brief = it)) }) { current, replace ->
+            RecentBriefChips(briefs = state.recentBriefs, current = current, onPick = replace)
+        }
         if (provider == TranslationProvider.LocalAi) {
             Text(
                 text = "Small models write these less well.",
@@ -440,25 +442,32 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
 /**
  * The box for a custom sheet's brief. What is typed is held here and passed on as it changes, so a
  * keystroke never waits on the round trip through the screen's state (the "About you" fields lost letters
- * that way).
+ * that way). Once something was typed the box no longer follows [brief], so chips under it change the brief
+ * through [below]: it gets the text in the box and a way to replace it.
  */
 @Composable
-private fun BriefField(brief: String, onChange: (String) -> Unit) {
+private fun BriefField(
+    brief: String,
+    onChange: (String) -> Unit,
+    below: @Composable (current: String, replace: (String) -> Unit) -> Unit = { _, _ -> }
+) {
     var draft by rememberSaveable { mutableStateOf(brief) }
     var typed by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(brief) { if (!typed) draft = brief }
+    val change: (String) -> Unit = {
+        typed = true
+        draft = it.take(BRIEF_LENGTH)
+        onChange(draft)
+    }
     CoastTextField(
         value = draft,
-        onValueChange = {
-            typed = true
-            draft = it.take(BRIEF_LENGTH)
-            onChange(draft)
-        },
+        onValueChange = change,
         placeholder = { Text("For example: the plural of nouns, or the dative after mit") },
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         minLines = 2,
         modifier = Modifier.fillMaxWidth()
     )
+    below(draft, change)
 }
 
 /** A brief can be this long: a sentence or two. The prompt quotes its first 300 characters. */
