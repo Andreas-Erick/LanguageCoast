@@ -51,6 +51,9 @@ enum class VerbFeature(val chip: String) {
  * @property particles Whether grammar is carried by particles after words (Japanese は and が).
  * @property politeness Whether verbs or endings change with how polite the speaker is.
  * @property extraChips Drills only this language has, added after the templated chips of their area.
+ * @property prepositions Whether the language has prepositions. One with postpositions (Hungarian, Turkish)
+ *     or particles (Japanese, Korean) has none, and names its own drill in [extraChips] if it wants one.
+ * @property possessivePronouns Whether "my" and "mine" are pronouns of their own, not a particle or ending.
  */
 data class GrammarProfile(
     val cases: List<String> = emptyList(),
@@ -64,7 +67,9 @@ data class GrammarProfile(
     val verbSecond: Boolean = false,
     val particles: Boolean = false,
     val politeness: Boolean = false,
-    val extraChips: Map<ChipArea, List<String>> = emptyMap()
+    val extraChips: Map<ChipArea, List<String>> = emptyMap(),
+    val prepositions: Boolean = true,
+    val possessivePronouns: Boolean = true
 )
 
 object GrammarProfiles {
@@ -88,22 +93,17 @@ object GrammarProfiles {
         )
     )
 
-    /** The hand-written profiles, by [Language.name]; the Nordic ones live in [NordicGrammarProfiles]. */
-    val BY_LANGUAGE: Map<String, GrammarProfile> = NordicGrammarProfiles.BY_LANGUAGE + mapOf(
+    /** The hand-written profiles, by [Language.name]. */
+    val BY_LANGUAGE: Map<String, GrammarProfile> = mapOf(
         "German" to GERMAN
-    )
+    ) + WESTERN_PROFILES + SLAVIC_PROFILES + OTHER_PROFILES + NordicGrammarProfiles.BY_LANGUAGE
 
     /**
      * The languages of [Languages.ALL] that get the general chips on purpose, because no profile has been
-     * written for them yet. A test checks that every language is either here or in [BY_LANGUAGE], so a
-     * language added to the app has to be placed in one of the two.
+     * written for them yet: none today. A test checks that every language is either here or in
+     * [BY_LANGUAGE], so a language added to the app has to be placed in one of the two.
      */
-    val GENERAL_ON_PURPOSE: Set<String> = setOf(
-        "Albanian", "Bosnian", "Bulgarian", "Croatian", "Czech", "Dutch", "English", "Esperanto",
-        "French", "Greek", "Hungarian", "Italian", "Japanese", "Korean", "Latin",
-        "Polish", "Portuguese", "Romanian", "Russian", "Serbian", "Slovak", "Spanish",
-        "Turkish", "Ukrainian"
-    )
+    val GENERAL_ON_PURPOSE: Set<String> = emptySet()
 
     /** The profile of a language by its English name, or null when it gets the general chips. */
     fun of(language: String): GrammarProfile? = BY_LANGUAGE[language]
