@@ -11,6 +11,7 @@ import android.graphics.fonts.FontFamily
 import android.graphics.fonts.FontStyle
 import android.graphics.pdf.PdfDocument
 import android.os.Build
+import android.os.LocaleList
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -171,14 +172,27 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
     private val instruction = paint(fonts.medium, 10f, INK_SOFT)
     private val number = paint(fonts.extraBold, 8.5f, INK).apply { textAlign = Paint.Align.CENTER }
 
+    /**
+     * The languages of the sentences, for the paints that draw them: the coast's first, then the learner's,
+     * then the phone's. A letter that several scripts share gets its shape from the first that writes it,
+     * so Japanese kanji are drawn as kanji and not as the Chinese hanzi a phone set to English falls back to.
+     */
+    private val sentenceLocales = LocaleList(
+        *(listOf(sheet.targetLanguage, sheet.nativeLanguage).mapNotNull { Languages.code(it)?.let(Locale::forLanguageTag) } + Locale.getDefault())
+            .distinct()
+            .toTypedArray()
+    )
+
+    private fun sentencePaint(typeface: Typeface, size: Float, color: Int) = paint(typeface, size, color).apply { textLocales = sentenceLocales }
+
     /** Three digits only fit a sentence's badge a size smaller. */
     private val smallNumber = paint(fonts.extraBold, 7f, INK).apply { textAlign = Paint.Align.CENTER }
-    private val sentenceText = paint(fonts.semiBold, 12.5f, INK)
+    private val sentenceText = sentencePaint(fonts.semiBold, 12.5f, INK)
     /** A multiple-choice exercise's options: as clear as its task, a little smaller. */
-    private val optionText = paint(fonts.medium, 11.5f, INK)
+    private val optionText = sentencePaint(fonts.medium, 11.5f, INK)
     private val answerNumber = paint(fonts.extraBold, 9.5f, INK_SOFT).apply { textAlign = Paint.Align.RIGHT }
-    private val answerText = paint(fonts.semiBold, 11.5f, INK)
-    private val answerQuestion = paint(fonts.medium, 9f, INK_SOFT)
+    private val answerText = sentencePaint(fonts.semiBold, 11.5f, INK)
+    private val answerQuestion = sentencePaint(fonts.medium, 9f, INK_SOFT)
     private val footer = paint(fonts.semiBold, 7.5f, INK_SOFT)
 
     /** How far an answer is indented past its number: room for the sheet's largest one. */
@@ -258,7 +272,9 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         } else {
             // Ten one-line sentences without word help, the usual sheet, fit on the first page of either paper size with
             // these gaps, and their answers, each with its card, on the next.
-            sheet.sentences.forEachIndexed { index, sentence -> place(exercise(index + 1, sheet.question(sentence), sheet.wordHelp(sentence)), gapAfter = 13f) }
+            sheet.sentences.forEachIndexed { index, sentence ->
+                place(exercise(index + 1, sheet.question(sentence), sheet.wordHelp(sentence), sheet.answer(sentence)), gapAfter = 13f)
+            }
 
             newPage()
             place(answerHeader(), gapAfter = 18f)
@@ -379,19 +395,16 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
     }
 
     /**
-     * A numbered sentence with lines under it to write the translation on: more lines for a longer sentence.
-     * A sentence written right to left has its number at the right, where it starts. [help], the words the
-     * learner hasn't met, goes in small print between the sentence and the lines.
+     * A numbered sentence with lines under it to write the translation on: as many as the longer of the
+     * sentence and its [answer] needs ([translationWritingLines]). A sentence written right to left has its
+     * number at the right, where it starts. [help], the words the learner hasn't met, goes in small print
+     * between the sentence and the lines.
      */
-    private fun exercise(index: Int, question: String, help: String?): Block {
+    private fun exercise(index: Int, question: String, help: String?, answer: String): Block {
         val text = wrap(question, sentenceText, contentWidth - numberColumn)
         val helpText = help?.let { wrap("Word help: $it", answerQuestion, contentWidth - numberColumn) }
         val helpHeight = helpText?.let { it.height + HELP_GAP } ?: 0f
-        val lineCount = when {
-            question.length <= 60 -> 1
-            question.length <= 130 -> 2
-            else -> 3
-        }
+        val lineCount = translationWritingLines(question, answer)
         val firstLine = text.height + helpHeight + 22f
         val line = stroke(WRITING_LINE, 0.7f)
         val mirrored = text.isRightToLeft
@@ -435,7 +448,8 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         val boxHeight = if (gapFill) 0f else lines * WRITING_LINE_GAP + 6f
         val mirrored = text.isRightToLeft
         val box = stroke(WRITING_LINE, 0.8f)
-        val line = stroke(HAIRLINE, 0.6f)
+        // The same ink as the box and a translation's lines: a paler hairline was lost when printed.
+        val line = stroke(WRITING_LINE, 0.7f)
         return Block(boxTop + boxHeight) { canvas, top ->
             instructionText?.let { canvas.drawLayout(it, left, top) }
             val taskTop = top + instructionHeight

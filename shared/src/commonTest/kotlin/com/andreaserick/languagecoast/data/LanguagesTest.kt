@@ -100,4 +100,12 @@ class LanguagesTest {
         listOf("English", "Spanish", "French", "German", "Italian", "Japanese", "Korean", "Icelandic", "Norwegian")
             .forEach { assertTrue(Languages.byName(it) != null, it) }
     }
+
+    @Test
+    fun aLanguageNamesItsCodeForPrintingInItsOwnLettersAndAnUnknownOneNone() {
+        // Japanese needs to say so, or its kanji are drawn in their Chinese shapes on a phone set to another language.
+        assertEquals("ja", Languages.code("Japanese"))
+        assertEquals("de", Languages.code("German"))
+        assertEquals(null, Languages.code("Klingon"))
+    }
 }

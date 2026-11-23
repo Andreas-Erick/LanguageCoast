@@ -186,6 +186,20 @@ fun worksheetRequests(count: Int, batch: WorksheetBatch): Int {
     return maxOf(1, (worksheetSentencesWanted(count, batch) - size / 4 + size - 1) / size)
 }
 
+/**
+ * How many lines a translation sheet prints under [question] to write the translation on: one for a short
+ * sentence, two or three for a longer one. It goes by the longer of the question and its [answer], since
+ * the lines are for the answer: a short English sentence can take a long German one to translate.
+ */
+fun translationWritingLines(question: String, answer: String): Int {
+    val length = maxOf(question.length, answer.length)
+    return when {
+        length <= 60 -> 1
+        length <= 130 -> 2
+        else -> 3
+    }
+}
+
 /** A coast needs this many cards before a sheet can be made from it: fewer leave nothing to recombine. */
 const val WORKSHEET_MIN_CARDS = 5
 
