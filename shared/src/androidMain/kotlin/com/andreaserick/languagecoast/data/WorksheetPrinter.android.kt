@@ -174,6 +174,8 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
     /** Three digits only fit a sentence's badge a size smaller. */
     private val smallNumber = paint(fonts.extraBold, 7f, INK).apply { textAlign = Paint.Align.CENTER }
     private val sentenceText = paint(fonts.semiBold, 12.5f, INK)
+    /** A multiple-choice exercise's options: as clear as its task, a little smaller. */
+    private val optionText = paint(fonts.medium, 11.5f, INK)
     private val answerNumber = paint(fonts.extraBold, 9.5f, INK_SOFT).apply { textAlign = Paint.Align.RIGHT }
     private val answerText = paint(fonts.semiBold, 11.5f, INK)
     private val answerQuestion = paint(fonts.medium, 9f, INK_SOFT)
@@ -236,14 +238,22 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         place(sheetHeader(), gapAfter = 20f)
         if (sheet.isCustom) {
             val rows = customSheetLayout(sheet.exercises)
-            rows.forEach { place(customExercise(it), gapAfter = 13f) }
+            rows.forEach { row ->
+                val block = when (row.exercise.form) {
+                    ExerciseForm.MultipleChoice -> multipleChoice(row)
+                    else -> customExercise(row)
+                }
+                place(block, gapAfter = 13f)
+            }
             newPage()
             place(answerHeader(), gapAfter = 18f)
             rows.forEach {
                 val exercise = it.exercise
-                // A gap fill's key reads as the whole sentence, so the answer can be checked in its place.
-                val asked = if (exercise.form == ExerciseForm.GapFill) filledGapFill(exercise.task, exercise.answer) else exercise.task
-                place(answer(it.number, exercise.answer, asked, card = null), gapAfter = 9f)
+                // A gap fill's key reads as the whole sentence, so the answer can be checked in its place; so does a
+                // multiple-choice sentence with a gap (a question without one is left as it is).
+                val gapped = exercise.form == ExerciseForm.GapFill || exercise.form == ExerciseForm.MultipleChoice
+                val asked = if (gapped) filledGapFill(exercise.task, exercise.answer) else exercise.task
+                place(answer(it.number, keyAnswer(exercise), asked, card = null), gapAfter = 9f)
             }
         } else {
             // Ten one-line sentences without word help, the usual sheet, fit on the first page of either paper size with
@@ -285,10 +295,17 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
         // What to do, then what the sheet practises: the islands whose cards need it most, or the learner's brief.
         val helpText = if (custom) {
             val forms = sheet.exercises.map { it.form }.toSet()
+            val written = forms - ExerciseForm.MultipleChoice
+            val write = when {
+                written.isEmpty() -> null
+                written == setOf(ExerciseForm.GapFill) -> "write each answer in its gap"
+                ExerciseForm.GapFill in written -> "write each answer in its gap, or in the box under its exercise"
+                else -> "write each answer in the box under its exercise"
+            }
             val where = when {
-                forms == setOf(ExerciseForm.GapFill) -> "Write each answer in its gap."
-                ExerciseForm.GapFill in forms -> "Write each answer in its gap, or in the box under its exercise."
-                else -> "Write each answer in the box under its exercise."
+                ExerciseForm.MultipleChoice !in forms -> "${write!!.replaceFirstChar { it.uppercaseChar() }}."
+                write == null -> "Circle the right option of each exercise."
+                else -> "Circle the right option where there are three, and $write."
             }
             "Practising: “${shortened(WorksheetCardDealer.oneLine(sheet.options.brief), BRIEF_ON_SHEET)}”. $where The answers are at the end."
         } else {
@@ -442,6 +459,34 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
     }
 
     /**
+     * A multiple-choice exercise: its instruction when it starts a run, the numbered task, and its three
+     * options lettered on one line under it ([choiceLine]), to circle. There is nothing to write, so there
+     * is no box, and no word help, which would point at the right option.
+     */
+    private fun multipleChoice(row: CustomSheetRow): Block {
+        val exercise = row.exercise
+        val instructionText = row.instruction?.let { wrap(it, instruction, contentWidth, lineSpacing = 1.2f) }
+        val instructionHeight = instructionText?.let { it.height + INSTRUCTION_GAP } ?: 0f
+        val text = wrap(exercise.task, sentenceText, contentWidth - numberColumn)
+        // Wrapped all the same, so that three long options still fit the page.
+        val options = wrap(choiceLine(exercise.options), optionText, contentWidth - numberColumn)
+        val optionsTop = instructionHeight + text.height + OPTIONS_GAP
+        val mirrored = text.isRightToLeft
+        return Block(optionsTop + options.height) { canvas, top ->
+            instructionText?.let { canvas.drawLayout(it, left, top) }
+            val taskTop = top + instructionHeight
+            val middle = taskTop + text.getLineBottom(0) / 2f
+            val badge = if (mirrored) right - BADGE_RADIUS else left + BADGE_RADIUS
+            val textLeft = if (mirrored) left else left + numberColumn
+            canvas.drawCircle(badge, middle, BADGE_RADIUS, fill(SUN_PALE))
+            val digits = if (row.number < 100) number else smallNumber
+            canvas.drawText("${row.number}", badge, middle - (digits.ascent() + digits.descent()) / 2, digits)
+            canvas.drawLayout(text, textLeft, taskTop)
+            canvas.drawLayout(options, textLeft, top + optionsTop)
+        }
+    }
+
+    /**
      * An answer with the sentence it belongs to in small print under it, on the side the answer starts from,
      * and under that [card], the learner's own card the sentence was built from: what they can check the
      * answer against, and what to study if they missed it.
@@ -519,6 +564,9 @@ private class SheetLayout(private val sheet: Worksheet, private val paper: Paper
 
         /** Between an instruction and the first exercise it is for. */
         const val INSTRUCTION_GAP = 6f
+
+        /** Between a multiple-choice task and the line of its options. */
+        const val OPTIONS_GAP = 7f
 
         /** The rounded corners of a custom sheet's answer box. */
         const val ANSWER_BOX_RADIUS = 6f

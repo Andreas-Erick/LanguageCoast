@@ -82,6 +82,29 @@ class CustomSheetGeneratorTest {
     }
 
     @Test
+    fun aMixedSheetHasMultipleChoiceWithThreeOptionsAndDropsTheOnesWithout() = runTest {
+        translator.completion = Completion(
+            """
+            choice || Pick the right article. || Ich fahre mit ___ Zug. || b || a) den; b) dem; c) der
+            choice || Pick the right article. || Ich esse ___ Apfel. || den || a) den; b) dem
+            choice || Pick the right article. || Ich gehe zu ___ Bahnhof. || zum || a) zum; b) zur; c) zu
+            short || Write the plural. || das Brot || die Brote || -
+            choice || Pick the right article. || Wir sitzen an ___ Strand. || das || a) dem; b) den; c) der
+            """.trimIndent()
+        )
+
+        val sheet = (generator.generate(1, plural.copy(brief = "Articles after prepositions", forms = emptySet())) as WorksheetResult.Ready).worksheet
+
+        // Two options, or an answer that isn't one of them, and the exercise is gone; the letter is read as its option.
+        assertEquals(listOf("Ich fahre mit ___ Zug.", "Ich gehe zu ___ Bahnhof.", "das Brot"), sheet.exercises.map { it.task })
+        assertEquals(Exercise(ExerciseForm.MultipleChoice, "Pick the right article.", "Ich fahre mit ___ Zug.", "dem", listOf("den", "dem", "der")), sheet.exercises.first())
+        // Left to the model, the prompt offers multiple choice and asks for its options.
+        val prompt = translator.prompts.single()
+        assertTrue("- A \"choice\" exercise" in prompt)
+        assertTrue("[the three options, as \"a) option; b) option; c) option\", or - if it is not multiple choice]" in prompt)
+    }
+
+    @Test
     fun aModelThatSendsTooFewExercisesIsAskedForTheRestAndRepeatsDontCount() = runTest {
         val answers = ArrayDeque(
             listOf(
@@ -196,7 +219,7 @@ class CustomSheetGeneratorTest {
     }
 
     @Test
-    fun aSheetWithNoFormTickedMixesGapFillsAndShortAnswers() = runTest {
+    fun aSheetWithNoFormTickedMixesEveryForm() = runTest {
         translator.completion = Completion(
             """
             gap || Put it in the dative. || Ich fahre mit ___ (der Zug). || dem Zug
@@ -209,7 +232,8 @@ class CustomSheetGeneratorTest {
 
         val sheet = (generator.generate(1, plural.copy(count = 4, forms = emptySet())) as WorksheetResult.Ready).worksheet
 
+        // A model that writes no multiple choice still fills the sheet, shared between the forms it did write.
         assertEquals(listOf(ExerciseForm.GapFill, ExerciseForm.GapFill, ExerciseForm.ShortAnswer, ExerciseForm.ShortAnswer), sheet.exercises.map { it.form })
-        assertTrue(translator.prompts.single().substringAfter("in this format:\n").startsWith("[form: gap, short] || "))
+        assertTrue(translator.prompts.single().substringAfter("in this format:\n").startsWith("[form: gap, choice, short] || "))
     }
 }
