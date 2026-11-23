@@ -11,6 +11,8 @@ const val CUSTOM_SHEET_UNUSABLE = "Couldn't make exercises from that brief. Try 
  * What one custom sheet asks for, as [WorksheetGenerator] worked it out from the coast and the options.
  *
  * @property cardsFor The cards the next prompt shows as the words to reach for, for a request of that many exercises.
+ * @property takeBackCards Undoes the last [cardsFor], for a request that got no answer: made again, it shows
+ *   the same cards, rather than passing over islands whose turn it was.
  */
 internal class CustomSheetRequest(
     val brief: String,
@@ -26,7 +28,8 @@ internal class CustomSheetRequest(
     val limits: SheetPromptLimits,
     val batch: WorksheetBatch,
     val vocabulary: CoastVocabulary,
-    val cardsFor: (Int) -> List<WorksheetCard>
+    val cardsFor: (Int) -> List<WorksheetCard>,
+    val takeBackCards: () -> Unit = {}
 )
 
 /**
@@ -53,7 +56,8 @@ internal class CustomSheetWriter(
         var perRequest = batch.sentences
         val written = ArrayList<Exercise>()
         var lastError: String? = null
-        var anyReply = false
+        // Whether the last request got no answer; true until one does, so a provider that never answered keeps its reason.
+        var lastFailed = true
         var requests = 0
         var barren = 0
         var planned = worksheetRequests(count, batch)
@@ -63,7 +67,7 @@ internal class CustomSheetWriter(
             requests++
             val left = wanted - written.size
             val asked = if (perRequest < batch.sentences) minOf(perRequest, left) else worksheetAsk(left, perRequest)
-            val seen = written.mapTo(HashSet()) { normalizedWords(it.task) }
+            val seen = written.mapTo(HashSet(), ::exerciseKey)
             val prompt = withContext(background) {
                 buildCustomSheetPrompt(
                     brief = request.brief,
@@ -85,7 +89,7 @@ internal class CustomSheetWriter(
             fun reportPartial(partial: String) {
                 val completeLines = partial.substringBeforeLast('\n', missingDelimiterValue = "")
                 if (completeLines.isEmpty()) return
-                val inBatch = parseCustomSheetResponse(completeLines).count { it.form in request.forms && normalizedWords(it.task) !in seen }
+                val inBatch = parseCustomSheetResponse(completeLines).count { it.form in request.forms && exerciseKey(it) !in seen }
                 val nowWritten = minOf(written.size + inBatch, count)
                 if (nowWritten > lastReported) {
                     lastReported = nowWritten
@@ -96,6 +100,8 @@ internal class CustomSheetWriter(
             val text = reply.value
             if (text == null) {
                 lastError = reply.error
+                lastFailed = true
+                request.takeBackCards()
                 if (written.size >= count) break
                 if (reply.isTooLarge && asked > SMALLEST_BATCH) {
                     perRequest = maxOf(SMALLEST_BATCH, minOf(perRequest, asked) / 2)
@@ -105,10 +111,10 @@ internal class CustomSheetWriter(
                 barren++
                 if (written.isEmpty()) break else continue
             }
-            anyReply = true
+            lastFailed = false
             val fresh = withContext(background) {
                 parseCustomSheetResponse(text)
-                    .filter { it.form in request.forms && seen.add(normalizedWords(it.task)) }
+                    .filter { it.form in request.forms && seen.add(exerciseKey(it)) }
                     .map { shuffledOptions(it.copy(wordHelp = request.vocabulary.wordHelp(it.task, it.wordHelp)), random) }
             }
             barren = if (fresh.isEmpty()) barren + 1 else 0
@@ -116,8 +122,9 @@ internal class CustomSheetWriter(
             onProgress(minOf(written.size, count))
         }
         val exercises = pickExercises(written, request.forms, count)
-        // Replies that came back with nothing usable say so; a provider that never answered keeps its own reason.
-        return Written(exercises, if (exercises.isEmpty()) (if (anyReply) CUSTOM_SHEET_UNUSABLE else lastError ?: CUSTOM_SHEET_UNUSABLE) else null)
+        // Replies that came back with nothing usable say so. When the last request got no answer, its reason
+        // (no connection, no credit) is what to fix, even if an earlier reply was unusable.
+        return Written(exercises, if (exercises.isEmpty()) (if (lastFailed) lastError else null) ?: CUSTOM_SHEET_UNUSABLE else null)
     }
 
     private companion object {

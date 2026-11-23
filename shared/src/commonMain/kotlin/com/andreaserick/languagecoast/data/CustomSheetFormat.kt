@@ -166,13 +166,20 @@ fun buildCustomSheetPrompt(
  * || answer`, then the options of a multiple-choice exercise, then word help. It is as forgiving as
  * [parseWorksheetResponse]: numbering, bullets, markdown, brackets, quotes and lines wrapped at `||` are all
  * read. Dropped are the lines whose form isn't one of [ExerciseForm], the format line sent back, exercises
- * with no task or no answer, ones whose task shows the answer, and repeats of a task.
+ * with no task or no answer, ones whose task shows the answer, and repeats ([exerciseKey]).
  */
 fun parseCustomSheetResponse(text: String): List<Exercise> =
     coalesceWrappedWorksheetLines(text.replace("```", "").replace("**", "").lines())
         .filter { it.contains("||") }
         .mapNotNull(::parseExerciseLine)
-        .distinctBy { normalizedWords(it.task) }
+        .distinctBy(::exerciseKey)
+
+/**
+ * What makes two exercises the same one: the words of the instruction and of the task. The task alone isn't
+ * enough, since "der Mann" into the accusative and "der Mann" into the dative are two different drills.
+ */
+internal fun exerciseKey(exercise: Exercise): Pair<List<String>, List<String>> =
+    normalizedWords(exercise.instruction.orEmpty()) to normalizedWords(exercise.task)
 
 private fun parseExerciseLine(line: String): Exercise? {
     var parts = line.split("||").map { unwrapped(it.trim()) }

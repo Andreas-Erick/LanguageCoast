@@ -298,4 +298,53 @@ class CustomSheetGeneratorTest {
         val again = WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE, Random(1))
         assertEquals(sheet.exercises, (again.generate(1, options) as WorksheetResult.Ready).worksheet.exercises)
     }
+
+    @Test
+    fun theSameTaskWithAnotherInstructionIsAnotherExercise() = runTest {
+        val answers = ArrayDeque(
+            listOf(
+                Completion("short || Write the accusative. || der Mann || den Mann || -"),
+                Completion("short || Write the dative. || der Mann || dem Mann || -\nshort || Write the accusative. || Der Mann! || den Mann || -")
+            )
+        )
+        translator.completionFor = { answers.removeFirstOrNull() ?: Completion("Nothing more.") }
+
+        val sheet = (generator.generate(1, plural.copy(count = 2, brief = "Cases")) as WorksheetResult.Ready).worksheet
+
+        // "der Mann" into the accusative and into the dative are two drills; the accusative asked again is a repeat.
+        assertEquals(listOf("den Mann", "dem Mann"), sheet.exercises.map { it.answer })
+    }
+
+    @Test
+    fun aProviderThatFailsAfterAnUnusableReplySaysWhyRatherThanBlamingTheBrief() = runTest {
+        val answers = ArrayDeque(listOf(Completion("Sure! Here is some grammar."), Completion.failure("No internet connection.")))
+        translator.completionFor = { answers.removeFirstOrNull() ?: Completion("Nothing more.") }
+
+        // The brief may be fine: the last word from the provider was that it couldn't be reached.
+        assertEquals(WorksheetResult.Failed("No internet connection."), generator.generate(1, plural))
+        assertEquals(2, translator.prompts.size)
+    }
+
+    @Test
+    fun aRequestThatFailedIsMadeAgainWithTheSameCards() = runTest {
+        // A coast too big to show whole: every prompt shows a few of its islands, and the islands take turns.
+        flashcards.islands.value = (1..30).map { LanguageIsland(islandId = 100 + it, coastId = 1, name = "Island $it") }
+        flashcards.cards.value = (1..30).flatMap { island ->
+            (1..20).map { Flashcard(cardId = island * 100 + it, islandId = 100 + island, nativeText = "word $island $it", targetText = "Wort $island $it") }
+        }
+        var answered = 0
+        translator.completionFor = { prompt ->
+            answered++
+            if (answered == 2) Completion.failure("No internet connection.")
+            else Completion((1..asked(prompt)).joinToString("\n") { "short || Write the plural. || Wort $answered $it || Wörter $answered $it" })
+        }
+
+        generator.generate(1, plural.copy(count = 30)) as WorksheetResult.Ready
+
+        // The cards a prompt shows are its "Wort = word" lines.
+        fun cards(prompt: String) = prompt.lines().filter { " = word " in it }
+        assertTrue(translator.prompts.size >= 3)
+        assertTrue(cards(translator.prompts[0]) != cards(translator.prompts[1]))
+        assertEquals(cards(translator.prompts[1]), cards(translator.prompts[2]))
+    }
 }
