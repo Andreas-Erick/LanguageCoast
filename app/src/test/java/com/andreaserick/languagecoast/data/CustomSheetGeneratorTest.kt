@@ -23,7 +23,7 @@ class CustomSheetGeneratorTest {
     private val translator = FakeTranslator()
     private val generator = WorksheetGenerator(translator, settings, flashcards, TEST_CLOCK, TEST_TIME_ZONE, Random(1))
 
-    private val plural = WorksheetOptions(count = 3, kind = SheetKind.Custom, brief = "Plural from the singular")
+    private val plural = WorksheetOptions(count = 3, kind = SheetKind.Custom, brief = "Plural from the singular", forms = setOf(ExerciseForm.ShortAnswer))
 
     @Before
     fun setUp() {
@@ -163,5 +163,53 @@ class CustomSheetGeneratorTest {
         assertEquals(10, sheet.exercises.size)
         assertEquals(listOf(5, 5), translator.prompts.map(::asked))
         assertTrue(translator.prompts.all { it.endsWith("short || [instruction in English] || [task in German] || [answer in German]") })
+    }
+
+    @Test
+    fun aGapFillSheetKeepsOnlyGapFillsWithOneGapThatDontGiveTheirAnswerAway() = runTest {
+        translator.completion = Completion(
+            """
+            gap || Put it in the dative. || Ich fahre mit ___ (der Zug). || dem Zug || fahre = go
+            gap || Put it in the dative. || Ich gebe ___ (der Bahnhof) ___ (der Apfel). || dem Bahnhof, den Apfel
+            gap || Put it in the dative. || Ich esse dem Apfel. || dem Apfel
+            gap || Put it in the dative. || Mit dem Kaffee? Ich warte mit ___ (der Kaffee). || dem Kaffee
+            short || Write the plural. || der Strand || die Strände
+            gap || Put it in the dative. || Ich gehe zu ____ (der Strand). || dem Strand || Strand = beach; gehe = walk
+            gap || Put it in the dative. || Er hilft ___ (die Frau). || der Frau || hilft = helps; Frau = woman
+            """.trimIndent()
+        )
+        val dative = WorksheetOptions(count = 3, kind = SheetKind.Custom, brief = "Nominative → dative", forms = setOf(ExerciseForm.GapFill))
+
+        val sheet = (generator.generate(1, dative) as WorksheetResult.Ready).worksheet
+
+        // No gap, two gaps, an answer in plain view and a form that wasn't ticked are all left out.
+        assertEquals(listOf("Ich fahre mit ___ (der Zug).", "Ich gehe zu ___ (der Strand).", "Er hilft ___ (die Frau)."), sheet.exercises.map { it.task })
+        assertTrue(sheet.exercises.all { it.form == ExerciseForm.GapFill })
+        assertEquals("dem Zug", sheet.exercises.first().answer)
+        // Word help keeps the task's words that are on no card, and never the answer's.
+        assertEquals(listOf(listOf("fahre"), listOf("gehe"), listOf("hilft")), sheet.exercises.map { e -> e.wordHelp.map { it.word } })
+
+        val prompt = translator.prompts.single()
+        assertTrue("A \"gap\" exercise is a sentence with exactly one gap, written as ___" in prompt)
+        assertFalse("A \"short\" exercise" in prompt)
+        assertTrue(prompt.substringAfter("in this format:\n").startsWith("gap || [instruction in English] || [task in German] || [answer in German] || "))
+    }
+
+    @Test
+    fun aSheetWithNoFormTickedMixesGapFillsAndShortAnswers() = runTest {
+        translator.completion = Completion(
+            """
+            gap || Put it in the dative. || Ich fahre mit ___ (der Zug). || dem Zug
+            gap || Put it in the dative. || Ich gehe zu ___ (der Strand). || dem Strand
+            gap || Put it in the dative. || Er hilft ___ (die Frau). || der Frau
+            short || Write the plural. || der Strand || die Strände
+            short || Write the plural. || der Apfel || die Äpfel
+            """.trimIndent()
+        )
+
+        val sheet = (generator.generate(1, plural.copy(count = 4, forms = emptySet())) as WorksheetResult.Ready).worksheet
+
+        assertEquals(listOf(ExerciseForm.GapFill, ExerciseForm.GapFill, ExerciseForm.ShortAnswer, ExerciseForm.ShortAnswer), sheet.exercises.map { it.form })
+        assertTrue(translator.prompts.single().substringAfter("in this format:\n").startsWith("[form: gap, short] || "))
     }
 }
