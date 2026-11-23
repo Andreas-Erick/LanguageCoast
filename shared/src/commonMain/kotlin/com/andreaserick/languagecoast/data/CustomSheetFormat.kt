@@ -15,8 +15,8 @@ package com.andreaserick.languagecoast.data
  * the exercise's form rather than by position.
  */
 
-/** The exercise forms a custom sheet can have so far; the others come with their own checks. */
-internal val CUSTOM_SHEET_FORMS = listOf(ExerciseForm.ShortAnswer)
+/** The exercise forms a custom sheet can have so far, in the order a mixed sheet names them; multiple choice comes with its own checks. */
+internal val CUSTOM_SHEET_FORMS = listOf(ExerciseForm.GapFill, ExerciseForm.ShortAnswer)
 
 /** The forms a custom sheet of [picked] forms uses: the ones picked, or every one when none was. */
 internal fun customSheetForms(picked: Set<ExerciseForm>): List<ExerciseForm> =
@@ -47,7 +47,11 @@ private fun formRule(form: ExerciseForm): String = when (form) {
     ExerciseForm.ShortAnswer ->
         "A \"${form.token}\" exercise is a task the learner answers in writing: a word or phrase to change into another form, " +
             "or a short sentence to rewrite. Its answer is exactly what the learner writes, and nothing more."
-    ExerciseForm.GapFill, ExerciseForm.MultipleChoice -> ""
+    ExerciseForm.GapFill ->
+        "A \"${form.token}\" exercise is a sentence with exactly one gap, written as $GAP, where a word or a few words are missing. " +
+            "The base form of what is missing goes in round brackets right after the gap, such as \"$GAP (base form)\", so the learner knows which word to change. " +
+            "Its answer is exactly what goes in the gap, and nothing more."
+    ExerciseForm.MultipleChoice -> ""
 }
 
 /**
@@ -153,11 +157,13 @@ private fun parseExerciseLine(line: String): Exercise? {
     NUMBERED_FORM.matchEntire(first)?.let { first = unwrapped(it.groupValues[1].trim()) }
     val form = formOf(first) ?: return null
     val instruction = parts.getOrNull(1)?.takeUnless { it.isEmpty() || it == "-" || it.equals("none", ignoreCase = true) }
-    val task = parts.getOrNull(2).orEmpty()
+    val task = parts.getOrNull(2).orEmpty().let { if (form == ExerciseForm.GapFill) it.replace(GAP_MARKER, GAP) else it }
     val answer = parts.getOrNull(3).orEmpty()
     if (task.isEmpty() || answer.isEmpty()) return null
     if (FIELD_ECHO.containsMatchIn(task) || FIELD_ECHO.containsMatchIn(answer) || instruction != null && FIELD_ECHO.containsMatchIn(instruction)) return null
-    if (shows(task, answer)) return null
+    // A gap fill's base-form hint may name the answer ("Ich sehe ___ (die Katze)."): telling the learner the word to change is the point.
+    if (form == ExerciseForm.GapFill && GAP_MARKER.findAll(task).count() != 1) return null
+    if (shows(if (form == ExerciseForm.GapFill) task.replace(HINT, " ") else task, answer)) return null
     val rest = parts.drop(4)
     // A multiple-choice exercise gets no word help: it would point at the right option.
     val help = if (form == ExerciseForm.MultipleChoice) emptyList() else {
@@ -238,6 +244,38 @@ fun answerBoxLines(answer: String): Int {
     if (lines.size <= 1 && answer.trim().length <= ANSWER_BOX_ONE_LINE) return 1
     return lines.sumOf { (it.length + ANSWER_BOX_LINE - 1) / ANSWER_BOX_LINE }.coerceIn(1, ANSWER_BOX_MAX_LINES)
 }
+
+/** How a gap fill's gap is written, in the prompt and on every exercise read from a reply. */
+internal const val GAP = "___"
+
+/** A gap as models write it: two underscores or more. */
+private val GAP_MARKER = Regex("_{2,}")
+
+/** A hint in round brackets, such as a gap fill's base form. */
+private val HINT = Regex("\\([^)]*\\)")
+
+/** The gap and the base-form hint that follows it, as the answer key fills them in. */
+private val GAP_AND_HINT = Regex("_{2,}(?:\\s*\\([^)]*\\))?")
+
+/** A gap is never printed shorter than this many underscores, room for a short word in handwriting. */
+private const val PRINTED_GAP_MIN = 8
+
+/** Nor longer than this many, so that a long answer doesn't push the sentence onto a line of its own. */
+private const val PRINTED_GAP_MAX = 30
+
+/**
+ * A gap fill's [task] as it is printed: the gap a writing line long enough for [answer] in handwriting,
+ * which takes more room than print, and the base-form hint left as it is.
+ */
+fun printedGapFill(task: String, answer: String): String =
+    task.replace(GAP_MARKER, "_".repeat((answer.length * 8 / 5).coerceIn(PRINTED_GAP_MIN, PRINTED_GAP_MAX)))
+
+/** A gap fill's [task] as the answer key shows it: the whole sentence, with [answer] in the gap and no hint. */
+fun filledGapFill(task: String, answer: String): String =
+    task.replace(GAP_AND_HINT) { answer }.replace(SPACES, " ").replace(SPACE_BEFORE_MARK, "$1").trim()
+
+private val SPACES = Regex(" {2,}")
+private val SPACE_BEFORE_MARK = Regex(" ([.,!?;:])")
 
 /** The form a reply's first field names: "short", "Short answer", "gap-fill", "multiple choice", "MC". */
 private fun formOf(field: String): ExerciseForm? {

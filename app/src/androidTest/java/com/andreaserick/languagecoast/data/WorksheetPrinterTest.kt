@@ -180,7 +180,33 @@ class WorksheetPrinterTest {
         assertEquals(longPdf.pageCount, longPages)
     }
 
+    @Test
+    fun gapFillsAreWrittenInTheirGapSoAMixedSheetOfTwelveFitsOnePageBeforeItsAnswers() {
+        // Gap fills given last still print first, each answered in its gap rather than in a box of its own.
+        val mixed = customSheet(SHORT_ANSWERS.take(2) + GAP_FILLS, brief = "Nominative → dative").copy(date = LocalDate(2026, 11, 11))
+        val rows = customSheetLayout(mixed.exercises)
+        assertEquals(GAP_FILLS, rows.take(GAP_FILLS.size).map { it.exercise })
+        assertEquals(listOf("Put it in the dative.", null, null, null, null, null, null, null, null, null, "Write the plural.", null), rows.map { it.instruction })
+
+        val (pdf, pages) = print(mixed)
+        assertEquals("german-coast-custom-practice-2026-11-11.pdf", pdf.fileName)
+        assertEquals(2 to 2, pdf.pageCount to pages)
+    }
+
     private companion object {
+        val GAP_FILLS = listOf(
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Ich fahre mit ___ (der Zug) nach Wien.", "dem Zug", wordHelp = listOf(WordHelp("Wien", "Vienna"))),
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Ich gebe ___ (der alte Mann) das Buch.", "dem alten Mann"),
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Er hilft ___ (die Frau).", "der Frau"),
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Wir wohnen bei ___ (die Eltern).", "den Eltern"),
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Sie dankt ___ (das Kind) für das Bild.", "dem Kind"),
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Nach ___ (die Arbeit) gehe ich nach Hause.", "der Arbeit"),
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Das Fahrrad gehört ___ (mein Bruder).", "meinem Bruder"),
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Seit ___ (ein Jahr) lerne ich Deutsch.", "einem Jahr"),
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Wir sitzen in ___ (der Garten).", "dem Garten"),
+            Exercise(ExerciseForm.GapFill, "Put it in the dative.", "Ich spreche mit ___ (die Lehrerin).", "der Lehrerin")
+        )
+
         val SHORT_ANSWERS = listOf(
             Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "der Hund", "die Hunde"),
             Exercise(ExerciseForm.ShortAnswer, "Write the plural.", "die Maus", "die Mäuse", wordHelp = listOf(WordHelp("Maus", "mouse"))),
