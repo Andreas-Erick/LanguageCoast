@@ -88,8 +88,8 @@ object GrammarProfiles {
         )
     )
 
-    /** The hand-written profiles, by [Language.name]. */
-    val BY_LANGUAGE: Map<String, GrammarProfile> = mapOf(
+    /** The hand-written profiles, by [Language.name]; the Nordic ones live in [NordicGrammarProfiles]. */
+    val BY_LANGUAGE: Map<String, GrammarProfile> = NordicGrammarProfiles.BY_LANGUAGE + mapOf(
         "German" to GERMAN
     )
 
@@ -99,9 +99,9 @@ object GrammarProfiles {
      * language added to the app has to be placed in one of the two.
      */
     val GENERAL_ON_PURPOSE: Set<String> = setOf(
-        "Albanian", "Bosnian", "Bulgarian", "Croatian", "Czech", "Danish", "Dutch", "English", "Esperanto",
-        "Finnish", "French", "Greek", "Hungarian", "Icelandic", "Italian", "Japanese", "Korean", "Latin",
-        "Norwegian", "Polish", "Portuguese", "Romanian", "Russian", "Serbian", "Slovak", "Spanish", "Swedish",
+        "Albanian", "Bosnian", "Bulgarian", "Croatian", "Czech", "Dutch", "English", "Esperanto",
+        "French", "Greek", "Hungarian", "Italian", "Japanese", "Korean", "Latin",
+        "Polish", "Portuguese", "Romanian", "Russian", "Serbian", "Slovak", "Spanish",
         "Turkish", "Ukrainian"
     )
 
