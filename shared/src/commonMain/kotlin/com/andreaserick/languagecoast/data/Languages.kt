@@ -84,6 +84,13 @@ object Languages {
     /** The language with English name [name], or null if it isn't offered. */
     fun byName(name: String): Language? = byName[name]
 
+    /**
+     * The ISO 639-1 code of [languageName] ("ja"), or null for a name the app doesn't know. Text drawn
+     * outside the app's own screens names its language with it, so that letters shared between scripts get
+     * the right shapes: Japanese kanji are drawn as Chinese hanzi otherwise.
+     */
+    fun code(languageName: String): String? = byName[languageName]?.code
+
     /** Whether [languageName] is written in Latin letters (see [Language.latinScript]); true for a name the app doesn't know. */
     fun isLatinScript(languageName: String): Boolean = byName[languageName]?.latinScript ?: true
 

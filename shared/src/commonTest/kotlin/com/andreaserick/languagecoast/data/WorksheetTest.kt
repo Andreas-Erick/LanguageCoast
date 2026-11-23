@@ -976,4 +976,15 @@ class WorksheetTest {
         assertEquals(4, keptHelp.size)
         assertTrue(vocabulary.keepsToCoast("Obwohl der Bahnhof weit ist, gehe ich zum Strand.", WorksheetDifficulty.Hard.newWordsFor(WorksheetDirection.ToTarget)))
     }
+
+    @Test
+    fun aTranslationGetsAsManyWritingLinesAsTheLongerOfItsSentenceAndItsAnswerNeeds() {
+        // A short sentence with a short answer is written on one line.
+        assertEquals(1, translationWritingLines("Wo ist der Bahnhof?", "Where is the station?"))
+        // A short question whose translation runs long gets the lines its answer takes, not the question's.
+        assertEquals(2, translationWritingLines("Ich gehe.", "a".repeat(61)))
+        assertEquals(3, translationWritingLines("a".repeat(20), "b".repeat(131)))
+        // And the other way round.
+        assertEquals(2, translationWritingLines("a".repeat(130), "kurz"))
+    }
 }
