@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.localAiAvailable
 import com.andreaserick.languagecoast.data.onDeviceTranslationAvailable
 import com.andreaserick.languagecoast.ui.components.Support
-import com.andreaserick.languagecoast.ui.theme.OceanGround
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
@@ -184,7 +183,7 @@ private val GUIDE = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HowToUseSheet(onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = OceanGround) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
         LazyColumn(
             contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 32.dp),
             modifier = Modifier.fillMaxWidth()

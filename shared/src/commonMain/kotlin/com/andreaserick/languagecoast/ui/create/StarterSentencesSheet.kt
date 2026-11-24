@@ -18,6 +18,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,11 +28,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -53,11 +56,14 @@ import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.coastChipBorder
 import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.plural
+import com.andreaserick.languagecoast.ui.components.rememberGuardedSheetState
+import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.OnSunlit
 import com.andreaserick.languagecoast.ui.theme.Seafoam
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
+import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
 
 /** A starter sentence picked in the sheet, with its placeholders filled in and the topic (and its emoji) it comes from. */
@@ -111,8 +117,12 @@ internal fun StarterSentencesSheet(
         theme.sentences.filter { ticked[it] == true }.mapNotNull { sentence -> filled(sentence)?.let { StarterSentence(it, theme.category, theme.emoji) } }
     }
     val tickedCount = ticked.count { it.value }
+    var confirmDiscard by remember { mutableStateOf(false) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberGuardedSheetState(guarded = tickedCount > 0, onBlocked = { confirmDiscard = true })
+    ) {
         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f).imePadding()) {
             Column(modifier = Modifier.padding(horizontal = 24.dp)) {
                 Text("Starter sentences", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
@@ -146,10 +156,12 @@ internal fun StarterSentencesSheet(
             }
 
             val theme = PhraseBank.theme(topic) ?: PhraseBank.THEMES.first()
+            // Each topic starts at its top, not wherever the last one was scrolled to.
+            val listScroll = key(topic) { rememberScrollState() }
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(listScroll)
                     .padding(horizontal = 24.dp, vertical = 12.dp)
             ) {
                 ContentCard(padding = PaddingValues(vertical = 4.dp, horizontal = 4.dp)) {
@@ -235,5 +247,23 @@ internal fun StarterSentencesSheet(
                 Spacer(modifier = Modifier.height(4.dp))
             }
         }
+    }
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text("Discard your picks?") },
+            text = { Text("${plural(tickedCount, "ticked sentence")} won't be added.", color = TextSecondary) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDiscard = false
+                    onDismiss()
+                }) { Text("Discard", color = CoralText, style = MaterialTheme.typography.labelMedium) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDiscard = false }) {
+                    Text("Keep picking", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        )
     }
 }

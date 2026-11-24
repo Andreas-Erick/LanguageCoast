@@ -2,23 +2,20 @@ package com.andreaserick.languagecoast.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,9 +70,11 @@ fun EditCardSheet(
         if (isDirty) confirmDiscard = true else onDismiss()
     }
 
+    val sheetState = rememberGuardedSheetState(guarded = isDirty, onBlocked = { confirmDiscard = true })
+
     ModalBottomSheet(
-        onDismissRequest = ::requestDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -128,14 +127,15 @@ fun EditCardSheet(
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = ::requestDismiss, colors = ButtonDefaults.textButtonColors(contentColor = TextPrimary)) {
-                    Text("Cancel")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                CoastButton(onClick = { edit?.let(onSave) }, enabled = edit != null) {
-                    Text("Save")
-                }
+            CoastButton(
+                onClick = { edit?.let(onSave) },
+                enabled = edit != null,
+                modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)
+            ) {
+                Text("Save")
+            }
+            CoastSecondaryButton(onClick = ::requestDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = ButtonHeight)) {
+                Text("Cancel")
             }
         }
     }

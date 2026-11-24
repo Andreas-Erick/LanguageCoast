@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Share
@@ -29,6 +30,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.CoastButton
@@ -138,7 +140,16 @@ internal fun recapHeadline(state: RecapUiState): String = when {
 @Composable
 private fun StatTile(value: String, label: String, modifier: Modifier = Modifier) {
     ContentCard(modifier = modifier, padding = PaddingValues(vertical = 14.dp, horizontal = 8.dp)) {
-        Text(value, style = MaterialTheme.typography.headlineSmall.tabular, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        val valueStyle = MaterialTheme.typography.headlineSmall.tabular
+        Text(
+            value,
+            style = valueStyle,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            // A long number shrinks to its tile instead of breaking across lines.
+            autoSize = TextAutoSize.StepBased(minFontSize = 14.sp, maxFontSize = valueStyle.fontSize),
+            modifier = Modifier.fillMaxWidth()
+        )
         Text(label, style = MaterialTheme.typography.bodySmall, color = TextSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
     }
 }

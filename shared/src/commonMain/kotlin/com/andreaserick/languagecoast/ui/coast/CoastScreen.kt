@@ -54,7 +54,7 @@ import com.andreaserick.languagecoast.data.TALK_MIN_CARDS
 import com.andreaserick.languagecoast.data.aboutStopId
 import com.andreaserick.languagecoast.data.islandEmoji
 import com.andreaserick.languagecoast.ui.components.ButtonHeight
-import com.andreaserick.languagecoast.ui.components.ButtonLabel
+import com.andreaserick.languagecoast.ui.components.ButtonCountLabel
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.ContentCard
 import com.andreaserick.languagecoast.ui.components.IconTile
@@ -369,7 +369,7 @@ fun CoastScreen(
                                 .heightIn(min = ButtonHeight)
                                 .animateItem()
                         ) {
-                            ButtonLabel("Review the coast", "$due due")
+                            ButtonCountLabel("Review the coast", due, "$due due")
                         }
                     }
                 }
@@ -467,7 +467,7 @@ fun IslandCard(
         }
         // Tapping the card studies it; both actions are spelled out so "see the cards" isn't hidden in the ⋮ menu.
         Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             // Pulled back by the buttons' own padding, so "Study" lines up with the island's name.
             modifier = Modifier.fillMaxWidth().offset(x = (-8).dp).padding(top = 2.dp)
         ) {

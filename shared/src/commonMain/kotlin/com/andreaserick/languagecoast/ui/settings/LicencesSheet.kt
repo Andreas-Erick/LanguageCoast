@@ -24,7 +24,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.andreaserick.languagecoast.ui.theme.OceanGround
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
@@ -135,7 +134,7 @@ internal fun LicencesSheet(onDismiss: () -> Unit) {
     // An address that couldn't be opened is shown under its row: a snackbar would sit behind this sheet.
     var unopened by remember { mutableStateOf<String?>(null) }
     val openLink: (String) -> Unit = { url -> unopened = url.takeIf { runCatching { uriHandler.openUri(url) }.isFailure } }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = OceanGround) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
         // One scrolling column for everything, so the end of a long list can always be reached.
         Column(
             modifier = Modifier

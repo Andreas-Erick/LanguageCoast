@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -460,10 +459,10 @@ internal fun TalkSheet(state: TalkUiState, coastLanguage: String, onSpeak: () ->
             val arrival = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
             when {
                 state.error != null -> Text(state.error, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = arrival)
-                talk == null -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 12.dp)) {
-                    CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
+                // The app's own bar rather than a spinner: it holds still when the user has asked for reduced motion.
+                talk == null -> Column(modifier = Modifier.padding(vertical = 12.dp)) {
                     Text("Joining your sentences into a talk…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    WorkingBar(modifier = Modifier.padding(top = 12.dp))
                 }
                 else -> {
                     Text(

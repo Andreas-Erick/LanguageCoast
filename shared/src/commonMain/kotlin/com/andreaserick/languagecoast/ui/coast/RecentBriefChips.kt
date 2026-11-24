@@ -19,8 +19,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.ui.theme.SurfaceSelected
@@ -33,18 +31,19 @@ import com.andreaserick.languagecoast.ui.theme.TextSecondary
  * worked, and mixing it with another would make a different one.
  *
  * They are drawn outlined, with a history mark, and never in the sunlit fill of a picked example chip:
- * bringing back a past brief and adding an example to this one are different things. The brief in the box
- * now is filled with the quiet selected tone. Nothing is drawn before the first custom sheet.
+ * bringing back a past brief and adding an example to this one are different things. The brief already
+ * in the box is left out: a chip repeating the box only clutters it. Nothing is drawn before the first
+ * custom sheet, or when the only recent brief is the one in the box.
  */
 @Composable
 internal fun RecentBriefChips(briefs: List<String>, current: String, onPick: (String) -> Unit) {
-    if (briefs.isEmpty()) return
+    val others = briefs.filterNot { it.equals(current.trim(), ignoreCase = true) }
+    if (others.isEmpty()) return
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp).horizontalScroll(rememberScrollState())
     ) {
-        briefs.forEach { brief ->
-            val inBox = brief.equals(current.trim(), ignoreCase = true)
+        others.forEach { brief ->
             AssistChip(
                 onClick = { onPick(brief) },
                 // A long brief is cut short on the chip; a screen reader still reads it whole.
@@ -52,14 +51,13 @@ internal fun RecentBriefChips(briefs: List<String>, current: String, onPick: (St
                 // The mark also names the row for a screen reader: "Recent brief, ...".
                 leadingIcon = { Icon(Icons.Default.History, contentDescription = "Recent brief", modifier = Modifier.size(18.dp)) },
                 colors = AssistChipDefaults.assistChipColors(
-                    containerColor = if (inBox) SurfaceSelected else Color.Transparent,
+                    containerColor = Color.Transparent,
                     labelColor = TextPrimary,
                     leadingIconContentColor = TextSecondary
                 ),
                 border = BorderStroke(1.dp, SurfaceSelected),
                 shape = MaterialTheme.shapes.small,
-                // The brief in the box is said to be picked, as its fill shows.
-                modifier = Modifier.widthIn(max = 260.dp).semantics { selected = inBox }
+                modifier = Modifier.widthIn(max = 260.dp)
             )
         }
     }

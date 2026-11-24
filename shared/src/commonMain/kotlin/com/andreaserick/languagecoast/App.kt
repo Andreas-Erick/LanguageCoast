@@ -13,11 +13,16 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Sailing
 import androidx.compose.material.icons.filled.Tune
@@ -249,7 +254,14 @@ private fun AppContent() {
                 containerColor = Color.Transparent,
                 // Can't be worked out from a transparent container, and would default to black.
                 contentColor = TextPrimary,
-                snackbarHost = { SnackbarHost(snackbarHostState) { CoastSnackbar(it) } },
+                // The window isn't resized for the keyboard, so the snackbar is lifted over it here; otherwise an
+                // Undo shown while typing (a card deleted from Search, say) would sit under the keyboard.
+                snackbarHost = {
+                    SnackbarHost(
+                        snackbarHostState,
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars))
+                    ) { CoastSnackbar(it) }
+                },
                 bottomBar = {
                     val backStack by navController.currentBackStack.collectAsState()
                     // A study session is a focus mode, so it gets the whole screen.

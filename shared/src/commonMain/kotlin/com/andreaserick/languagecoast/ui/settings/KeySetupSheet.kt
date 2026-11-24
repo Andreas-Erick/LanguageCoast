@@ -23,8 +23,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -46,6 +49,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.andreaserick.languagecoast.data.CloudProvider
 import com.andreaserick.languagecoast.data.TranslationProvider
@@ -77,6 +81,7 @@ internal fun KeySetupSheet(cloud: CloudProvider, uiState: SettingsUiState, viewM
     // A secret that isn't saved yet: not kept across a restart of the app.
     var input by remember { mutableStateOf("") }
     var pasteNote by remember { mutableStateOf<String?>(null) }
+    var keyVisible by remember { mutableStateOf(false) }
     val save = rememberCloudKeySave(provider, uiState, viewModel, onSaved = onDismiss)
     val canSave = input.any { !it.isWhitespace() }
     // What the provider's keys start with, from the field's placeholder ("AIzaSy..."), so the user knows what to copy.
@@ -140,11 +145,20 @@ internal fun KeySetupSheet(cloud: CloudProvider, uiState: SettingsUiState, viewM
                     placeholder = { Text(cloud.keyCopy.placeholder) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = PasswordVisualTransformation(),
-                    // A password field for the keyboard too: it must not learn or suggest the key.
+                    visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    // A password field for the keyboard too, shown or hidden: it must not learn or suggest the key.
                     keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { if (canSave) save(input) }),
-                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
+                    // After Paste the user is asked to check the whole key, which takes seeing it.
+                    trailingIcon = {
+                        IconButton(onClick = { keyVisible = !keyVisible }) {
+                            Icon(
+                                imageVector = if (keyVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (keyVisible) "Hide API key" else "Show API key"
+                            )
+                        }
+                    }
                 )
                 pasteNote?.let { note ->
                     Text(
