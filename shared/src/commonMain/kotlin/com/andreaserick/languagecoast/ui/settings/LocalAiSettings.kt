@@ -52,6 +52,7 @@ import com.andreaserick.languagecoast.data.DeviceHardwareProfile
 import com.andreaserick.languagecoast.data.ModelFitLevel
 import com.andreaserick.languagecoast.data.ModelInstallStatus
 import com.andreaserick.languagecoast.data.ModelRecommendation
+import com.andreaserick.languagecoast.ui.components.ButtonHeight
 import com.andreaserick.languagecoast.ui.components.ButtonLabel
 import com.andreaserick.languagecoast.ui.components.CoastButton
 import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
@@ -105,13 +106,15 @@ internal fun LocalAiHubSection(uiState: SettingsUiState, viewModel: SettingsView
     } else {
         CoastSecondaryButton(
             onClick = viewModel::scanHardware,
+            // Dims while the check runs, so a second tap doesn't start another and the label says it is under way.
+            enabled = !uiState.isScanningHardware,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 48.dp)
+                .heightIn(min = ButtonHeight)
         ) {
             Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Check what this phone can run")
+            Text(if (uiState.isScanningHardware) "Checking this phone…" else "Check what this phone can run")
         }
     }
 
@@ -353,7 +356,7 @@ internal fun ModelRecommendationCard(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                 CircularProgressIndicator(
-                                    color = Sunlit,
+                                    color = SunlitText,
                                     strokeWidth = 2.dp,
                                     modifier = Modifier.size(14.dp)
                                 )
@@ -418,14 +421,18 @@ internal fun ModelRecommendationCard(
                 }
                 is ModelInstallStatus.Installed -> {
                     if (isActive) {
+                        // As tall as the "Use this model" button it replaces, so the card doesn't shrink on the tap.
                         Surface(
                             shape = MaterialTheme.shapes.small,
                             color = SurfaceSelected,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = ButtonHeight)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center,
+                                // The Surface passes its minimum height on, so the row fills it and stays centred.
                                 modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp)
                             ) {
                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Seafoam, modifier = Modifier.size(18.dp))
@@ -442,7 +449,7 @@ internal fun ModelRecommendationCard(
                             onClick = onSelect,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = ButtonHeight)
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
@@ -474,7 +481,7 @@ internal fun DownloadButton(label: String, enabled: Boolean, primary: Boolean, o
         contentPadding = PaddingValues(horizontal = 16.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 48.dp)
+            .heightIn(min = ButtonHeight)
     ) {
         Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(8.dp))

@@ -100,6 +100,7 @@ import com.andreaserick.languagecoast.data.DailyPlan
 import com.andreaserick.languagecoast.data.Pace
 import com.andreaserick.languagecoast.data.daysToLearn
 import com.andreaserick.languagecoast.ui.components.PaceSheet
+import com.andreaserick.languagecoast.ui.components.rememberGuardedSheetState
 import com.andreaserick.languagecoast.ui.components.PlatformBackHandler
 import com.andreaserick.languagecoast.ui.components.roughDuration
 import com.andreaserick.languagecoast.ui.theme.tabular
@@ -383,7 +384,8 @@ private fun CreateContent(
             },
             onDismiss = {
                 showBatchSheet = false
-                batchText = ""
+                // A stray swipe keeps the pasted text for next time; only a finished batch clears it.
+                if (batch?.isDone == true) batchText = ""
                 photoError = null
                 onDismissBatch()
             }
@@ -696,7 +698,7 @@ private fun DailyCard(
             }
             isPreparing -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    CircularProgressIndicator(color = SunlitText, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         text = when {
@@ -729,6 +731,7 @@ private fun DailyCard(
                     TextButton(onClick = onSetUpTranslation, contentPadding = PaddingValues(horizontal = 0.dp)) {
                         Text(setUpAction(awaitingPermission), style = MaterialTheme.typography.labelMedium, color = SunlitText)
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
                 TextButton(onClick = onReviewCoast, contentPadding = PaddingValues(horizontal = 0.dp)) {
                     Text("Practice anyway", style = MaterialTheme.typography.labelMedium, color = SunlitText)
@@ -956,8 +959,8 @@ private fun GoalSheet(
         if (isDirty) confirmDiscard = true else onDismiss()
     }
     ModalBottomSheet(
-        onDismissRequest = ::requestDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        onDismissRequest = onDismiss,
+        sheetState = rememberGuardedSheetState(guarded = isDirty, onBlocked = { confirmDiscard = true })
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1627,7 +1630,9 @@ private fun SavedCard(
                 TextButton(onClick = {
                     onEditTranslation(draft)
                     editing = false
-                }, enabled = draft.isNotBlank()) { Text("Save", color = SunlitText, style = MaterialTheme.typography.labelMedium) }
+                }, enabled = draft.isNotBlank(), colors = ButtonDefaults.textButtonColors(contentColor = SunlitText)) {
+                    Text("Save", style = MaterialTheme.typography.labelMedium)
+                }
             }
         } else {
             Text(
@@ -1703,12 +1708,9 @@ private fun BatchSheet(
     onDismiss: () -> Unit
 ) {
     var confirmStopBatch by remember { mutableStateOf(false) }
-    fun requestDismiss() {
-        if (batch?.isSaving == true) confirmStopBatch = true else onDismiss()
-    }
     ModalBottomSheet(
-        onDismissRequest = ::requestDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        onDismissRequest = onDismiss,
+        sheetState = rememberGuardedSheetState(guarded = batch?.isSaving == true, onBlocked = { confirmStopBatch = true })
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1741,7 +1743,7 @@ private fun BatchSheet(
                         }
                         if (readingPhoto) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                                CircularProgressIndicator(color = SunlitText, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
                                     text = "Reading the photo…",

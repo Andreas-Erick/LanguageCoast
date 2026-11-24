@@ -94,6 +94,8 @@ actual fun CardTransferSection() {
 
     var showExportDialog by rememberSaveable { mutableStateOf(false) }
     var isWorking by remember { mutableStateOf(false) }
+    // Which of the two buttons started the work, so the progress label shows on that one.
+    var importStarted by remember { mutableStateOf(false) }
     // The export chosen in the dialog, kept while the system "save as" screen is open.
     var exportCoastId by rememberSaveable { mutableStateOf<Int?>(null) }
     var exportFormat by rememberSaveable { mutableStateOf(ExportFormat.Anki) }
@@ -106,6 +108,7 @@ actual fun CardTransferSection() {
         uri ?: return
         if (isWorking) return
         isWorking = true
+        importStarted = false
         val coastId = exportCoastId
         val format = exportFormat
         scope.launch {
@@ -129,6 +132,7 @@ actual fun CardTransferSection() {
         uri ?: return@rememberLauncherForActivityResult
         if (isWorking) return@rememberLauncherForActivityResult
         isWorking = true
+        importStarted = true
         scope.launch {
             try {
                 // A deck can hold tens of thousands of notes, so its cards are read out away from the main thread too.
@@ -164,7 +168,7 @@ actual fun CardTransferSection() {
             .fillMaxWidth()
             .heightIn(min = ButtonHeight)
     ) {
-        Text(if (isWorking) "Working…" else "Export cards")
+        Text(if (isWorking && !importStarted) "Exporting…" else "Export cards")
     }
     if (uiState.coasts.isEmpty()) Hint("Start a coast first: there are no cards to export yet.")
 
@@ -187,7 +191,7 @@ actual fun CardTransferSection() {
             .fillMaxWidth()
             .heightIn(min = ButtonHeight)
     ) {
-        Text("Import cards")
+        Text(if (isWorking && importStarted) "Reading…" else "Import cards")
     }
 
     if (showExportDialog) {

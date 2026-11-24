@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,10 +26,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
@@ -42,25 +46,29 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.andreaserick.languagecoast.ui.theme.tabular
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -68,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andreaserick.languagecoast.ui.theme.AccentControl
 import com.andreaserick.languagecoast.ui.theme.CardEdge
 import com.andreaserick.languagecoast.ui.theme.ChipContainer
 import com.andreaserick.languagecoast.ui.theme.OnSunlit
@@ -78,6 +87,7 @@ import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
 import com.andreaserick.languagecoast.ui.theme.TextSecondary
+import com.andreaserick.languagecoast.ui.theme.palette
 
 /** The side margin of every screen's content, which lines it up with the title. */
 val ScreenMargin = 20.dp
@@ -125,12 +135,13 @@ fun CoastSecondaryButton(
 
 /**
  * A button label in two parts: what the tap does, then a quieter detail about it ("Start", "about 5 minutes";
- * "Download", "1.2 GB"). The action never shrinks or cuts; when space runs out the detail gives way first.
+ * "Download", "1.2 GB"). The action never shrinks; when space runs out the detail gives way first.
  * Use it inside a button's content instead of joining the two with " · ".
  */
 @Composable
 fun RowScope.ButtonLabel(action: String, detail: String?) {
-    Text(action, maxLines = 1, softWrap = false)
+    // Only at very large text sizes is the action wider than the button; then it ends in an ellipsis, not mid-letter.
+    Text(action, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
     if (!detail.isNullOrEmpty()) {
         Spacer(modifier = Modifier.width(8.dp))
         Text(
@@ -141,6 +152,51 @@ fun RowScope.ButtonLabel(action: String, detail: String?) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false)
         )
+    }
+}
+
+/**
+ * A button label with a count: what the tap does, then the count in a small badge, the way a mail app
+ * shows unread mail ("Review the coast [6]"). One weight of type, so the label and the number don't look
+ * like two fonts; the badge says what the number is without a second word.
+ *
+ * The action gives way (with an ellipsis) before the badge does, so the count still shows at large text sizes.
+ *
+ * @param countDescription The count in words for a screen reader ("6 due"), read after [action].
+ * @param badgeTextColor The number's colour: the button's container colour, so it reads as cut out of the
+ *     badge. [Sunlit] suits a [CoastButton]; pass the container of any other button.
+ */
+@Composable
+fun RowScope.ButtonCountLabel(action: String, count: Int, countDescription: String, badgeTextColor: Color = Sunlit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        // Not a merge of its own: the button merges this description into its one focusable node.
+        modifier = Modifier
+            .weight(1f, fill = false)
+            .clearAndSetSemantics { contentDescription = "$action, $countDescription" }
+    ) {
+        Text(
+            text = action,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .defaultMinSize(minWidth = 26.dp, minHeight = 26.dp)
+                .background(LocalContentColor.current, CircleShape)
+                .padding(horizontal = 7.dp)
+        ) {
+            Text(
+                text = if (count > 999) "999+" else "$count",
+                style = MaterialTheme.typography.labelMedium.tabular,
+                color = badgeTextColor,
+                maxLines = 1
+            )
+        }
     }
 }
 
@@ -170,28 +226,54 @@ fun CoastTextField(
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     val shape = MaterialTheme.shapes.medium
-    TextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier.then(
-            if (focused) Modifier.border(BorderStroke(1.5.dp, com.andreaserick.languagecoast.ui.theme.AccentControl), shape) else Modifier
-        ),
-        readOnly = readOnly,
-        label = label,
-        placeholder = placeholder,
-        leadingIcon = leadingIcon,
-        trailingIcon = trailingIcon,
-        supportingText = supportingText,
-        visualTransformation = visualTransformation,
-        keyboardOptions = keyboardOptions,
-        keyboardActions = keyboardActions,
-        singleLine = singleLine,
-        minLines = minLines,
-        maxLines = maxLines,
-        interactionSource = source,
-        shape = shape,
-        colors = coastTextFieldColors()
-    )
+    val colors = coastTextFieldColors()
+    // Material's TextField, built from its parts so that the focus outline goes on the container only: on
+    // the whole field it would also box in the supporting text below. Everything else is as TextField does it,
+    // supporting text included, which stays part of the field for screen readers.
+    CompositionLocalProvider(LocalTextSelectionColors provides colors.textSelectionColors) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = modifier.defaultMinSize(minWidth = TextFieldDefaults.MinWidth, minHeight = TextFieldDefaults.MinHeight),
+            readOnly = readOnly,
+            textStyle = LocalTextStyle.current.merge(TextStyle(color = colors.focusedTextColor)),
+            cursorBrush = SolidColor(colors.cursorColor),
+            visualTransformation = visualTransformation,
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            interactionSource = source,
+            singleLine = singleLine,
+            maxLines = maxLines,
+            minLines = minLines,
+            decorationBox = { innerTextField ->
+                TextFieldDefaults.DecorationBox(
+                    value = value,
+                    innerTextField = innerTextField,
+                    enabled = true,
+                    singleLine = singleLine,
+                    visualTransformation = visualTransformation,
+                    interactionSource = source,
+                    label = label,
+                    placeholder = placeholder,
+                    leadingIcon = leadingIcon,
+                    trailingIcon = trailingIcon,
+                    supportingText = supportingText,
+                    shape = shape,
+                    colors = colors,
+                    container = {
+                        TextFieldDefaults.Container(
+                            enabled = true,
+                            isError = false,
+                            interactionSource = source,
+                            modifier = if (focused) Modifier.border(BorderStroke(1.5.dp, AccentControl), shape) else Modifier,
+                            colors = colors,
+                            shape = shape
+                        )
+                    }
+                )
+            }
+        )
+    }
 }
 
 /** The colors of [CoastTextField]; also for Material's own fields, such as an exposed dropdown's. */
@@ -321,20 +403,25 @@ fun TileEmoji(emoji: String, tileSize: Dp = 44.dp) {
  *
  * A label that doesn't fit its tile wraps to a second line and then shrinks a little, before it is cut;
  * every tile is as tall as the tallest, so a wrapped label doesn't leave the selected tile short.
+ *
+ * @param container The strip behind the tiles. The card tone suits the screen background; on a surface of
+ *     that tone already (a bottom sheet) pass the field tone, or the strip disappears and the selected
+ *     tile floats on its own.
  */
 @Composable
 fun SegmentedSwitch(
     options: List<String>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    container: Color = SurfaceCard
 ) {
     val haptics = LocalHapticFeedback.current
     val hapticsEnabled = LocalHapticsEnabled.current
     Row(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier = modifier
-            .background(SurfaceCard, MaterialTheme.shapes.small)
+            .background(container, MaterialTheme.shapes.small)
             .padding(3.dp)
             .height(IntrinsicSize.Min)
             .selectableGroup()
@@ -349,6 +436,9 @@ fun SegmentedSwitch(
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(9.dp))
                     .background(if (selected) SurfaceSelected else Color.Transparent)
+                    // The lighter fill alone is under 3:1 in the light palettes; a hairline edge makes the pick plain
+                    // there. The dark palettes' fill stands out on its own, and an outline would only add noise.
+                    .then(if (selected && !palette.isDark) Modifier.border(1.dp, TextSecondary, RoundedCornerShape(9.dp)) else Modifier)
                     .selectable(selected = selected, role = Role.Tab, onClick = {
                         if (!selected && hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                         onSelect(index)
@@ -360,6 +450,7 @@ fun SegmentedSwitch(
                     text = option,
                     style = labelStyle,
                     color = if (selected) TextPrimary else TextSecondary,
+                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Bold,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = labelStyle.fontSize),

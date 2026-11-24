@@ -66,7 +66,6 @@ import com.andreaserick.languagecoast.ui.components.coastChipBorder
 import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.Seafoam
-import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
@@ -112,7 +111,8 @@ internal fun ApiKeySection(
     val canCheckAgain = isSaved && check?.failed == true
     val openLink = rememberOpenLink()
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    // A gap before the pill, so a title that wraps (the Hugging Face one does) doesn't run into it.
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, color = TextSecondary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
         Pill(
             text = when {
@@ -524,7 +524,7 @@ internal fun ModelPicker(
         modifier = Modifier.padding(top = 2.dp)
     ) {
         if (checking) {
-            CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+            CircularProgressIndicator(color = SunlitText, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
         } else {
             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
         }

@@ -633,9 +633,10 @@ private fun ReminderSection(
             title = { Text("Reminder time") },
             text = {
                 // The dial needs about 380 dp of height and can't scroll (dragging on it sets the time). A short
-                // window, such as a phone on its side or half of a split screen, gets the fields to type in.
+                // window, such as a phone on its side or half of a split screen, gets the fields to type in. So does a
+                // narrow dialog, where a 12-hour clock's hour, minute and AM/PM (about 280 dp) would be squeezed.
                 BoxWithConstraints {
-                    if (maxHeight < 380.dp) TimeInput(state = state) else TimePicker(state = state)
+                    if (maxHeight < 380.dp || maxWidth < 280.dp) TimeInput(state = state) else TimePicker(state = state)
                 }
             },
             confirmButton = {

@@ -88,7 +88,6 @@ import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
 import com.andreaserick.languagecoast.ui.components.inLanguage
 import com.andreaserick.languagecoast.ui.theme.CoralText
 import com.andreaserick.languagecoast.ui.theme.Seafoam
-import com.andreaserick.languagecoast.ui.theme.Sunlit
 import com.andreaserick.languagecoast.ui.theme.SunlitText
 import com.andreaserick.languagecoast.ui.theme.SurfaceRaised
 import com.andreaserick.languagecoast.ui.theme.TextPrimary
@@ -206,7 +205,8 @@ fun ClozeStudyView(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
         ContentCard(padding = PaddingValues(start = 20.dp, top = 16.dp, end = 8.dp, bottom = 20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 40.dp)) {
+            // As tall as the speaker button that appears once checked, so the card doesn't grow then.
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 48.dp)) {
                 Text("Fill the gap", style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.weight(1f))
                 if (match != null && onSpeak != null) {
                     IconButton(onClick = onSpeak) {
@@ -400,7 +400,7 @@ internal fun WordSheet(explanation: WordExplanation, dictionaryUrl: String?, onR
                 when {
                     explanation.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
-                            color = Sunlit,
+                            color = SunlitText,
                             strokeWidth = 2.dp,
                             modifier = Modifier.size(18.dp).semantics { }
                         )
@@ -497,7 +497,7 @@ internal fun CardCheckSheet(
                 when (val verdict = check.verdict) {
                     null -> if (check.isLoading) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                            CircularProgressIndicator(color = SunlitText, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Asking ${check.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         }
@@ -627,7 +627,7 @@ private fun AlternativeQuestion(check: CardCheck, accentSave: Boolean, onAsk: (S
         val verdict = asked.verdict
         when {
             asked.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                CircularProgressIndicator(color = SunlitText, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(10.dp))
                 Text("Asking ${check.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
@@ -814,7 +814,7 @@ private fun CardQuestionContent(questions: CardQuestions, onAsk: (String) -> Uni
                 Spacer(modifier = Modifier.height(8.dp))
                 when {
                     asked.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(color = Sunlit, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        CircularProgressIndicator(color = SunlitText, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("Asking ${questions.providerLabel}…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                     }

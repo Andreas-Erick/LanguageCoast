@@ -272,7 +272,12 @@ fun StudyScreen(
 
         when {
             uiState.isLoading -> Unit
-            !uiState.hasCards -> EmptyState(icon = Icons.Default.Waves, title = "No cards here yet")
+            !uiState.hasCards -> EmptyState(
+                icon = Icons.Default.Waves,
+                title = "No cards here yet",
+                body = caughtUpBody(uiState.scope, null),
+                action = { SessionEndButtons(scope = uiState.scope, onPracticeAll = null, onBack = onNavigateBack) }
+            )
             uiState.isCaughtUp -> CaughtUpView(
                 scope = uiState.scope,
                 nextDueInDays = uiState.nextDueInDays,
@@ -793,7 +798,8 @@ fun FlipStudyView(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 44.dp)
+                // As tall as the alternatives button's touch target, so the row doesn't grow when it appears.
+                .heightIn(min = 48.dp)
         ) {
             val hint = when {
                 !isFlipped -> ""
@@ -802,10 +808,14 @@ fun FlipStudyView(
                 showSwipeHint -> "Swipe left for Again, right for Good."
                 else -> ""
             }
+            val hintStyle = MaterialTheme.typography.bodySmall
             Text(
                 text = hint,
-                style = MaterialTheme.typography.bodySmall,
+                style = hintStyle,
                 color = TextSecondary,
+                // With a large font size the hint shrinks into two lines instead of pushing the card up when it turns.
+                maxLines = 2,
+                autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = hintStyle.fontSize),
                 modifier = Modifier.weight(1f)
             )
             // Alternatives are other ways to say the translation, which only make sense when it is the answer.
@@ -906,11 +916,14 @@ internal fun GradeButtons(intervals: Map<Grade, Int>, onGrade: (Grade) -> Unit) 
                     )
                     val label = if (grade == Grade.Again) "Soon" else days?.let(::intervalLabel)
                     label?.let {
+                        val labelStyle = MaterialTheme.typography.labelSmall
                         Text(
                             it,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = labelStyle,
                             color = if (isGood) OnSunlit else TextSecondary,
-                            maxLines = 1
+                            maxLines = 1,
+                            // Shrinks with a large font size too, so the row stays as high as "Show answer".
+                            autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = labelStyle.fontSize)
                         )
                     }
                 }
@@ -1008,7 +1021,7 @@ fun TypeStudyView(
         modifier = Modifier.fillMaxWidth()
     ) {
         ContentCard(padding = PaddingValues(start = 20.dp, top = 16.dp, end = 8.dp, bottom = 20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 40.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 48.dp)) {
                 Text(
                     "Translate this",
                     style = MaterialTheme.typography.labelMedium,
@@ -1339,12 +1352,14 @@ private fun SessionEndButtons(scope: StudyScope, onPracticeAll: (() -> Unit)?, o
 @Composable
 private fun StatTile(value: String, label: String, modifier: Modifier = Modifier) {
     ContentCard(modifier = modifier, padding = PaddingValues(vertical = 16.dp, horizontal = 8.dp)) {
+        val valueStyle = MaterialTheme.typography.headlineSmall.tabular
         Text(
             value,
-            style = MaterialTheme.typography.headlineSmall.tabular,
+            style = valueStyle,
             textAlign = TextAlign.Center,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            // A long number shrinks to its tile instead of losing digits.
+            autoSize = TextAutoSize.StepBased(minFontSize = 14.sp, maxFontSize = valueStyle.fontSize),
             modifier = Modifier.fillMaxWidth()
         )
         Text(

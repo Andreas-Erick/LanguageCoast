@@ -1,19 +1,21 @@
 package com.andreaserick.languagecoast.ui.coast
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.text.TextAutoSize
-import androidx.compose.ui.unit.sp
-import com.andreaserick.languagecoast.ui.theme.SurfaceCard
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.togetherWith
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInParent
+import com.andreaserick.languagecoast.ui.components.LocalReducedMotion
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.stateDescription
 import com.andreaserick.languagecoast.data.BRIEF_COUNTER_FROM
@@ -43,6 +45,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.selection.toggleable
@@ -63,7 +66,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -140,8 +142,6 @@ import com.andreaserick.languagecoast.ui.components.CoastSecondaryButton
 import com.andreaserick.languagecoast.ui.components.CoastTextField
 import com.andreaserick.languagecoast.ui.components.IconTile
 import com.andreaserick.languagecoast.ui.components.SegmentedSwitch
-import com.andreaserick.languagecoast.ui.components.coastChipBorder
-import com.andreaserick.languagecoast.ui.components.coastChipColors
 import com.andreaserick.languagecoast.ui.components.collapseExit
 import com.andreaserick.languagecoast.ui.components.expandEnter
 import com.andreaserick.languagecoast.ui.components.plural
@@ -254,7 +254,8 @@ private fun ColumnScope.WorksheetOptionsForm(
         options = SheetKind.entries.map { it.label },
         selectedIndex = options.kind.ordinal,
         onSelect = { onOptionsChange(options.copy(kind = SheetKind.entries[it])) },
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        container = ChipContainer
     )
     Text(
         text = if (custom) {
@@ -271,7 +272,7 @@ private fun ColumnScope.WorksheetOptionsForm(
 
     if (custom) {
         FieldLabel("What to practise")
-        BriefField(brief = options.brief, onChange = { onOptionsChange(options.copy(brief = it)) }) { current, replace ->
+        BriefField(brief = options.brief, coastLanguage = coastLanguage, onChange = { onOptionsChange(options.copy(brief = it)) }) { current, replace ->
             RecentBriefChips(briefs = state.recentBriefs, current = current, onPick = replace)
             ExampleBriefChips(coastLanguage = coastLanguage, current = current, onChange = replace)
         }
@@ -303,7 +304,8 @@ private fun ColumnScope.WorksheetOptionsForm(
         options = WorksheetDifficulty.entries.map { it.label },
         selectedIndex = options.difficulty.ordinal,
         onSelect = { onOptionsChange(options.copy(difficulty = WorksheetDifficulty.entries[it])) },
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        container = ChipContainer
     )
     Text(
         text = if (custom) options.difficulty.customHint else options.difficulty.hint,
@@ -479,33 +481,25 @@ private fun IslandPicker(islands: List<IslandSummary>, picked: Set<Int>, onChang
 }
 
 /**
- * Which exercise forms a custom sheet may have, as a row that looks like the difficulty switch under it,
- * with a line under it saying what that makes. Unlike the switch, more than one can be on: an "on" form
- * gets the switch's lighter tile and a small check. All three on is the default, the mix; turning one off
- * narrows the sheet to the others. The last form that's on can't be turned off: a sheet needs a form.
- * A chip tapped into the brief never changes these, so the learner's choice of forms stays theirs.
+ * Which exercise forms a custom sheet may have, as a short checklist in the style of the island list: a
+ * tick, the form's name and a line saying what the learner does in it, with a line under the list saying
+ * what that makes. All three on is the default, the mix; turning one off narrows the sheet to the others.
+ * The last form that's on can't be turned off: a sheet needs a form. A chip tapped into the brief never
+ * changes these, so the learner's choice of forms stays theirs.
  */
 @Composable
 private fun FormChips(picked: Set<ExerciseForm>, onChange: (Set<ExerciseForm>) -> Unit) {
     FieldLabel("Exercise forms")
     val on = tickedForms(picked)
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SurfaceCard, MaterialTheme.shapes.small)
-            .padding(3.dp)
-            .height(IntrinsicSize.Min)
+            .background(ChipContainer, MaterialTheme.shapes.medium)
+            .padding(vertical = 4.dp)
     ) {
         CUSTOM_SHEET_FORMS.forEach { form ->
             val isOn = form in on
-            FormChip(
-                label = form.label,
-                on = isOn,
-                locked = isOn && on.size == 1,
-                // Shared by the length of the labels, so "Multiple choice" fits on one line without shrinking the others.
-                modifier = Modifier.weight(form.label.length + 4f).fillMaxHeight()
-            ) { onChange(tickForm(picked, form)) }
+            FormRow(form = form, on = isOn, locked = isOn && on.size == 1) { onChange(tickForm(picked, form)) }
         }
     }
     Text(
@@ -516,41 +510,42 @@ private fun FormChips(picked: Set<ExerciseForm>, onChange: (Set<ExerciseForm>) -
     )
 }
 
+/** What the learner does in an exercise of this form, under its name in [FormChips]. */
+private val ExerciseForm.whatYouDo: String
+    get() = when (this) {
+        ExerciseForm.GapFill -> "Write the missing word into a sentence"
+        ExerciseForm.MultipleChoice -> "Pick the right one of three"
+        ExerciseForm.ShortAnswer -> "Write the form asked for"
+    }
+
 /**
- * One form of [FormChips], drawn as a tile of [SegmentedSwitch]: the lighter tile, a brighter label and a
- * small check while on; plain quieter text while off. A label that doesn't fit shrinks a little, as the
- * switch's do, and stays on one line.
+ * One form of [FormChips]: a tick, the name and what the form asks for. The whole row toggles it.
  *
  * @param locked Whether this is the last form that's on, which a tap leaves on. It still answers a tap with
  *     a ripple, and a screen reader says why it stays on, rather than calling it disabled.
  */
 @Composable
-private fun FormChip(label: String, on: Boolean, locked: Boolean, modifier: Modifier, onToggle: () -> Unit) {
-    val labelStyle = MaterialTheme.typography.labelMedium
+private fun FormRow(form: ExerciseForm, on: Boolean, locked: Boolean, onToggle: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-        modifier = modifier
-            .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(9.dp))
-            .background(if (on) SurfaceSelected else androidx.compose.ui.graphics.Color.Transparent)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp)
+            .clip(MaterialTheme.shapes.small)
             .toggleable(value = on, role = Role.Checkbox) { if (!locked) onToggle() }
             .then(if (locked) Modifier.semantics { stateDescription = "On; a sheet needs at least one form" } else Modifier)
-            .padding(horizontal = 6.dp, vertical = 8.dp)
+            .heightIn(min = 56.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        if (on) {
-            Icon(Icons.Default.Check, contentDescription = null, tint = TextPrimary, modifier = Modifier.padding(end = 4.dp).size(16.dp))
-        }
-        Text(
-            text = label,
-            style = labelStyle,
-            color = if (on) TextPrimary else TextSecondary,
-            maxLines = 1,
-            softWrap = false,
-            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = labelStyle.fontSize),
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false)
+        Checkbox(
+            checked = on,
+            onCheckedChange = null,
+            colors = CheckboxDefaults.colors(checkedColor = Sunlit, checkmarkColor = OnSunlit, uncheckedColor = TextSecondary)
         )
+        Column(modifier = Modifier.weight(1f).padding(start = 14.dp)) {
+            Text(form.label, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+            Text(form.whatYouDo, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        }
     }
 }
 
@@ -567,9 +562,16 @@ private fun FormChip(label: String, on: Boolean, locked: Boolean, modifier: Modi
 @Composable
 private fun BriefField(
     brief: String,
+    coastLanguage: String,
     onChange: (String) -> Unit,
     below: @Composable (current: String, replace: (String) -> Unit) -> Unit = { _, _ -> }
 ) {
+    // An example in the coast's own language: "the dative after mit" means nothing on a Swedish coast.
+    val placeholder = remember(coastLanguage) {
+        briefChips(coastLanguage).firstOrNull()?.chips?.firstOrNull()
+            ?.let { "For example: the plural of nouns, or ${it.replaceFirstChar { c -> c.lowercase() }}" }
+            ?: "For example: the plural of nouns, or the past tense"
+    }
     var draft by rememberSaveable { mutableStateOf(brief) }
     var typed by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(brief) { if (!typed) draft = brief }
@@ -581,7 +583,7 @@ private fun BriefField(
     CoastTextField(
         value = draft,
         onValueChange = change,
-        placeholder = { Text("For example: the plural of nouns, or the dative after mit") },
+        placeholder = { Text(placeholder) },
         trailingIcon = if (draft.isEmpty()) null else {
             { IconButton(onClick = { change("") }) { Icon(Icons.Default.Close, contentDescription = "Clear the brief", tint = TextSecondary) } }
         },
@@ -604,11 +606,11 @@ private fun BriefField(
 }
 
 /**
- * The example chips for the coast's language, under the brief box and the recent briefs: a row of area
- * tabs (Cases, Articles...) with the open area's chips under them, so the whole catalogue takes a few lines
- * instead of a screen of folded rows. An area holding chips of the brief shows how many. It opens on the
- * area of the brief's first chip, or the first area. Tapping a chip adds it to the brief or takes it out
- * again, up to [BRIEF_CHIPS_MAX] at once; what the learner typed stays.
+ * The example chips for the coast's language, under the brief box and the recent briefs: one row of area
+ * tabs (Cases, Articles...) that scrolls sideways, with the open area's chips under it, so the whole
+ * catalogue takes a few lines instead of a screen of folded rows. An area holding chips of the brief shows
+ * how many. It opens on the area of the brief's first chip, or the first area. Tapping a chip adds it to
+ * the brief or takes it out again, up to [BRIEF_CHIPS_MAX] at once; what the learner typed stays.
  *
  * @param current The text in the brief box now.
  * @param onChange Replaces the text in the brief box.
@@ -624,49 +626,69 @@ private fun ExampleBriefChips(coastLanguage: String, current: String, onChange: 
     // Chosen once, when the picker first shows; after that the learner's tab stays put while they tap chips.
     var openName by rememberSaveable(coastLanguage) { mutableStateOf(openChipArea(groups, current)?.name) }
     val open = groups.firstOrNull { it.area.name == openName } ?: groups.first()
+    // An area opened on the brief's chip may be past the edge of the row: scroll the row (and only the row,
+    // not the sheet around it) to it once the tabs are laid out.
+    val tabScroll = rememberScrollState()
+    val tabStarts = remember(groups) { mutableStateMapOf<String, Int>() }
+    LaunchedEffect(groups) {
+        withFrameNanos { }
+        tabStarts[open.area.name]?.let { tabScroll.scrollTo(it) }
+    }
     Text(
         text = chipsHint(current, offered),
         style = MaterialTheme.typography.bodySmall,
         color = TextSecondary,
-        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+        modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)
     )
-    // The tabs look like the sheet's other switches: a lighter tile on a quiet strip, without the accent.
-    // The strip has the field tone, since the sheet itself has the switch's card tone.
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(ChipContainer, MaterialTheme.shapes.small)
-            .padding(horizontal = 4.dp)
-            .selectableGroup()
-    ) {
-        groups.forEach { group ->
-            AreaTab(
-                title = group.area.label,
-                inBrief = counts[group.area] ?: 0,
-                selected = group.area == open.area,
-                onSelect = { openName = group.area.name }
-            )
+    // Text tabs over a hairline, the open one underlined: the shape of tabs everywhere, and quiet beside
+    // the chips, which are what gets tapped. The hairline runs the full width, under the scrolling row.
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(SurfaceSelected)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(tabScroll)
+                .selectableGroup()
+        ) {
+            groups.forEach { group ->
+                AreaTab(
+                    title = group.area.label,
+                    inBrief = counts[group.area] ?: 0,
+                    selected = group.area == open.area,
+                    onSelect = { openName = group.area.name },
+                    modifier = Modifier.onPlaced { tabStarts[group.area.name] = it.positionInParent().x.roundToInt() }
+                )
+            }
         }
     }
     val enter = expandEnter()
     val exit = collapseExit()
-    AnimatedContent(targetState = open, transitionSpec = { enter togetherWith exit }, label = "brief chips") { group ->
+    // With reduced motion the block's height changes at once too, not only the chips in it.
+    val reducedMotion = LocalReducedMotion.current
+    AnimatedContent(
+        targetState = open,
+        transitionSpec = { (enter togetherWith exit).using(if (reducedMotion) null else SizeTransform()) },
+        label = "brief chips"
+    ) { group ->
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+            // No gap between rows: each chip's own 48dp touch area already leaves 8dp between the chips drawn.
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
         ) {
             group.chips.forEach { chip ->
                 val picked = chip in tapped
-                val fits = picked || toggleChip(current, chip, offered) != current
-                FilterChip(
-                    selected = picked,
-                    onClick = { onChange(toggleChip(current, chip, offered)) },
-                    enabled = fits,
-                    label = { Text(chip, style = MaterialTheme.typography.labelMedium) },
-                    colors = coastChipColors(),
-                    border = coastChipBorder(enabled = fits, selected = picked),
-                    shape = MaterialTheme.shapes.small
+                BriefChip(
+                    text = chip,
+                    picked = picked,
+                    enabled = picked || toggleChip(current, chip, offered) != current,
+                    onToggle = { onChange(toggleChip(current, chip, offered)) }
                 )
             }
         }
@@ -674,46 +696,79 @@ private fun ExampleBriefChips(coastLanguage: String, current: String, onChange: 
 }
 
 /**
- * One area tab of [ExampleBriefChips]: compact to look at, a full 48dp to touch. A small sunlit count says
- * how many of the area's chips are in the brief, the same fill as the picked chips it counts.
+ * One example of [ExampleBriefChips]. The sunlit fill and a check while it is in the brief; the field tone
+ * otherwise. A long example wraps inside the chip with room above and below it, rather than pressing
+ * against the edges of a one-line chip.
  */
 @Composable
-private fun AreaTab(title: String, inBrief: Int, selected: Boolean, onSelect: () -> Unit) {
+private fun BriefChip(text: String, picked: Boolean, enabled: Boolean, onToggle: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            // 40dp to look at, 48dp to touch.
             .minimumInteractiveComponentSize()
-            .clip(RoundedCornerShape(9.dp))
-            .background(if (selected) SurfaceSelected else androidx.compose.ui.graphics.Color.Transparent)
+            .clip(MaterialTheme.shapes.small)
+            .background(if (picked) Sunlit else ChipContainer)
+            .toggleable(value = picked, enabled = enabled, role = Role.Checkbox, onValueChange = { onToggle() })
+            .alpha(if (enabled) 1f else 0.45f)
+            .heightIn(min = 40.dp)
+            .padding(start = if (picked) 10.dp else 14.dp, end = 14.dp, top = 9.dp, bottom = 9.dp)
+    ) {
+        if (picked) {
+            Icon(Icons.Default.Check, contentDescription = null, tint = OnSunlit, modifier = Modifier.padding(end = 6.dp).size(16.dp))
+        }
+        Text(text, style = MaterialTheme.typography.labelMedium, color = if (picked) OnSunlit else TextPrimary)
+    }
+}
+
+/**
+ * One area tab of [ExampleBriefChips]: its name, a small sunlit count of the area's chips in the brief (the
+ * same fill as the picked chips it counts), and an underline while open. A full 48dp to touch.
+ */
+@Composable
+private fun AreaTab(title: String, inBrief: Int, selected: Boolean, onSelect: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .width(IntrinsicSize.Max)
+            .clip(RoundedCornerShape(topStart = 9.dp, topEnd = 9.dp))
             .selectable(selected = selected, role = Role.Tab, onClick = onSelect)
             .semantics(mergeDescendants = true) {
                 if (inBrief > 0) stateDescription = "$inBrief in your brief"
             }
-            .heightIn(min = 40.dp)
-            .padding(horizontal = 12.dp)
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (selected) TextPrimary else TextSecondary,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis
-        )
-        // The count's place is kept while it is empty, so a tab doesn't grow, and the row reflow, when a chip is tapped.
-        // It grows with large text instead of cutting the number off.
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .padding(start = 6.dp)
-                .clearAndSetSemantics { }
-                .alpha(if (inBrief > 0) 1f else 0f)
-                .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
-                .background(Sunlit, CircleShape)
-                .padding(horizontal = 5.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.heightIn(min = 46.dp).padding(horizontal = 14.dp)
         ) {
-            Text("${inBrief.coerceAtLeast(1)}", style = MaterialTheme.typography.labelSmall.tabular, color = OnSunlit, maxLines = 1)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selected) TextPrimary else TextSecondary,
+                maxLines = 1,
+                softWrap = false
+            )
+            // The count's place is kept while it is empty, so a tab doesn't grow, and the row shift, when a chip is tapped.
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .clearAndSetSemantics { }
+                    .alpha(if (inBrief > 0) 1f else 0f)
+                    .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
+                    .background(Sunlit, CircleShape)
+                    .padding(horizontal = 5.dp)
+            ) {
+                Text("${inBrief.coerceAtLeast(1)}", style = MaterialTheme.typography.labelSmall.tabular, color = OnSunlit, maxLines = 1)
+            }
         }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp)
+                .height(2.dp)
+                .background(if (selected) TextPrimary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(1.dp))
+        )
     }
 }
 
@@ -1043,7 +1098,8 @@ private fun ColumnScope.WorksheetReady(
                 modifier = buttonModifier
             ) {
                 // While the file is being saved the icon turns into a small spinner, so the greyed-out button is seen to be busy.
-                if (isSaving) {
+                // With reduced motion the greyed-out button alone says it is busy: a spinner would keep turning.
+                if (isSaving && !LocalReducedMotion.current) {
                     CircularProgressIndicator(
                         color = LocalContentColor.current,
                         strokeWidth = 2.dp,
