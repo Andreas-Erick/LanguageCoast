@@ -111,6 +111,9 @@ internal abstract class StreamedAnswer(private val providerName: String, private
     /** The answer's text as it is handed over at the end; a provider whose models think out loud leaves that out. */
     protected open fun finalText(text: String): String = text
 
+    /** Whether the provider has said how the answer ends, or that it failed: nothing more is to come. */
+    val hasEnded: Boolean get() = ending != null || failure != null
+
     fun completion(): Completion {
         failure?.let { return it }
         // A stream that ends without saying why broke off on the way, unless nothing came at all.
@@ -214,6 +217,13 @@ internal class CloudTransport(private val client: HttpClient) {
                         while (true) {
                             val line = channel.readUTF8Line() ?: break
                             stream.read(line)
+                            // The time limit is the networking's to enforce, but its timer can miss a stream that
+                            // keeps sending (the release run of v3.7.0 read a whole answer past it). Checked here
+                            // too, it holds however the networking behaves; an answer that has ended is kept.
+                            if (pastTimeLimit() && !stream.hasEnded) {
+                                logError(TAG, "$name took too long to answer: still streaming at the time limit")
+                                return@execute Attempt.Done(Completion.tooLarge(tookTooLongMessage(name)))
+                            }
                         }
                         val completion = stream.completion()
                         if (completion.text == null && !completion.isTooLarge && pastTimeLimit()) {
