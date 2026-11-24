@@ -18,6 +18,7 @@ import com.andreaserick.languagecoast.data.StarterImporter
 import com.andreaserick.languagecoast.data.StarterTranslator
 import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.TranslationProvider
+import com.andreaserick.languagecoast.data.SheetKind
 import com.andreaserick.languagecoast.data.WorksheetDifficulty
 import com.andreaserick.languagecoast.data.WorksheetDirection
 import com.andreaserick.languagecoast.data.WorksheetGenerator
@@ -41,6 +42,7 @@ import com.andreaserick.languagecoast.ui.settings.SettingsViewModel
 import com.andreaserick.languagecoast.ui.theme.ThemeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -655,6 +657,58 @@ class SettingsAndMyCoastViewModelTest {
         assertEquals(null, viewModel.uiState.value.worksheet.pdf)
         // What was picked stays for the next sheet.
         assertEquals(WorksheetDifficulty.Hard, viewModel.uiState.value.worksheet.options.difficulty)
+    }
+
+    @Test
+    fun coastMakesACustomSheetFromABriefAndCountsItsExercises() = runTest {
+        coastForWorksheets()
+        translator.completion = Completion("short || Write the plural. || der Hund || die Hunde\nshort || Write the plural. || die Maus || die Mäuse")
+        val viewModel = coastViewModel(coastId = 1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.setWorksheetOptions(WorksheetOptions(count = 3, kind = SheetKind.Custom, brief = "Plural from the singular"))
+        viewModel.createWorksheet()
+
+        val worksheet = viewModel.uiState.value.worksheet
+        assertEquals("german-coast-custom-practice-2026-10-09.pdf", worksheet.pdf?.fileName)
+        // Two of the three asked for came back: the ready sheet says so.
+        assertEquals(2, worksheet.sentenceCount)
+        assertEquals(listOf("der Hund", "die Maus"), printer.printed.single().exercises.map { it.task })
+    }
+
+    @Test
+    fun aCustomSheetsBriefIsRememberedForItsCoastAndFilledInWhenTheCustomSheetIsOpenedAgain() = runTest {
+        coastForWorksheets()
+        flashcards.seedCoast(coastId = 2, language = "Spanish")
+        flashcards.seed(islandId = 2, cardCount = 6, coastId = 2)
+        settings.recordWorksheetBrief(1, "Past tense")
+        settings.recordWorksheetBrief(2, "Ser or estar")
+        translator.completion = Completion("short || Write the plural. || der Hund || die Hunde\nshort || Write the plural. || die Maus || die Mäuse")
+        val first = coastViewModel(coastId = 1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { first.uiState.collect {} }
+
+        first.setWorksheetOptions(WorksheetOptions(count = 3, kind = SheetKind.Custom, brief = "Plural from the singular"))
+        first.createWorksheet()
+        // The brief just used leads the recent ones; the other coast's brief is not among them.
+        assertEquals(listOf("Plural from the singular", "Past tense"), first.uiState.value.worksheet.recentBriefs)
+
+        // Coming back to the coast later: switching to a custom sheet fills in the last brief.
+        val again = coastViewModel(coastId = 1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { again.uiState.collect {} }
+        assertEquals("", again.uiState.value.worksheet.options.brief)
+        again.setWorksheetOptions(again.uiState.value.worksheet.options.copy(kind = SheetKind.Custom))
+        assertEquals("Plural from the singular", again.uiState.value.worksheet.options.brief)
+        assertEquals(listOf("Plural from the singular", "Past tense"), again.uiState.value.worksheet.recentBriefs)
+        // A brief the learner cleared on purpose stays cleared while the sheet stays custom.
+        again.setWorksheetOptions(again.uiState.value.worksheet.options.copy(brief = ""))
+        assertEquals("", again.uiState.value.worksheet.options.brief)
+
+        // A translation sheet leaves the briefs alone, even with an old brief still in its options.
+        again.setWorksheetOptions(again.uiState.value.worksheet.options.copy(kind = SheetKind.Translation, brief = "Leftover"))
+        translator.completion = Completion("t1 t2 || n1 n2\nt3 t4 || n3 n4\nt5 t6 || n5 n6")
+        again.createWorksheet()
+        assertEquals(listOf("Plural from the singular", "Past tense"), settings.worksheetBriefs(1).first())
+        assertEquals(listOf("Ser or estar"), settings.worksheetBriefs(2).first())
     }
 
     @Test

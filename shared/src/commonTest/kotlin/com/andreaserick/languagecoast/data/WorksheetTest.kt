@@ -930,6 +930,27 @@ class WorksheetTest {
     }
 
     @Test
+    fun rememberedBriefsAreKeptPerCoastNewestFirstWithoutRepeatsAndAtMostFive() = runTest {
+        val repo = memorySettings()
+
+        listOf("Plural from the singular", "Nominative → dative", "Past tense", "Prepositions", "Modal verbs")
+            .forEach { repo.recordWorksheetBrief(1, it) }
+        // Asking again for a drill already in the list moves it to the front, in the spelling used last.
+        repo.recordWorksheetBrief(1, "  nominative → DATIVE ")
+        repo.recordWorksheetBrief(1, "Separable verbs\nin the present")
+        // A blank brief is no brief and is not remembered.
+        repo.recordWorksheetBrief(1, "   ")
+        repo.recordWorksheetBrief(2, "Ser or estar")
+
+        assertEquals(
+            listOf("Separable verbs in the present", "nominative → DATIVE", "Modal verbs", "Prepositions", "Past tense"),
+            repo.worksheetBriefs(1).first()
+        )
+        assertEquals(listOf("Ser or estar"), repo.worksheetBriefs(2).first())
+        assertEquals(emptyList(), repo.worksheetBriefs(3).first())
+    }
+
+    @Test
     fun hardPromptAndParserHandleNaturalTwoPartGuidanceWrappedLinesAndExtraWordHelp() {
         val hardPrompt = anchored(WorksheetDifficulty.Hard)
         assertTrue("Never bolt \"because\" onto a direct question" in hardPrompt)
@@ -954,5 +975,16 @@ class WorksheetTest {
         val keptHelp = vocabulary.wordHelp(parsed[0].targetText, parsed[0].newWords, maxWords = WorksheetDifficulty.Hard.wordHelpLimit)
         assertEquals(4, keptHelp.size)
         assertTrue(vocabulary.keepsToCoast("Obwohl der Bahnhof weit ist, gehe ich zum Strand.", WorksheetDifficulty.Hard.newWordsFor(WorksheetDirection.ToTarget)))
+    }
+
+    @Test
+    fun aTranslationGetsAsManyWritingLinesAsTheLongerOfItsSentenceAndItsAnswerNeeds() {
+        // A short sentence with a short answer is written on one line.
+        assertEquals(1, translationWritingLines("Wo ist der Bahnhof?", "Where is the station?"))
+        // A short question whose translation runs long gets the lines its answer takes, not the question's.
+        assertEquals(2, translationWritingLines("Ich gehe.", "a".repeat(61)))
+        assertEquals(3, translationWritingLines("a".repeat(20), "b".repeat(131)))
+        // And the other way round.
+        assertEquals(2, translationWritingLines("a".repeat(130), "kurz"))
     }
 }

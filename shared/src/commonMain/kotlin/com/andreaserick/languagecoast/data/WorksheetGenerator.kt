@@ -60,9 +60,14 @@ class WorksheetGenerator(
         val cards = flashcards.getWorksheetCards(coastId).filter { options.includes(it.islandId) }
         val cardCount = cards.size
         if (cardCount < WORKSHEET_MIN_CARDS) {
+            val custom = options.kind == SheetKind.Custom
             return WorksheetResult.Failed(
-                if (options.islandIds == null) "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards on the coast to make new sentences from."
-                else "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards to make new sentences from. Pick more islands."
+                when {
+                    custom && options.islandIds == null -> "A custom sheet needs at least $WORKSHEET_MIN_CARDS cards on the coast to take its words from."
+                    custom -> "A custom sheet needs at least $WORKSHEET_MIN_CARDS cards to take its words from. Pick more islands."
+                    options.islandIds == null -> "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards on the coast to make new sentences from."
+                    else -> "A practice sheet needs at least $WORKSHEET_MIN_CARDS cards to make new sentences from. Pick more islands."
+                }
             )
         }
         val ai = when (val connection = AskAi(translator, settings).connect()) {
@@ -114,6 +119,9 @@ class WorksheetGenerator(
             )
         }
         val batch = capacity.sheetBatch(options.difficulty)
+        if (options.kind == SheetKind.Custom) {
+            return writeCustomSheet(coast, options, count, nativeLanguage, wording, level, limits, batch, vocabulary, dealer, cardCount, provider, ai, onProgress)
+        }
         val wanted = worksheetSentencesWanted(count, batch)
         // Fewer after a request that was too much for the model (see below).
         var perRequest = batch.sentences
@@ -236,6 +244,66 @@ class WorksheetGenerator(
                 providerLabel = provider.label,
                 cardCount = cardCount,
                 islandCount = dealer.islandCount
+            )
+        )
+    }
+
+    /**
+     * A custom sheet, from the point on where it parts from a translation sheet: everything before (the cards,
+     * the provider, the level, the prompt's limits) is the same for both. The dealer only picks which cards a
+     * prompt shows as the words to reach for; its anchors are for translation sentences.
+     */
+    private suspend fun writeCustomSheet(
+        coast: Coast,
+        options: WorksheetOptions,
+        count: Int,
+        nativeLanguage: String,
+        wording: Wording,
+        level: Level?,
+        limits: SheetPromptLimits,
+        batch: WorksheetBatch,
+        vocabulary: CoastVocabulary,
+        dealer: WorksheetCardDealer,
+        cardCount: Int,
+        provider: TranslationProvider,
+        ai: AiConnection.Ready,
+        onProgress: (Int) -> Unit
+    ): WorksheetResult {
+        // Where the dealer stood before the last prompt's cards, as the translation loop keeps it.
+        var dealSnapshot: WorksheetCardDealer.Snapshot? = null
+        val request = CustomSheetRequest(
+            brief = options.brief,
+            forms = customSheetForms(options.forms),
+            count = count,
+            difficulty = options.difficulty,
+            targetLanguage = coast.language,
+            nativeLanguage = nativeLanguage,
+            region = coast.region,
+            level = level,
+            wording = wording,
+            goal = coast.goal,
+            limits = limits,
+            batch = batch,
+            vocabulary = vocabulary,
+            cardsFor = { dealSnapshot = dealer.snapshot(); dealer.next(it).cards },
+            takeBackCards = { dealSnapshot?.let(dealer::restore) }
+        )
+        val written = CustomSheetWriter(ai, background, random).write(request, onProgress)
+        if (written.exercises.isEmpty()) return WorksheetResult.Failed(written.error ?: CUSTOM_SHEET_UNUSABLE)
+        // Only a brief that gave exercises is worth offering again; one that failed would only be tapped to fail.
+        settings.recordWorksheetBrief(coast.coastId, options.brief)
+        return WorksheetResult.Ready(
+            Worksheet(
+                coastName = coast.displayName,
+                targetLanguage = coast.language,
+                nativeLanguage = nativeLanguage,
+                options = options.copy(count = count),
+                sentences = emptyList(),
+                date = clock.todayIn(timeZone),
+                providerLabel = provider.label,
+                cardCount = cardCount,
+                islandCount = dealer.islandCount,
+                exercises = written.exercises
             )
         )
     }

@@ -30,6 +30,7 @@ import com.andreaserick.languagecoast.data.SettingsDefaults
 import com.andreaserick.languagecoast.data.TALK_CARD_LIMIT
 import com.andreaserick.languagecoast.data.TranslationProvider
 import com.andreaserick.languagecoast.data.Translator
+import com.andreaserick.languagecoast.data.SheetKind
 import com.andreaserick.languagecoast.data.WORKSHEET_COUNT_RANGE
 import com.andreaserick.languagecoast.data.WorksheetGenerator
 import com.andreaserick.languagecoast.data.WorksheetOptions
@@ -68,8 +69,9 @@ import kotlin.time.Clock
  *
  * @property written Sentences the AI provider has written so far, while [isCreating].
  * @property pdf The finished sheet, until the user starts another.
- * @property sentenceCount How many sentences [pdf] has, which can be fewer than were asked for.
+ * @property sentenceCount How many sentences or exercises [pdf] has, which can be fewer than were asked for.
  * @property error Why the last attempt gave no sheet.
+ * @property recentBriefs The last briefs of this coast's custom sheets, newest first, offered as chips.
  */
 data class WorksheetUiState(
     val options: WorksheetOptions = WorksheetOptions(),
@@ -77,7 +79,8 @@ data class WorksheetUiState(
     val written: Int = 0,
     val pdf: WorksheetPdf? = null,
     val sentenceCount: Int = 0,
-    val error: String? = null
+    val error: String? = null,
+    val recentBriefs: List<String> = emptyList()
 )
 
 /**
@@ -194,6 +197,10 @@ class CoastViewModel(
 
     private val worksheet = MutableStateFlow(WorksheetUiState())
     private var worksheetJob: Job? = null
+
+    /** Kept up to date from the start, so switching to a custom sheet can fill in the last brief straight away. */
+    private val recentBriefs: StateFlow<List<String>> =
+        settings.worksheetBriefs(coastId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val talk = MutableStateFlow<TalkUiState?>(null)
     private var talkJob: Job? = null
 
@@ -229,7 +236,14 @@ class CoastViewModel(
             // whenever the screen comes back after a while: a coast left open overnight shows the new day's cards.
             flow { emit(clock.now().toEpochMilliseconds()) }.flatMapLatest { now -> flashcards.observeIslandSummaries(coastId, now) },
             combine(settings.starterTopicsAdded, settings.profile, settings.nativeLanguage, settings.personalAnswers, settings.personalIslandsBuilt, ::About),
-            combine(importer.progress, worksheet, builder.progress, buildReview, talk, ::Activity),
+            combine(
+                importer.progress,
+                combine(worksheet, recentBriefs) { sheet, briefs -> sheet.copy(recentBriefs = briefs) },
+                builder.progress,
+                buildReview,
+                talk,
+                ::Activity
+            ),
             combine(settings.translationProvider, settings.pace, settings.levelsCelebrated, settings.engineProblem(), ::Setup)
         ) { coast, islands, about, activity, (provider, pace, celebrated, problem) ->
             val language = coast?.language.orEmpty()
@@ -391,9 +405,17 @@ class CoastViewModel(
         viewModelScope.launch { settings.setActiveCoastId(coastId) }
     }
 
-    /** Changes what the next practice sheet will be like; the number of sentences is kept within [WORKSHEET_COUNT_RANGE]. */
+    /**
+     * Changes what the next practice sheet will be like; the number of sentences is kept within
+     * [WORKSHEET_COUNT_RANGE]. Switching to a custom sheet with no brief yet fills in this coast's last brief, so
+     * "another one of those" is one tap. Only the switch does: a brief cleared on purpose stays empty.
+     */
     fun setWorksheetOptions(options: WorksheetOptions) {
-        worksheet.update { it.copy(options = options.copy(count = options.count.coerceIn(WORKSHEET_COUNT_RANGE)), error = null) }
+        worksheet.update { current ->
+            val opensCustom = options.kind == SheetKind.Custom && current.options.kind != SheetKind.Custom
+            val brief = if (opensCustom && options.brief.isBlank()) recentBriefs.value.firstOrNull().orEmpty() else options.brief
+            current.copy(options = options.copy(count = options.count.coerceIn(WORKSHEET_COUNT_RANGE), brief = brief), error = null)
+        }
     }
 
     /**
@@ -411,7 +433,7 @@ class CoastViewModel(
                 is WorksheetResult.Ready -> {
                     val pdf = printer.print(result.worksheet)
                     if (pdf == null) worksheet.value.copy(error = "The PDF couldn't be made. Check that your device has storage left.")
-                    else worksheet.value.copy(pdf = pdf, sentenceCount = result.worksheet.sentences.size)
+                    else worksheet.value.copy(pdf = pdf, sentenceCount = result.worksheet.exerciseCount)
                 }
             }
             worksheet.value = finished.copy(isCreating = false)
